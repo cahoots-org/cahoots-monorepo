@@ -1,44 +1,58 @@
 # src/api/main.py
 from fastapi import FastAPI, HTTPException
-from kubernetes import client, config
-from ..models.project import Project
-from ..utils.logger import Logger
+from pydantic import BaseModel
+from typing import List, Optional
 import httpx
+import os
 
 app = FastAPI()
-config.load_incluster_config()
-k8s_api = client.CoreV1Api()
-logger = Logger("MasterService")
 
-@app.post("/projects/")
+class Story(BaseModel):
+    id: str
+    title: str
+    description: str
+    status: str = "TODO"
+    tasks: List[dict] = []
+    assigned_to: Optional[str] = None
+
+class Project(BaseModel):
+    id: str
+    name: str
+    description: str
+    stories: List[Story] = []
+    repo_url: Optional[str] = None
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+@app.post("/projects")
 async def create_project(project: Project):
-    logger.info(f"New project request received: {project.name}")
-    
     try:
-        # Forward to PM service
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                "http://pm-service:8001/process",
-                json={"type": "new_project", "project": project.to_dict()}
+                "http://pm:8001/projects",
+                json=project.dict(),
+                timeout=60.0  # Increase timeout for project creation
             )
-            
-        if response.status_code != 200:
-            raise HTTPException(status_code=500, detail="PM service error")
-            
-        return response.json()
-        
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Error processing project request: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/projects/{project_id}/status")
-async def get_project_status(project_id: str):
-    logger.info(f"Status request for project: {project_id}")
-    
+@app.get("/projects/{project_id}/stories/{story_id}")
+async def get_story(project_id: str, story_id: str):
     try:
-        # Implementation for status check
-        pass
-        
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"http://pm:8001/projects/{project_id}/stories/{story_id}",
+                timeout=30.0
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Error checking project status: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

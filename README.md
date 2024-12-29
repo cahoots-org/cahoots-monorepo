@@ -13,7 +13,7 @@ An autonomous AI development team that collaborates to build software projects. 
 
 ## Prerequisites
 
-- Python 3.9+
+- Python <=3.12.0
 - Docker (for containerized deployment)
 - Google Cloud SDK (for production deployment)
 - Git

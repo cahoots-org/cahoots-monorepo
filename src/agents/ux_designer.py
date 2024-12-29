@@ -24,3 +24,46 @@ class UXDesigner(BaseAgent):
             "design_specs": design_specs,
             "mockups": mockups
         }
+    
+    def create_design_specs(self, task: Task) -> dict:
+        """Create design specifications for a task."""
+        self.logger.info(f"Creating design specs for task: {task.title}")
+        
+        prompt = f"""Create detailed UX design specifications for:
+        Task: {task.title}
+        Description: {task.description}
+        
+        Include:
+        - User flow
+        - Component hierarchy
+        - Interaction patterns
+        - Accessibility requirements
+        """
+        
+        specs_response = self.generate_response(prompt)
+        
+        return {
+            "task_id": task.id,
+            "specifications": specs_response
+        }
+    
+    def create_mockups(self, design_specs: dict) -> dict:
+        """Create UI mockups based on design specifications."""
+        self.logger.info(f"Creating mockups for task: {design_specs['task_id']}")
+        
+        prompt = f"""Create UI mockup descriptions based on these specifications:
+        {design_specs['specifications']}
+        
+        Include:
+        - Layout details
+        - Color schemes
+        - Typography
+        - Component styling
+        """
+        
+        mockups_response = self.generate_response(prompt)
+        
+        return {
+            "task_id": design_specs['task_id'],
+            "mockups": mockups_response
+        }

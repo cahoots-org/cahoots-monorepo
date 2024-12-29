@@ -1,0 +1,17 @@
+# Web Framework
+fastapi==0.109.2
+uvicorn==0.15.0
+
+# Cloud and Infrastructure
+kubernetes==19.15.0
+
+# Utilities
+python-dotenv==0.19.0
+PyGithub==1.55
+py-trello==0.17.1
+pydantic==1.10.13
+httpx==0.24.1
+aioredis==2.0.1
+
+# Testing
+pytest==6.2.5 
