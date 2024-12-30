@@ -35,122 +35,94 @@ class TrelloService:
         response.raise_for_status()
         
     def create_board(self, name: str, description: str = "") -> str:
-        self.logger.info(f"Creating board: {name}")
-        # First create the board
-        response = requests.post(
-            f"{self.base_url}/boards",
-            params=self._get_auth_params({
-                "name": name,
-                "desc": description,
-                "defaultLists": "false"
-            })
-        )
-        response.raise_for_status()
-        board_id = response.json()["id"]
-        
+        """Create a new Trello board"""
         try:
-            # Try to enable the Power-Up
+            self.logger.info(f"Creating board: {name}")
             response = requests.post(
-                f"{self.base_url}/boards/{board_id}/powerUps",
+                f"{self.base_url}/boards",
                 params=self._get_auth_params({
-                    "idPlugin": self.powerup_id
+                    "name": name,
+                    "desc": description,
+                    "defaultLists": "false"
                 })
             )
             response.raise_for_status()
+            board = response.json()
             
-            # Try to initialize Power-Up data
-            response = requests.post(
-                f"{self.base_url}/boards/{board_id}/pluginData",
-                params=self._get_auth_params({
-                    "value": json.dumps({
-                        "type": "ai_dev_team_board",
-                        "created_at": "",
-                        "description": description
-                    })
-                })
-            )
-            response.raise_for_status()
+            # Try to configure Power-Up but don't fail if it doesn't work
+            try:
+                self._configure_power_up(board["id"])
+            except Exception as e:
+                self.logger.warning(f"Power-Up configuration skipped: {str(e)}")
+            
+            return board["id"]
         except Exception as e:
-            self.logger.warning(f"Failed to configure Power-Up: {str(e)}")
-            # Continue even if Power-Up configuration fails
-            pass
-            
-        return board_id
+            self.logger.error(f"Failed to create board: {str(e)}")
+            raise
         
     def create_list(self, board_id: str, name: str) -> str:
-        self.logger.info(f"Creating list {name} in board {board_id}")
-        response = requests.post(
-            f"{self.base_url}/boards/{board_id}/lists",
-            params=self._get_auth_params({
-                "name": name,
-                "pos": "bottom"
-            })
-        )
-        response.raise_for_status()
-        list_id = response.json()["id"]
-        
+        """Create a new list in the board"""
         try:
-            # Try to store list metadata in Power-Up
+            self.logger.info(f"Creating list {name} in board {board_id}")
             response = requests.post(
-                f"{self.base_url}/boards/{board_id}/pluginData",
+                f"{self.base_url}/lists",
                 params=self._get_auth_params({
-                    "value": json.dumps({
-                        "lists": [{
-                            "id": list_id,
-                            "name": name
-                        }]
-                    })
+                    "name": name,
+                    "idBoard": board_id
                 })
             )
             response.raise_for_status()
-        except Exception as e:
-            self.logger.warning(f"Failed to store list metadata in Power-Up: {str(e)}")
-            # Continue even if Power-Up data storage fails
-            pass
+            trello_list = response.json()
             
-        return list_id
+            # Try to store list metadata but don't fail if it doesn't work
+            try:
+                self._store_list_metadata(board_id, trello_list["id"], name)
+            except Exception as e:
+                self.logger.warning(f"List metadata storage skipped: {str(e)}")
+            
+            return trello_list["id"]
+        except Exception as e:
+            self.logger.error(f"Failed to create list: {str(e)}")
+            raise
         
     def create_card(self, title: str, description: str, board_id: str, list_name: str = "Backlog") -> str:
-        self.logger.info(f"Creating card {title} in board {board_id}")
-        # First get the list ID
-        response = requests.get(
-            f"{self.base_url}/boards/{board_id}/lists",
-            params=self._get_auth_params()
-        )
-        response.raise_for_status()
-        lists = response.json()
-        list_id = next(l["id"] for l in lists if l["name"] == list_name)
-        
-        # Create the card
-        response = requests.post(
-            f"{self.base_url}/cards",
-            params=self._get_auth_params({
-                "idList": list_id,
-                "name": title,
-                "desc": description
-            })
-        )
-        response.raise_for_status()
-        card_id = response.json()["id"]
-        
+        """Create a new card in the specified list"""
         try:
-            # Try to add Power-Up data to the card
+            self.logger.info(f"Creating card {title} in board {board_id}")
+            
+            # Get all lists in the board
+            lists_response = requests.get(
+                f"{self.base_url}/boards/{board_id}/lists",
+                params=self._get_auth_params()
+            )
+            lists_response.raise_for_status()
+            lists = lists_response.json()
+            
+            # Find the target list
+            target_list = next(l for l in lists if l["name"] == list_name)
+            
+            # Create the card
             response = requests.post(
-                f"{self.base_url}/cards/{card_id}/pluginData",
+                f"{self.base_url}/cards",
                 params=self._get_auth_params({
-                    "value": json.dumps({
-                        "type": "ai_dev_team_card",
-                        "status": "created"
-                    })
+                    "name": title,
+                    "desc": description,
+                    "idList": target_list["id"]
                 })
             )
             response.raise_for_status()
-        except Exception as e:
-            self.logger.warning(f"Failed to add Power-Up data to card: {str(e)}")
-            # Continue even if Power-Up data storage fails
-            pass
+            card = response.json()
             
-        return card_id
+            # Try to add Power-Up data but don't fail if it doesn't work
+            try:
+                self._add_power_up_data(card["id"])
+            except Exception as e:
+                self.logger.warning(f"Power-Up data addition skipped: {str(e)}")
+            
+            return card["id"]
+        except Exception as e:
+            self.logger.error(f"Failed to create card: {str(e)}")
+            raise
         
     def get_card(self, card_id: str) -> dict:
         self.logger.info(f"Getting card: {card_id}")

@@ -1,9 +1,13 @@
 # src/services/github_service.py
 from github import Github
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 import base64
+import os
+import subprocess
 from ..utils.config import Config
 from ..utils.logger import Logger
+import time
+from github.Repository import Repository
 
 class GitHubService:
     def __init__(self):
@@ -12,43 +16,31 @@ class GitHubService:
         if not self.config.github_api_key:
             raise RuntimeError("GITHUB_API_KEY environment variable is required for GitHub integration")
         self.github = Github(self.config.github_api_key)
+        self.workspace_dir = os.getenv("WORKSPACE_DIR", "/workspace")
         
     def check_connection(self):
         """Test the GitHub connection"""
         self.github.get_user().login
         
-    def create_repository(self, name: str, description: str = "") -> str:
-        """Create a new repository with initial structure and branch protection rules"""
-        self.logger.info(f"Creating repository: {name}")
-        
-        # Create the repository
-        repo = self.github.get_user().create_repo(
-            name,
-            description=description,
-            auto_init=True,  # Initialize with README
-            private=False
-        )
-        
-        # Initialize with basic project structure
-        files = {
-            "README.md": self._generate_readme(name, description),
-            ".gitignore": self._generate_gitignore(),
-            "requirements.txt": self._generate_requirements(),
-            "src/__init__.py": "",
-            "src/main.py": self._generate_main_py(),
-            "tests/__init__.py": "",
-            "tests/test_main.py": self._generate_test_main(),
-            ".env.example": self._generate_env_example(),
-        }
-        
-        # Create all files in the main branch
-        for file_path, content in files.items():
-            self.commit_file(repo, file_path, content, "Initial project structure")
-        
-        # Configure branch protection rules for main branch
-        self.configure_branch_protection(repo)
+    def create_repository(self, name: str, description: str) -> str:
+        """Create a new repository and initialize it with basic structure"""
+        try:
+            self.logger.info(f"Creating repository: {name}")
+            repo = self.github.get_user().create_repo(
+                name=name,
+                description=description,
+                private=True,
+                auto_init=True  # This creates an initial commit with README
+            )
             
-        return repo.clone_url
+            # Wait for the repository to be fully created
+            time.sleep(2)
+            
+            # Return the clone URL without modifying it - we'll add auth when cloning
+            return repo.clone_url
+        except Exception as e:
+            self.logger.error(f"Failed to create repository: {str(e)}")
+            raise
         
     def configure_branch_protection(self, repo):
         """Configure branch protection rules to allow self-merging"""
@@ -135,143 +127,7 @@ class GitHubService:
 This PR was automatically created by the AI development team.
 """
         return self.create_pull_request(repo_name, branch, pr_title, pr_body)
-                
-    def commit_file(self, repo, file_path: str, content: str, message: str, branch: str = "main"):
-        """Commit a single file to a repository"""
-        try:
-            repo.create_file(
-                file_path,
-                message,
-                content,
-                branch=branch
-            )
-        except Exception as e:
-            self.logger.warning(f"Failed to create file {file_path}: {str(e)}")
-            
-    def _generate_readme(self, name: str, description: str) -> str:
-        return f"""# {name}
-
-{description}
-
-## Setup
-
-1. Clone the repository
-2. Create a virtual environment: `python -m venv venv`
-3. Activate the virtual environment:
-   - Windows: `venv\\Scripts\\activate`
-   - Unix/MacOS: `source venv/bin/activate`
-4. Install dependencies: `pip install -r requirements.txt`
-5. Copy `.env.example` to `.env` and fill in your environment variables
-6. Run the application: `python src/main.py`
-
-## Testing
-
-Run tests with: `python -m pytest tests/`
-
-## License
-
-MIT
-"""
-
-    def _generate_gitignore(self) -> str:
-        return """# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Virtual Environment
-venv/
-ENV/
-
-# Environment Variables
-.env
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Testing
-.coverage
-htmlcov/
-.pytest_cache/
-"""
-
-    def _generate_requirements(self) -> str:
-        return """fastapi==0.68.0
-uvicorn==0.15.0
-python-dotenv==0.19.0
-requests==2.26.0
-pytest==6.2.5
-"""
-
-    def _generate_main_py(self) -> str:
-        return """from fastapi import FastAPI
-from dotenv import load_dotenv
-import os
-
-# Load environment variables
-load_dotenv()
-
-app = FastAPI()
-
-@app.get("/")
-async def root():
-    return {"message": "Hello World"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-"""
-
-    def _generate_test_main(self) -> str:
-        return """from fastapi.testclient import TestClient
-from src.main import app
-
-client = TestClient(app)
-
-def test_read_root():
-    response = client.get("/")
-    assert response.status_code == 200
-    assert response.json() == {"message": "Hello World"}
-
-def test_health_check():
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "healthy"}
-"""
-
-    def _generate_env_example(self) -> str:
-        return """# API Configuration
-PORT=8000
-HOST=0.0.0.0
-
-# Add your environment variables here
-# API_KEY=your_api_key
-"""
-
+        
     def merge_pull_request(self, repo_name: str, pr_number: int) -> bool:
         """Merge a pull request"""
         try:
@@ -302,3 +158,24 @@ HOST=0.0.0.0
             return int(pr_url.split('/')[-1])
         except (ValueError, IndexError):
             raise ValueError(f"Invalid PR URL: {pr_url}")
+
+    def clone_repository(self, repo_url: str) -> str:
+        """Clone a repository with proper authentication"""
+        try:
+            # Extract repository name from URL
+            repo_name = repo_url.split('/')[-1].replace('.git', '')
+            repo_path = os.path.join(self.workspace_dir, repo_name)
+            
+            # Add authentication to the URL
+            auth_url = repo_url.replace("https://", f"https://robmillersoftware:{self.config.github_api_key}@")
+            
+            self.logger.info(f"Cloning {repo_url} to {repo_path}")
+            subprocess.run(['git', 'clone', auth_url, repo_path], check=True)
+            
+            return repo_path
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to clone repository: {e.stderr}")
+            raise
+        except Exception as e:
+            self.logger.error(f"Failed to clone repository: {str(e)}")
+            raise
