@@ -1,5 +1,5 @@
 # Environment files
-.env.*
+.env
 
 # Python
 __pycache__/
@@ -24,3 +24,6 @@ htmlcov/
 bin/
 lib/
 include/
+
+# Generated files
+workspace/
