@@ -3,7 +3,7 @@ from .base_agent import BaseAgent
 from ..services.github_service import GitHubService
 from ..utils.event_system import EventSystem, CHANNELS
 from ..models.task import Task
-from typing import List, Dict
+from typing import List, Dict, Any
 import asyncio
 import os
 
@@ -23,19 +23,29 @@ class UXDesigner(BaseAgent):
         await self.event_system.connect()
         await self.event_system.subscribe("system", self.handle_system_message)
         await self.event_system.subscribe("story_assigned", self.handle_story_assigned)
-        self._listening_task = asyncio.create_task(self.event_system.start_listening())
+        self._listening_task = asyncio.create_task(self.start_listening())
         self.logger.info("Event system setup complete")
         
-    def process_message(self, message: dict) -> dict:
-        """Process incoming messages"""
-        self.logger.info(f"Processing message type: {message['type']}")
+    async def _handle_message(self, message: dict) -> Dict[str, Any]:
+        """Handle a specific message type.
         
+        Args:
+            message: The message to handle, already decoded if it was a string.
+            
+        Returns:
+            Dict[str, Any]: The response to the message.
+            
+        Raises:
+            ValueError: If the message has an unknown type
+        """
         if message["type"] == "design_request":
             return self.handle_design_request(message)
         elif message["type"] == "design_feedback":
             return self.handle_design_feedback(message)
-            
-        return {"status": "error", "message": "Unknown message type"}
+        else:
+            error_msg = f"Unknown message type: {message['type']}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
     
     async def handle_story_assigned(self, data: Dict):
         """Handle story assignment event"""
@@ -102,7 +112,7 @@ class UXDesigner(BaseAgent):
             "updated_mockups": updated_mockups
         }
     
-    def create_design_specs(self, task: Task) -> dict:
+    async def create_design_specs(self, task: Task) -> dict:
         """Create design specifications for a task."""
         self.logger.info(f"Creating design specs for task: {task.title}")
         
@@ -120,14 +130,14 @@ class UXDesigner(BaseAgent):
         - Layout guidelines
         """
         
-        specs_response = self.generate_response(prompt)
+        specs_response = await self.generate_response(prompt)
         
         return {
             "task_id": task.id,
             "specifications": specs_response,
-            "wireframes": self.generate_wireframes(specs_response),
-            "user_flows": self.generate_user_flows(specs_response),
-            "design_system": self.generate_design_system(specs_response)
+            "wireframes": await self.generate_wireframes(specs_response),
+            "user_flows": await self.generate_user_flows(specs_response),
+            "design_system": await self.generate_design_system(specs_response)
         }
     
     def create_mockups(self, design_specs: dict) -> dict:
@@ -175,32 +185,34 @@ class UXDesigner(BaseAgent):
             "design_system": self.generate_design_system(updated_specs)
         }
     
-    def generate_wireframes(self, specs: str) -> List[str]:
+    async def generate_wireframes(self, specs: str) -> List[str]:
         """Generate wireframe descriptions from specifications"""
         prompt = f"""Create wireframe descriptions based on these specifications:
         {specs}
         
         Describe each major screen/view in detail.
         """
-        return self.generate_response(prompt).split("\n")
+        response = await self.generate_response(prompt)
+        return response.split("\n")
     
-    def generate_user_flows(self, specs: str) -> List[str]:
+    async def generate_user_flows(self, specs: str) -> List[str]:
         """Generate user flow descriptions from specifications"""
         prompt = f"""Create user flow descriptions based on these specifications:
         {specs}
         
         Describe each major user journey step by step.
         """
-        return self.generate_response(prompt).split("\n")
+        response = await self.generate_response(prompt)
+        return response.split("\n")
     
-    def generate_design_system(self, specs: str) -> dict:
+    async def generate_design_system(self, specs: str) -> dict:
         """Generate design system from specifications"""
         prompt = f"""Create a design system based on these specifications:
         {specs}
         
         Include color palette, typography, spacing, and component styles.
         """
-        response = self.generate_response(prompt)
+        response = await self.generate_response(prompt)
         
         # Parse response into design system structure
         return {

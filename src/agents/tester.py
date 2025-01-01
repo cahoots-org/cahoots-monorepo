@@ -3,7 +3,7 @@ from .base_agent import BaseAgent
 from ..services.github_service import GitHubService
 from ..models.project import Project
 from ..utils.event_system import EventSystem, CHANNELS
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import asyncio
 import os
 import uuid
@@ -41,17 +41,27 @@ class Tester(BaseAgent):
         await self.event_system.connect()
         await self.event_system.subscribe("system", self.handle_system_message)
         await self.event_system.subscribe("story_assigned", self.handle_story_assigned)
-        self._listening_task = asyncio.create_task(self.event_system.start_listening())
+        self._listening_task = asyncio.create_task(self.start_listening())
         self.logger.info("Event system setup complete")
         
-    def process_message(self, message: dict) -> dict:
-        """Process incoming messages"""
-        self.logger.info(f"Processing message type: {message['type']}")
+    async def _handle_message(self, message: dict) -> Dict[str, Any]:
+        """Handle a specific message type.
         
+        Args:
+            message: The message to handle, already decoded if it was a string.
+            
+        Returns:
+            Dict[str, Any]: The response to the message.
+            
+        Raises:
+            ValueError: If the message has an unknown type
+        """
         if message["type"] == "test_request":
             return self.handle_test_request(message)
-            
-        return {"status": "error", "message": "Unknown message type"}
+        else:
+            error_msg = f"Unknown message type: {message['type']}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
     
     async def handle_story_assigned(self, data: Dict):
         """Handle story assignment event"""

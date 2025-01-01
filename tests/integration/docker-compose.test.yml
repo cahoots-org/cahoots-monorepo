@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  redis-sentinel:
+    image: redis:7.2-alpine
+    ports:
+      - "26379:26379"
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    volumes:
+      - ./config/sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  test-api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    environment:
+      - ENV=test
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - LOG_LEVEL=DEBUG
+    ports:
+      - "8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  redis_data: 

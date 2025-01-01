@@ -1,0 +1,64 @@
+# Production Environment Configuration
+env: production
+debug: false
+log_level: INFO
+
+# Security
+allowed_hosts:
+  - "api.aidevteam.com"
+  - "www.aidevteam.com"
+
+cors_origins:
+  - "https://aidevteam.com"
+  - "https://www.aidevteam.com"
+
+# Redis Configuration
+redis:
+  cluster_mode: true
+  use_ssl: true
+  connection_pool_size: 20
+  connection_timeout: 10
+  retry_on_timeout: true
+  health_check_interval: 30
+
+# API Rate Limiting
+rate_limit:
+  enabled: true
+  requests_per_minute: 60
+  burst_size: 100
+
+# Scaling and Performance
+scaling:
+  worker_concurrency: 8
+  max_connections: 1000
+  connection_timeout: 30
+  keep_alive: true
+  graceful_shutdown_timeout: 30
+
+# Monitoring and Logging
+monitoring:
+  prometheus_enabled: true
+  health_check_interval: 30
+  log_format: json
+  trace_requests: true
+  metrics_path: /metrics
+
+# Service URLs and Configuration
+services:
+  project_manager:
+    url: http://project-manager.aidevteam-prod.svc.cluster.local:8001
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1
+  
+  developer:
+    url: http://developer.aidevteam-prod.svc.cluster.local:8002
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1
+  
+  ux_designer:
+    url: http://ux-designer.aidevteam-prod.svc.cluster.local:8003
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1 
