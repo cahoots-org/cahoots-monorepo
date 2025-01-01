@@ -1,35 +1,26 @@
-# AI Development Team
+# AI Dev Team API
 
-An autonomous AI development team that collaborates to build software projects. The system uses multiple specialized AI agents (Project Manager, Developer, UX Designer, and Tester) working together through a microservices architecture.
+An AI-powered development team that automates software development tasks through a RESTful API.
 
 ## Features
 
-- 🤖 Multiple specialized AI agents
-- 📊 Project management with Trello integration
-- 💻 Code generation and review
-- 🎨 UX design and mockup creation
-- ✅ Automated testing and quality assurance
-- 🔄 GitHub integration for version control
+- Project Management
+- Task Automation
+- Code Generation
+- Code Review
+- Testing
+- Continuous Integration/Deployment
 
-## Prerequisites
+## Quick Start
 
-- Python <=3.12.0
-- Docker (for containerized deployment)
-- Google Cloud SDK (for production deployment)
-- Git
+### Prerequisites
 
-## Environment Variables
+- Python 3.10+
+- Redis
+- Docker (optional)
+- Kubernetes (optional)
 
-Create a `.env` file in the root directory with the following variables:
-
-```env
-GITHUB_API_KEY=your_github_token
-TRELLO_API_KEY=your_trello_key
-TRELLO_API_SECRET=your_trello_secret
-HUGGINGFACE_API_KEY=your_huggingface_token
-```
-
-## Installation
+### Local Development
 
 1. Clone the repository:
 ```bash
@@ -40,7 +31,8 @@ cd ai-dev-team
 2. Create and activate a virtual environment:
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+source venv/bin/activate  # Linux/macOS
+.\venv\Scripts\activate   # Windows
 ```
 
 3. Install dependencies:
@@ -48,44 +40,171 @@ source venv/bin/activate  # On Windows: .\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Development
-
-Run the development server:
+4. Set up environment variables:
 ```bash
-./scripts/dev.sh
+cp .env.example .env
+# Edit .env with your configuration
 ```
 
-Run tests:
+5. Run the development server:
 ```bash
-./scripts/test.sh
+uvicorn src.api.main:app --reload
 ```
 
-Run locally with Docker:
+The API will be available at http://localhost:8000
+
+### Docker Deployment
+
+Build and run using Docker:
+
 ```bash
-./scripts/docker-local.sh
+docker build -t ai-dev-team .
+docker run -p 8000:8000 --env-file .env ai-dev-team
 ```
 
-## Deployment
+### Kubernetes Deployment
 
-The project uses GitHub Actions for CI/CD and deploys to Google Cloud Run. See `.github/workflows/deploy-prod.yml` for details.
+1. Create the necessary secrets:
+```bash
+kubectl create secret generic ai-dev-team-secrets \
+  --from-file=.env
+```
+
+2. Deploy the application:
+```bash
+kubectl apply -f k8s/
+```
+
+## API Documentation
+
+API documentation is available at:
+- Swagger UI: `/docs`
+- ReDoc: `/redoc`
+- OpenAPI Spec: `/openapi.json`
+
+### Authentication
+
+All API endpoints require authentication using an API key header:
+
+```http
+X-API-Key: your-api-key
+```
+
+### Example Request
+
+Create a new project:
+
+```bash
+curl -X POST http://localhost:8000/projects \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "project-123",
+    "name": "My Project",
+    "description": "A new project"
+  }'
+```
+
+## Configuration
+
+Configuration is managed through:
+1. Environment variables
+2. YAML configuration files in `config/`
+3. Command-line arguments
+
+See `.env.example` for available environment variables.
 
 ## Architecture
 
-The system consists of several microservices:
-- Master Service: Orchestrates communication between agents
-- Project Manager: Handles project planning and management
-- Developer: Generates and reviews code
-- UX Designer: Creates design specifications and mockups
-- Tester: Generates and runs test suites
+### Components
+
+- FastAPI web server
+- Redis message broker
+- Prometheus metrics
+- Kubernetes deployment
+- GitHub integration
+- Trello integration
+
+### Directory Structure
+
+```
+.
+├── config/             # Configuration files
+├── k8s/               # Kubernetes manifests
+├── scripts/           # Utility scripts
+├── src/               # Source code
+│   ├── api/          # API endpoints
+│   ├── agents/       # AI agents
+│   ├── models/       # Data models
+│   ├── services/     # External services
+│   └── utils/        # Utilities
+└── tests/            # Test suite
+```
+
+## Development
+
+### Testing
+
+Run tests with pytest:
+
+```bash
+pytest
+```
+
+With coverage:
+
+```bash
+pytest --cov=src --cov-report=html
+```
+
+### Code Quality
+
+Run linters and type checks:
+
+```bash
+ruff check .
+mypy src tests
+```
+
+### CI/CD
+
+The project uses GitHub Actions for:
+1. Running tests
+2. Code quality checks
+3. Security scanning
+4. Building Docker images
+5. Deploying to staging/production
+
+## Monitoring
+
+### Metrics
+
+Prometheus metrics are available at `/metrics`, including:
+- Request counts
+- Request latency
+- Redis operations
+- Custom business metrics
+
+### Logging
+
+Structured JSON logging is configured for production with:
+- Request tracking
+- Error tracking
+- Performance monitoring
+
+## Security
+
+- API key authentication
+- Rate limiting
+- Input validation
+- CORS protection
+- Security headers
+- Non-root containers
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Code of Conduct
-
-Please read our [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for details on our code of conduct.
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.

@@ -1,64 +1,131 @@
-# src/api/main.py
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Optional
-from src.utils.logger import Logger
-from src.utils.event_system import EventSystem, CHANNELS
-import sys
-import asyncio
+"""Main API module."""
 import json
+import logging
+import time
+from typing import Dict, Optional, Annotated
+from fastapi import FastAPI, Request, Response, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from prometheus_client import Counter, Histogram, generate_latest
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 
-logger = Logger("API")
-event_system = EventSystem()
+from ..models.project import Project
+from ..models.story import Story
+from ..utils.base_logger import BaseLogger
+from ..utils.metrics import http_request_duration_seconds as request_latency
+from ..utils.metrics import http_requests_total as request_count
+from .auth import verify_api_key
+from .core import get_event_system
+from .error_handlers import register_error_handlers
+from .health import get_health_check
+from .metrics import get_metrics
+from .core import EventSystem
 
-class Project(BaseModel):
-    id: str
-    name: str
-    description: str
+# Initialize FastAPI app
+app = FastAPI(
+    title="AI Dev Team API",
+    description="API for managing AI development team workflows",
+    version="0.1.0"
+)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan context manager for FastAPI app"""
-    # Startup
-    logger.info("Connecting to Redis")
-    await event_system.connect()
-    logger.info("Redis connection established")
-    yield
-    # Shutdown
-    # Add any cleanup code here if needed
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app = FastAPI(lifespan=lifespan)
+# Initialize logger
+logger = BaseLogger(__name__)
+
+# Register error handlers
+register_error_handlers(app)
+
+# Add request tracking middleware
+class RequestTrackingMiddleware(BaseHTTPMiddleware):
+    """Middleware for tracking request metrics."""
+    
+    async def dispatch(self, request: Request, call_next) -> Response:
+        """Track request metrics."""
+        request_id = request.headers.get("X-Request-ID", "unknown")
+        start_time = time.time()
+        
+        response = await call_next(request)
+        
+        # Record request duration
+        duration = time.time() - start_time
+        request_latency.labels(
+            path=request.url.path,
+            method=request.method
+        ).observe(duration)
+        
+        # Record request count
+        request_count.labels(
+            path=request.url.path,
+            method=request.method,
+            status=response.status_code
+        ).inc()
+        
+        # Add request ID to response headers
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(RequestTrackingMiddleware)
 
 @app.get("/health")
-async def health_check():
-    logger.info("Health check requested")
-    return {"status": "healthy"}
+async def health_check(
+    response: Response,
+    event_system: Annotated[EventSystem, Depends(get_event_system)]
+) -> Dict:
+    """Health check endpoint."""
+    return await get_health_check(response, event_system)
+
+@app.get("/metrics")
+def metrics() -> StarletteResponse:
+    """Prometheus metrics endpoint."""
+    return get_metrics()
 
 @app.post("/projects")
-async def create_project(project: Project):
-    """Create a new project by sending a message to the project manager through Redis."""
+async def create_project(
+    project: Project,
+    api_key: str = Depends(verify_api_key)
+) -> Dict:
+    """Create a new project."""
+    logger.info(f"Creating project: {project.model_dump()}")
     try:
-        logger.info(f"Received project creation request: {project.name}")
-        logger.info(f"Project details: id={project.id}, description length={len(project.description)}")
-        
-        # Send message to project manager through Redis
-        message = {
-            "type": "new_project",
-            "project_name": project.name,
-            "description": project.description,
-            "project_id": project.id
+        event_system = get_event_system()
+        await event_system.publish("projects", project.model_dump())
+        return {
+            "id": project.id,
+            "status": "success"
         }
-        
-        logger.info("Publishing message to project manager")
-        await event_system.publish("project_manager", message)
-        
-        # TODO: Implement response handling through Redis
-        # For now, return a simple acknowledgment
-        return {"status": "success", "message": "Project creation request sent to project manager"}
-        
     except Exception as e:
-        logger.error(f"Error creating project: {str(e)}")
-        logger.error(f"Exception type: {type(e)}")
-        logger.error(f"Exception traceback: {sys.exc_info()[2]}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Failed to create project: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create project: {str(e)}"
+        )
+
+@app.post("/stories")
+async def create_story(
+    story: Story,
+    api_key: str = Depends(verify_api_key)
+) -> Dict:
+    """Create a new story."""
+    logger.info(f"Creating story: {story.model_dump()}")
+    try:
+        event_system = get_event_system()
+        await event_system.publish("stories", story.model_dump())
+        return {
+            "id": story.id,
+            "status": "success"
+        }
+    except Exception as e:
+        logger.error(f"Failed to create story: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create story: {str(e)}"
+        )

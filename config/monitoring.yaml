@@ -1,0 +1,148 @@
+# Monitoring and Observability Configuration
+
+# OpenTelemetry Configuration
+opentelemetry:
+  service_name: ai_dev_team
+  environment: ${ENVIRONMENT:-development}
+  traces:
+    enabled: true
+    exporter:
+      type: otlp
+      endpoint: ${OTLP_ENDPOINT:-http://localhost:4317}
+      protocol: grpc
+    sampling:
+      rate: ${TRACE_SAMPLING_RATE:-1.0}
+  metrics:
+    enabled: true
+    exporter:
+      type: prometheus
+      port: 8000
+      path: /metrics
+
+# Sentry Configuration
+sentry:
+  enabled: ${SENTRY_ENABLED:-false}
+  dsn: ${SENTRY_DSN:-}
+  environment: ${ENVIRONMENT:-development}
+  traces_sample_rate: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+  profiles_sample_rate: ${SENTRY_PROFILES_SAMPLE_RATE:-0.1}
+
+# Business KPI Thresholds
+kpi_thresholds:
+  project_creation:
+    error_rate_threshold: 0.01  # 1% error rate
+    latency_p95_threshold: 2.0  # 2 seconds
+    success_rate_threshold: 0.99  # 99% success rate
+  
+  task_completion:
+    error_rate_threshold: 0.02  # 2% error rate
+    latency_p95_threshold: 300  # 5 minutes
+    success_rate_threshold: 0.95  # 95% success rate
+  
+  code_review:
+    error_rate_threshold: 0.05  # 5% error rate
+    latency_p95_threshold: 1800  # 30 minutes
+    success_rate_threshold: 0.90  # 90% success rate
+
+# Alert Configuration
+alerts:
+  channels:
+    slack:
+      enabled: ${SLACK_ALERTS_ENABLED:-false}
+      webhook_url: ${SLACK_WEBHOOK_URL:-}
+      channel: "#alerts"
+    email:
+      enabled: ${EMAIL_ALERTS_ENABLED:-false}
+      recipients:
+        - ops@aidevteam.com
+        - oncall@aidevteam.com
+
+  rules:
+    high_error_rate:
+      condition: "error_rate > 0.05"  # 5% error rate
+      duration: "5m"
+      severity: critical
+      channels: [slack, email]
+    
+    high_latency:
+      condition: "http_request_duration_p95 > 2"  # 2 seconds
+      duration: "5m"
+      severity: warning
+      channels: [slack]
+    
+    redis_connection_issues:
+      condition: "redis_connection_errors > 0"
+      duration: "1m"
+      severity: critical
+      channels: [slack, email]
+    
+    high_memory_usage:
+      condition: "memory_usage_percent > 85"
+      duration: "10m"
+      severity: warning
+      channels: [slack]
+    
+    high_cpu_usage:
+      condition: "cpu_usage_percent > 80"
+      duration: "10m"
+      severity: warning
+      channels: [slack]
+
+# Logging Configuration
+logging:
+  level: ${LOG_LEVEL:-INFO}
+  format: json
+  request_logging:
+    enabled: true
+    exclude_paths: ["/health", "/metrics"]
+  error_logging:
+    include_traceback: true
+    sensitive_fields: ["password", "token", "api_key"]
+
+# Metrics Configuration
+metrics:
+  retention_days: 30
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+  recording_rules:
+    - name: "job:http_requests_total:rate5m"
+      expr: "rate(http_requests_total[5m])"
+    - name: "job:http_request_duration_seconds:p95"
+      expr: "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))"
+    - name: "job:redis_operations_total:rate5m"
+      expr: "rate(redis_operations_total[5m])"
+
+  alerting_rules:
+    - name: "HighErrorRate"
+      expr: "rate(http_requests_total{status=~\"5..\"}[5m]) / rate(http_requests_total[5m]) > 0.05"
+      for: "5m"
+      labels:
+        severity: critical
+      annotations:
+        summary: "High error rate detected"
+        description: "Error rate is above 5% for the last 5 minutes"
+
+    - name: "HighLatency"
+      expr: "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 2"
+      for: "5m"
+      labels:
+        severity: warning
+      annotations:
+        summary: "High latency detected"
+        description: "P95 latency is above 2 seconds for the last 5 minutes"
+
+# Tracing Configuration
+tracing:
+  enabled: true
+  sample_rate: ${TRACE_SAMPLE_RATE:-1.0}
+  ignore_paths: ["/health", "/metrics"]
+  attributes:
+    - "http.method"
+    - "http.route"
+    - "http.status_code"
+    - "http.user_agent"
+    - "redis.operation"
+    - "redis.key"
+    - "error.type"
+    - "error.message" 

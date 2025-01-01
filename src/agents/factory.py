@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional
 import os
 import asyncio
 import logging
@@ -40,10 +40,8 @@ dictConfig(logging_config)
 class AgentFactory:
     """Factory for creating and running different types of agents."""
     
-    _instances: Dict[str, object] = {}
-    
-    @classmethod
-    def create_agent(cls, agent_type: Optional[str] = None):
+    @staticmethod
+    def create_agent(agent_type: Optional[str] = None):
         """Create an agent based on type or environment variable."""
         logger = Logger("AgentFactory")
         
@@ -55,12 +53,6 @@ class AgentFactory:
                 raise ValueError("AGENT_TYPE environment variable must be set")
                 
             agent_type = agent_type.lower()
-            
-            # Return existing instance if already created
-            if agent_type in cls._instances:
-                logger.debug(f"Returning existing {agent_type} instance")
-                return cls._instances[agent_type]
-            
             logger.info(f"Creating agent of type: {agent_type}")
             
             # Validate environment variables before creating agents
@@ -73,8 +65,7 @@ class AgentFactory:
                     logger.error("TRELLO_API_SECRET environment variable is missing")
                     raise RuntimeError("TRELLO_API_SECRET environment variable is missing")
                 logger.debug("PM environment variables validated")
-                cls._instances[agent_type] = ProjectManager()
-                return cls._instances[agent_type]
+                return ProjectManager()
             elif agent_type == "developer":
                 logger.debug("Validating developer environment variables")
                 developer_id = os.getenv("DEVELOPER_ID")
@@ -82,24 +73,21 @@ class AgentFactory:
                     logger.error("DEVELOPER_ID environment variable must be set for developer agents")
                     raise ValueError("DEVELOPER_ID environment variable must be set for developer agents")
                 logger.debug("Developer environment variables validated")
-                cls._instances[agent_type] = Developer(developer_id)
-                return cls._instances[agent_type]
+                return Developer(developer_id)
             elif agent_type == "ux":
                 logger.debug("Validating UX designer environment variables")
                 if not os.getenv("DESIGNER_ID"):
                     logger.error("DESIGNER_ID environment variable must be set for UX designer")
                     raise ValueError("DESIGNER_ID environment variable must be set for UX designer")
                 logger.debug("UX designer environment variables validated")
-                cls._instances[agent_type] = UXDesigner()
-                return cls._instances[agent_type]
+                return UXDesigner()
             elif agent_type == "tester":
                 logger.debug("Validating tester environment variables")
                 if not os.getenv("TESTER_ID"):
                     logger.error("TESTER_ID environment variable must be set for tester")
                     raise ValueError("TESTER_ID environment variable must be set for tester")
                 logger.debug("Tester environment variables validated")
-                cls._instances[agent_type] = Tester()
-                return cls._instances[agent_type]
+                return Tester()
             else:
                 logger.error(f"Unknown agent type: {agent_type}")
                 raise ValueError(f"Unknown agent type: {agent_type}")

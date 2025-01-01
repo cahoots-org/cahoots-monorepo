@@ -6,7 +6,7 @@ from ..utils.event_system import EventSystem
 from ..utils.logger import Logger
 from ..models.project import Project
 from ..models.story import Story
-from typing import List, Dict, TypedDict, Union
+from typing import List, Dict, TypedDict, Union, Any
 import uuid
 import asyncio
 import os
@@ -59,67 +59,50 @@ class ProjectManager(BaseAgent):
             await self.event_system.subscribe("pr_created", self.handle_pr_created)
             await self.event_system.subscribe("task_completed", self.handle_task_completed)
             
-            self._listening_task = asyncio.create_task(self.event_system.start_listening())
+            self._listening_task = asyncio.create_task(self.start_listening())
             self.logger.info("Event system setup complete")
         except Exception as e:
             self.logger.error(f"Failed to setup event system: {str(e)}")
             self.logger.error("Stack trace:", exc_info=True)
             raise
         
-    async def process_message(self, message: Union[str, dict]):
-        """Process incoming messages
+    async def _handle_message(self, message: dict) -> Dict[str, Any]:
+        """Handle a specific message type.
         
         Args:
-            message (Union[str, dict]): The message to process. Can be either a JSON string
-                or a dictionary. Must contain a 'type' field and other required fields
-                depending on the type.
-        
+            message: The message to handle, already decoded if it was a string.
+            
+        Returns:
+            Dict[str, Any]: The response to the message.
+            
         Raises:
-            ValueError: If the message is missing required fields or has an unknown type
+            ValueError: If the message has an unknown type
+            RuntimeError: If required environment variables are missing
         """
-        try:
-            self.logger.info(f"Raw message type: {type(message)}")
-            self.logger.info(f"Raw message content: {message!r}")
-            
-            # Convert string message to dict if needed
-            if isinstance(message, str):
-                try:
-                    message = json.loads(message)
-                    self.logger.debug(f"Decoded message: {message!r}")
-                except json.JSONDecodeError as e:
-                    self.logger.error(f"Failed to decode message as JSON: {str(e)}")
-                    raise ValueError(f"Invalid JSON message: {str(e)}")
-            
-            if "type" not in message:
-                self.logger.error(f"Message missing 'type' field: {message}")
-                raise ValueError(f"Message missing required field 'type': {message}")
-                
-            self.logger.info(f"Processing message type: {message['type']}")
-            
-            if message["type"] == "new_project":
-                if not os.getenv("TRELLO_API_KEY"):
-                    error_msg = "TRELLO_API_KEY environment variable is missing"
-                    self.logger.error(error_msg)
-                    raise RuntimeError(error_msg)
-                if not os.getenv("TRELLO_API_SECRET"):
-                    error_msg = "TRELLO_API_SECRET environment variable is missing"
-                    self.logger.error(error_msg)
-                    raise RuntimeError(error_msg)
-                await self.handle_new_project(message)
-            elif message["type"] == "project_complete":
-                await self.handle_project_complete(message)
-            elif message["type"] == "get_story":
-                await self.handle_get_story(message)
-            elif message["type"] == "update_story":
-                await self.handle_update_story(message)
-            else:
-                self.logger.error(f"Unknown message type: {message['type']}")
-                raise ValueError(f"Unknown message type: {message['type']}")
-        except Exception as e:
-            self.logger.error(f"Failed to process message: {str(e)}")
-            self.logger.error(f"Message: {message}")
-            self.logger.error("Stack trace:", exc_info=True)
-            raise
+        if message["type"] == "new_project":
+            if not os.getenv("TRELLO_API_KEY"):
+                error_msg = "TRELLO_API_KEY environment variable is missing"
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            if not os.getenv("TRELLO_API_SECRET"):
+                error_msg = "TRELLO_API_SECRET environment variable is missing"
+                self.logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            await self.handle_new_project(message)
+            return {"status": "success"}
+        elif message["type"] == "project_complete":
+            await self.handle_project_complete(message)
+            return {"status": "success"}
+        elif message["type"] == "get_story":
+            story = await self.handle_get_story(message)
+            return {"status": "success", "story": story}
+        elif message["type"] == "update_story":
+            await self.handle_update_story(message)
+            return {"status": "success"}
+        else:
+            error_msg = f"Unknown message type: {message['type']}"
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
         
     async def handle_new_project(self, message: dict):
         """Handle new project creation"""
@@ -272,7 +255,7 @@ class ProjectManager(BaseAgent):
         except Exception as e:
             self.logger.error(f"Failed to notify developer: {str(e)}")
     
-    def create_roadmap(self, description: str) -> dict:
+    async def create_roadmap(self, description: str) -> dict:
         """Create a project roadmap"""
         prompt = f"""Create a detailed project roadmap based on this description:
         {description}
@@ -284,13 +267,14 @@ class ProjectManager(BaseAgent):
         - Dependencies
         """
         
-        roadmap_response = self.generate_response(prompt)
+        roadmap_response = await self.generate_response(prompt)
+        tasks = [task.strip() for task in roadmap_response.split("\n") if task.strip()]
         return {
-            "phases": roadmap_response.split("\n"),
+            "tasks": tasks,
             "raw": roadmap_response
         }
     
-    def create_requirements(self, description: str) -> dict:
+    async def create_requirements(self, description: str) -> dict:
         """Create project requirements"""
         prompt = f"""Create detailed requirements based on this description:
         {description}
@@ -302,13 +286,13 @@ class ProjectManager(BaseAgent):
         - Constraints
         """
         
-        requirements_response = self.generate_response(prompt)
+        requirements_response = await self.generate_response(prompt)
         return {
             "requirements": requirements_response.split("\n"),
             "raw": requirements_response
         }
     
-    def create_stories(self, description: str) -> List[Story]:
+    async def create_stories(self, description: str) -> List[Story]:
         """Create user stories"""
         prompt = f"""Break down this project into user stories:
         {description}
@@ -319,7 +303,7 @@ class ProjectManager(BaseAgent):
         ---
         """
         
-        stories_response = self.generate_response(prompt)
+        stories_response = await self.generate_response(prompt)
         stories = []
         
         for story_text in stories_response.split("---"):
@@ -360,10 +344,3 @@ class ProjectManager(BaseAgent):
             "approved": approved,
             "feedback": review_response
         }
-
-    async def handle_message(self, message: dict):
-        """Handle incoming messages from Redis"""
-        self.logger.info(f"Received message: {message}")
-        result = self.process_message(message)
-        self.logger.info(f"Processed message with result: {result}")
-        # TODO: Implement response handling through Redis

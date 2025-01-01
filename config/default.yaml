@@ -1,0 +1,55 @@
+# Default Configuration
+
+env: development
+debug: true
+log_level: DEBUG
+
+# Redis Configuration
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+  client_name: ai_dev_team_test
+  cluster_mode: false
+  socket_timeout: 5
+  socket_connect_timeout: 2
+  max_connections_per_worker: 10
+  worker_concurrency: 4
+  health_check_interval: 30
+
+# Authentication Configuration
+auth:
+  token_expire_minutes: 30
+  hash_algorithm: HS256
+  min_password_length: 8
+  password_reset_expire_minutes: 15
+  secret_key: development-secret-key
+  api_key: test-api-key-123
+
+# API Configuration
+api:
+  max_request_size_mb: 10
+  request_timeout_seconds: 30
+  rate_limit:
+    requests_per_minute: 60
+    burst_size: 10
+  allowed_hosts:
+    - "*"
+  cors_origins:
+    - "*"
+  version: 0.1.0
+
+# Service Configuration
+services:
+  github:
+    name: github
+    url: https://api.github.com
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1
+  trello:
+    name: trello
+    url: https://api.trello.com/1
+    timeout: 30
+    retry_attempts: 3
+    retry_delay: 1 
