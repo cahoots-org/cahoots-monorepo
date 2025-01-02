@@ -1,129 +1,113 @@
-from typing import Optional
+"""Factory for creating agent instances."""
 import os
-import asyncio
-import logging
 import traceback
-from .project_manager import ProjectManager
-from .developer import Developer
-from .ux_designer import UXDesigner
-from .tester import Tester
-from ..utils.logger import Logger
+from typing import Optional, Type
 
-# Configure logging using dictConfig
-from logging.config import dictConfig
-
-log_level = 'DEBUG'  # Force debug level for now
-logging_config = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'standard': {
-            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        },
-    },
-    'handlers': {
-        'default': {
-            'level': log_level,
-            'formatter': 'standard',
-            'class': 'logging.StreamHandler',
-            'stream': 'ext://sys.stdout',
-        },
-    },
-    'root': {
-        'handlers': ['default'],
-        'level': log_level,
-    },
-}
-
-dictConfig(logging_config)
+from src.agents.base_agent import BaseAgent
+from src.agents.developer import Developer
+from src.agents.tester import Tester
+from src.agents.ux_designer import UXDesigner
+from src.agents.project_manager import ProjectManager
+from src.utils.base_logger import BaseLogger
+from src.utils.event_system import EventSystem
 
 class AgentFactory:
-    """Factory for creating and running different types of agents."""
-    
-    @staticmethod
-    def create_agent(agent_type: Optional[str] = None):
-        """Create an agent based on type or environment variable."""
-        logger = Logger("AgentFactory")
+    """Factory class for creating agent instances."""
+
+    def __init__(self, logger: Optional[BaseLogger] = None) -> None:
+        """Initialize the factory.
         
+        Args:
+            logger: Optional logger instance. If not provided, creates a new one.
+        """
+        self._logger = logger or BaseLogger("AgentFactory")
+        self._event_system = EventSystem()  # Create a single event system instance for all agents
+
+    def create_agent(self, agent_type: Optional[str] = None) -> BaseAgent:
+        """Create an agent instance based on type.
+        
+        Args:
+            agent_type: Optional agent type override. If not provided, uses ENV_AGENT_TYPE.
+            
+        Returns:
+            The created agent instance
+            
+        Raises:
+            ValueError: If agent type is invalid or required environment variables are missing
+            RuntimeError: If agent creation fails
+        """
         try:
-            # Get agent type from environment if not provided
+            # Get agent type from args or environment
             agent_type = agent_type or os.getenv("AGENT_TYPE")
             if not agent_type:
-                logger.error("AGENT_TYPE environment variable must be set")
-                raise ValueError("AGENT_TYPE environment variable must be set")
-                
+                error_msg = "AGENT_TYPE environment variable must be set"
+                self._logger.error(error_msg)
+                raise ValueError(error_msg)
+
             agent_type = agent_type.lower()
-            logger.info(f"Creating agent of type: {agent_type}")
-            
-            # Validate environment variables before creating agents
+            self._logger.info(f"Creating agent of type: {agent_type}")
+
+            # Create PM agent
             if agent_type == "pm":
-                logger.debug("Validating PM environment variables")
-                if not os.getenv("TRELLO_API_KEY"):
-                    logger.error("TRELLO_API_KEY environment variable is missing")
-                    raise RuntimeError("TRELLO_API_KEY environment variable is missing")
-                if not os.getenv("TRELLO_API_SECRET"):
-                    logger.error("TRELLO_API_SECRET environment variable is missing")
-                    raise RuntimeError("TRELLO_API_SECRET environment variable is missing")
-                logger.debug("PM environment variables validated")
-                return ProjectManager()
+                trello_key = os.getenv("TRELLO_API_KEY")
+                if not trello_key:
+                    error_msg = "TRELLO_API_KEY environment variable is missing"
+                    self._logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+                trello_secret = os.getenv("TRELLO_API_SECRET")
+                if not trello_secret:
+                    error_msg = "TRELLO_API_SECRET environment variable is missing"
+                    self._logger.error(error_msg)
+                    raise RuntimeError(error_msg)
+
+                return ProjectManager(event_system=self._event_system)
+
+            # Create developer agent
             elif agent_type == "developer":
-                logger.debug("Validating developer environment variables")
-                developer_id = os.getenv("DEVELOPER_ID")
-                if not developer_id:
-                    logger.error("DEVELOPER_ID environment variable must be set for developer agents")
-                    raise ValueError("DEVELOPER_ID environment variable must be set for developer agents")
-                logger.debug("Developer environment variables validated")
-                return Developer(developer_id)
+                if not os.getenv("DEVELOPER_ID"):
+                    error_msg = "DEVELOPER_ID environment variable must be set for developer agents"
+                    self._logger.error(error_msg)
+                    raise ValueError(error_msg)
+
+                return Developer(os.getenv("DEVELOPER_ID"), event_system=self._event_system)
+
+            # Create UX designer agent
             elif agent_type == "ux":
-                logger.debug("Validating UX designer environment variables")
                 if not os.getenv("DESIGNER_ID"):
-                    logger.error("DESIGNER_ID environment variable must be set for UX designer")
-                    raise ValueError("DESIGNER_ID environment variable must be set for UX designer")
-                logger.debug("UX designer environment variables validated")
-                return UXDesigner()
+                    error_msg = "DESIGNER_ID environment variable must be set for UX designer"
+                    self._logger.error(error_msg)
+                    raise ValueError(error_msg)
+
+                return UXDesigner(event_system=self._event_system)
+
+            # Create tester agent
             elif agent_type == "tester":
-                logger.debug("Validating tester environment variables")
                 if not os.getenv("TESTER_ID"):
-                    logger.error("TESTER_ID environment variable must be set for tester")
-                    raise ValueError("TESTER_ID environment variable must be set for tester")
-                logger.debug("Tester environment variables validated")
-                return Tester()
+                    error_msg = "TESTER_ID environment variable must be set for tester"
+                    self._logger.error(error_msg)
+                    raise ValueError(error_msg)
+
+                return Tester(event_system=self._event_system)
+
+            # Handle unknown agent type
             else:
-                logger.error(f"Unknown agent type: {agent_type}")
-                raise ValueError(f"Unknown agent type: {agent_type}")
+                error_msg = f"Unknown agent type: {agent_type}"
+                self._logger.error(error_msg)
+                raise ValueError(error_msg)
+
         except Exception as e:
-            logger.error(f"Failed to create agent of type {agent_type}: {str(e)}")
-            logger.error(f"Stack trace:\n{''.join(traceback.format_tb(e.__traceback__))}")
+            self._logger.error(f"Failed to create agent: {str(e)}")
+            self._logger.error("Stack trace:\n" + traceback.format_exc())
             raise
 
-async def main():
-    """Create and run the agent."""
+async def main() -> None:
+    """Main entry point for the factory module."""
+    factory = AgentFactory()
     try:
-        # Create and run the agent
-        agent = AgentFactory.create_agent()
-        print("Agent created successfully")
-        
-        # Set up events
-        print("Setting up events")
-        await agent.setup_events()
-        print("Events set up successfully")
-        
-        # Keep the agent running
-        print("Starting agent loop")
-        while True:
-            await asyncio.sleep(1)
+        agent = factory.create_agent()
+        await agent.run()
     except Exception as e:
-        print(f"Error running agent: {str(e)}")
-        print(f"Traceback:\n{''.join(traceback.format_tb(e.__traceback__))}")
-        raise
-
-# This ensures main() is called when the module is run directly
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("Shutting down gracefully...")
-    except Exception as e:
-        print(f"Fatal error: {str(e)}")
-        print(f"Traceback:\n{''.join(traceback.format_tb(e.__traceback__))}")
+        factory._logger.error(f"Error in main: {str(e)}")
+        factory._logger.error("Stack trace:\n" + traceback.format_exc())
         raise 

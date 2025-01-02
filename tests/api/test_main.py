@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from src.api.main import app
 from typing import Dict, Generator
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 pytestmark = pytest.mark.asyncio
 
@@ -68,11 +68,35 @@ async def test_create_project_invalid_data(
     )
     assert response.status_code == 422
 
-async def test_metrics_endpoint(test_client: TestClient):
-    """Test the metrics endpoint."""
+@pytest.mark.parametrize("required_metric", [
+    "http_requests_total",
+    "http_request_duration_seconds",
+    "master_dispatch_seconds",
+    "pm_planning_seconds", 
+    "developer_coding_seconds",
+    "ux_design_seconds",
+    "test_execution_seconds",
+    "interservice_request_seconds",
+    "interservice_error_total",
+    "project_completion_seconds",
+    "story_completion_seconds",
+    "code_quality_score",
+    "test_coverage_percent"
+])
+async def test_metrics_endpoint(test_client: TestClient, required_metric: str):
+    """Test the metrics endpoint.
+    
+    Args:
+        test_client: FastAPI test client
+        required_metric: Name of metric that should be present in response
+    """
     response = test_client.get("/metrics")
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/plain; version=0.0.4; charset=utf-8"
+    
+    # Verify required metrics are present
+    metrics_data = response.text
+    assert required_metric in metrics_data, f"Required metric {required_metric} not found in response"
 
 async def test_request_tracking(
     test_client: TestClient,

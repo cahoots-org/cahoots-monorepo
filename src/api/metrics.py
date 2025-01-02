@@ -1,22 +1,27 @@
-from fastapi import APIRouter, Response
+from fastapi import Response
 from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    CollectorRegistry,
     generate_latest,
-    multiprocess,
+    CONTENT_TYPE_LATEST,
 )
 from typing import Optional
-import os
+import logging
 
-router = APIRouter()
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-# Initialize the registry
-registry = CollectorRegistry(auto_describe=True)
-
-@router.get("/metrics")
 def get_metrics() -> Response:
-    """Expose Prometheus metrics."""
-    return Response(
-        content=generate_latest(registry),
-        media_type=CONTENT_TYPE_LATEST
-    ) 
+    """Generate Prometheus metrics response.
+    
+    Returns:
+        Response: FastAPI response containing Prometheus metrics
+    """
+    logger.debug("Generating metrics")
+    metrics_data = generate_latest()
+    logger.debug(f"Generated {len(metrics_data)} bytes of metrics data")
+    
+    response = Response(
+        content=metrics_data,
+        headers={"content-type": CONTENT_TYPE_LATEST}
+    )
+    logger.debug("Created metrics response")
+    return response 

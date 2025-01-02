@@ -1,6 +1,6 @@
 # src/models/project.py
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from .story import Story
 
 class Project(BaseModel):
@@ -8,7 +8,7 @@ class Project(BaseModel):
     name: str
     description: str
     stories: List[Story] = []
-    github_url: str = None
+    github_url: Optional[str] = None
     
     def to_dict(self) -> dict:
         return {

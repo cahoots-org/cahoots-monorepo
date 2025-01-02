@@ -2,13 +2,14 @@
 import json
 import logging
 import time
-from typing import Dict, Optional, Annotated
+from typing import Dict, Optional, Annotated, Callable
 from fastapi import FastAPI, Request, Response, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from prometheus_client import Counter, Histogram, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
+from datetime import datetime
 
 from ..models.project import Project
 from ..models.story import Story
@@ -21,6 +22,7 @@ from .error_handlers import register_error_handlers
 from .health import get_health_check
 from .metrics import get_metrics
 from .core import EventSystem
+from ..utils.metrics import track_request
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -39,7 +41,8 @@ app.add_middleware(
 )
 
 # Initialize logger
-logger = BaseLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 # Register error handlers
 register_error_handlers(app)
@@ -50,27 +53,38 @@ class RequestTrackingMiddleware(BaseHTTPMiddleware):
     
     async def dispatch(self, request: Request, call_next) -> Response:
         """Track request metrics."""
+        logger.debug(f"Starting request processing: {request.method} {request.url.path}")
         request_id = request.headers.get("X-Request-ID", "unknown")
         start_time = time.time()
         
+        # Handle API key verification
+        if not request.url.path.startswith(("/health", "/metrics")):
+            logger.debug("Verifying API key")
+            api_key = request.headers.get("X-API-Key")
+            if not api_key or not verify_api_key(api_key):
+                logger.warning("Invalid API key")
+                return Response(
+                    content="Invalid API key",
+                    status_code=401
+                )
+        
+        logger.debug("Calling next middleware")
         response = await call_next(request)
-        
-        # Record request duration
         duration = time.time() - start_time
-        request_latency.labels(
-            path=request.url.path,
-            method=request.method
-        ).observe(duration)
+        logger.debug(f"Request completed in {duration:.3f}s")
         
-        # Record request count
-        request_count.labels(
-            path=request.url.path,
+        # Track request metrics
+        logger.debug("Recording metrics")
+        track_request(
             method=request.method,
-            status=response.status_code
-        ).inc()
+            endpoint=request.url.path,
+            status_code=response.status_code,
+            duration=duration
+        )
         
         # Add request ID to response headers
         response.headers["X-Request-ID"] = request_id
+        logger.debug(f"Returning response with status {response.status_code}")
         return response
 
 app.add_middleware(RequestTrackingMiddleware)
@@ -81,12 +95,18 @@ async def health_check(
     event_system: Annotated[EventSystem, Depends(get_event_system)]
 ) -> Dict:
     """Health check endpoint."""
-    return await get_health_check(response, event_system)
+    logger.debug("Processing health check request")
+    result = await get_health_check(response, event_system)
+    logger.debug(f"Health check completed with status {response.status_code}")
+    return result
 
 @app.get("/metrics")
 def metrics() -> StarletteResponse:
     """Prometheus metrics endpoint."""
-    return get_metrics()
+    logger.debug("Processing metrics request")
+    result = get_metrics()
+    logger.debug("Metrics request completed")
+    return result
 
 @app.post("/projects")
 async def create_project(
@@ -97,7 +117,17 @@ async def create_project(
     logger.info(f"Creating project: {project.model_dump()}")
     try:
         event_system = get_event_system()
-        await event_system.publish("projects", project.model_dump())
+        
+        # Format message according to event system requirements
+        message = {
+            "id": project.id,
+            "timestamp": datetime.now().isoformat(),
+            "type": "project_created",
+            "payload": project.model_dump()
+        }
+        
+        await event_system.publish("projects", message)
+        logger.debug("Project created successfully")
         return {
             "id": project.id,
             "status": "success"
@@ -119,6 +149,7 @@ async def create_story(
     try:
         event_system = get_event_system()
         await event_system.publish("stories", story.model_dump())
+        logger.debug("Story created successfully")
         return {
             "id": story.id,
             "status": "success"
