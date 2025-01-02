@@ -1,8 +1,86 @@
-from prometheus_client import Counter, Histogram, Gauge
-from typing import Dict, Optional
+from prometheus_client import Counter, Gauge, Histogram
+from typing import Optional, Dict, Any
 from functools import wraps
 import time
 from fastapi import Request
+import psutil
+
+# Service-specific metrics
+MASTER_DISPATCH_TIME = Histogram(
+    'master_dispatch_seconds',
+    'Time taken to dispatch tasks to project manager',
+    ['task_type'],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0)
+)
+
+PM_PLANNING_TIME = Histogram(
+    'pm_planning_seconds',
+    'Time taken for project planning',
+    ['project_type'],
+    buckets=(1.0, 5.0, 10.0, 30.0, 60.0)
+)
+
+DEVELOPER_CODING_TIME = Histogram(
+    'developer_coding_seconds',
+    'Time taken for coding tasks',
+    ['developer_id', 'task_type'],
+    buckets=(300, 900, 1800, 3600, 7200)
+)
+
+UX_DESIGN_TIME = Histogram(
+    'ux_design_seconds',
+    'Time taken for UX design tasks',
+    ['design_type'],
+    buckets=(900, 1800, 3600, 7200, 14400)
+)
+
+TEST_EXECUTION_TIME = Histogram(
+    'test_execution_seconds',
+    'Time taken for test execution',
+    ['test_type'],
+    buckets=(10, 30, 60, 180, 300)
+)
+
+# Inter-service communication metrics
+INTERSERVICE_REQUEST_TIME = Histogram(
+    'interservice_request_seconds',
+    'Time taken for inter-service requests',
+    ['source_service', 'target_service', 'operation'],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0)
+)
+
+INTERSERVICE_ERROR_COUNTER = Counter(
+    'interservice_error_total',
+    'Total number of inter-service communication errors',
+    ['source_service', 'target_service', 'error_type']
+)
+
+# Business process metrics
+PROJECT_COMPLETION_TIME = Histogram(
+    'project_completion_seconds',
+    'Time taken to complete entire projects',
+    ['project_type', 'complexity'],
+    buckets=(3600, 7200, 14400, 28800, 86400)
+)
+
+STORY_COMPLETION_TIME = Histogram(
+    'story_completion_seconds',
+    'Time taken to complete user stories',
+    ['story_type', 'priority'],
+    buckets=(1800, 3600, 7200, 14400, 28800)
+)
+
+CODE_QUALITY_SCORE = Gauge(
+    'code_quality_score',
+    'Code quality score from automated analysis',
+    ['project_id', 'metric_type']
+)
+
+TEST_COVERAGE_GAUGE = Gauge(
+    'test_coverage_percent',
+    'Test coverage percentage',
+    ['project_id', 'test_type']
+)
 
 # Message metrics
 MESSAGE_PUBLISH_COUNTER = Counter(
@@ -50,6 +128,11 @@ SERVICE_ERROR_COUNTER = Counter(
     ['service', 'error_type']
 )
 
+SERVICE_UPTIME = Gauge(
+    'service_uptime_seconds',
+    'Time since service started in seconds'
+)
+
 # Circuit breaker metrics
 CIRCUIT_BREAKER_STATE = Gauge(
     'circuit_breaker_state',
@@ -63,44 +146,129 @@ CIRCUIT_BREAKER_FAILURES = Counter(
     ['service']
 )
 
-# HTTP request metrics
+# Request metrics
 http_requests_total = Counter(
-    "http_requests_total",
-    "Total number of HTTP requests",
-    ["method", "path", "status"]
+    'http_requests_total',
+    'Total number of HTTP requests',
+    ['method', 'endpoint', 'status']
 )
 
 http_request_duration_seconds = Histogram(
-    "http_request_duration_seconds",
-    "HTTP request duration in seconds",
-    ["method", "path"]
+    'http_request_duration_seconds',
+    'HTTP request duration in seconds',
+    ['method', 'endpoint']
 )
 
-# Rate limiting metrics
-rate_limit_exceeded_total = Counter(
-    "rate_limit_exceeded_total",
-    "Total number of rate limit exceeded events",
-    ["identifier_type"]  # "api_key" or "ip"
+# Redis metrics
+redis_pool_size = Gauge(
+    'redis_pool_size',
+    'Current number of connections in the Redis connection pool'
 )
 
-rate_limit_remaining = Histogram(
-    "rate_limit_remaining",
-    "Number of remaining requests before rate limit",
-    ["identifier_type"]
+redis_pool_maxsize = Gauge(
+    'redis_pool_maxsize',
+    'Maximum number of connections in the Redis connection pool'
 )
 
 # Trello metrics
 TRELLO_REQUEST_TIME = Histogram(
-    'trello_request_duration_seconds',
-    'Time spent processing Trello API requests',
-    ['method', 'endpoint']
+    'trello_request_seconds',
+    'Time spent on Trello API requests',
+    ['method', 'endpoint'],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0)
 )
 
 TRELLO_ERROR_COUNTER = Counter(
-    'trello_errors_total',
-    'Number of Trello API errors',
+    'trello_error_total',
+    'Total number of Trello API errors',
     ['method', 'endpoint', 'status_code']
 )
+
+def track_request(method: str, endpoint: str, status_code: int, duration: float):
+    """Track request metrics.
+    
+    Args:
+        method: HTTP method
+        endpoint: Request endpoint
+        status_code: Response status code
+        duration: Request duration in seconds
+    """
+    http_requests_total.labels(
+        method=method,
+        endpoint=endpoint,
+        status=str(status_code)
+    ).inc()
+    
+    http_request_duration_seconds.labels(
+        method=method,
+        endpoint=endpoint
+    ).observe(duration)
+
+def track_interservice_request(
+    source_service: str,
+    target_service: str,
+    operation: str,
+    duration: float,
+    error: Optional[str] = None
+):
+    """Track inter-service communication metrics.
+    
+    Args:
+        source_service: Service initiating the request
+        target_service: Service receiving the request
+        operation: Type of operation being performed
+        duration: Request duration in seconds
+        error: Optional error type if request failed
+    """
+    INTERSERVICE_REQUEST_TIME.labels(
+        source_service=source_service,
+        target_service=target_service,
+        operation=operation
+    ).observe(duration)
+    
+    if error:
+        INTERSERVICE_ERROR_COUNTER.labels(
+            source_service=source_service,
+            target_service=target_service,
+            error_type=error
+        ).inc()
+
+def track_project_metrics(
+    project_id: str,
+    metric_type: str,
+    value: float,
+    labels: Optional[Dict[str, str]] = None
+):
+    """Track project-related metrics.
+    
+    Args:
+        project_id: Unique identifier of the project
+        metric_type: Type of metric (completion_time, quality_score, test_coverage)
+        value: Metric value
+        labels: Optional additional labels
+    """
+    if metric_type == 'completion_time':
+        PROJECT_COMPLETION_TIME.labels(**labels).observe(value)
+    elif metric_type == 'quality_score':
+        CODE_QUALITY_SCORE.labels(
+            project_id=project_id,
+            metric_type=labels.get('metric_type', 'overall')
+        ).set(value)
+    elif metric_type == 'test_coverage':
+        TEST_COVERAGE_GAUGE.labels(
+            project_id=project_id,
+            test_type=labels.get('test_type', 'unit')
+        ).set(value)
+
+def update_redis_metrics(pool_size: int, max_size: int):
+    """Update Redis connection pool metrics.
+    
+    Args:
+        pool_size: Current pool size
+        max_size: Maximum pool size
+    """
+    redis_pool_size.set(pool_size)
+    redis_pool_maxsize.set(max_size)
 
 def track_time(metric: Histogram, labels: Optional[Dict[str, str]] = None):
     """Decorator to track execution time of a function"""
@@ -120,49 +288,18 @@ def track_time(metric: Histogram, labels: Optional[Dict[str, str]] = None):
         return wrapper
     return decorator 
 
-def track_request_metrics(request: Request) -> None:
+def get_metrics() -> Dict[str, Any]:
+    """Get basic system metrics.
+    
+    Returns:
+        Dict[str, Any]: Dictionary containing system metrics like CPU and memory usage.
     """
-    Track request metrics.
-    
-    Args:
-        request: FastAPI request object
-    """
-    # Track request count and duration
-    method = request.method
-    path = request.url.path
-    status = getattr(request.state, "status_code", 500)
-    
-    http_requests_total.labels(
-        method=method,
-        path=path,
-        status=status
-    ).inc()
-    
-    # Track request duration if start time was set
-    if hasattr(request.state, "start_time"):
-        duration = time.time() - request.state.start_time
-        http_request_duration_seconds.labels(
-            method=method,
-            path=path
-        ).observe(duration)
-    
-    # Track rate limit metrics if available
-    if hasattr(request.state, "rate_limit_info"):
-        info = request.state.rate_limit_info
-        identifier_type = "api_key" if "api_key:" in info.get("key", "") else "ip"
-        
-        # Track remaining requests
-        rate_limit_remaining.labels(
-            identifier_type=identifier_type
-        ).observe(info["remaining"])
+    return {
+        "cpu_percent": psutil.cpu_percent(),
+        "memory_percent": psutil.virtual_memory().percent,
+        "disk_percent": psutil.disk_usage('/').percent,
+        "uptime": time.time() - START_TIME
+    }
 
-def track_rate_limit_exceeded(identifier_type: str) -> None:
-    """
-    Track rate limit exceeded event.
-    
-    Args:
-        identifier_type: Type of identifier ("api_key" or "ip")
-    """
-    rate_limit_exceeded_total.labels(
-        identifier_type=identifier_type
-    ).inc() 
+# Initialize start time
+START_TIME = time.time() 

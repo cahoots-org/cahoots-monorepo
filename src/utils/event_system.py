@@ -17,18 +17,18 @@ from ..utils.metrics import (
     MESSAGE_PROCESSING_TIME,
     MESSAGE_RETRY_COUNTER,
     MESSAGE_DLQ_COUNTER,
-    track_time
+    track_time,
+    redis_pool_size,
+    redis_pool_maxsize
 )
 from prometheus_client import Gauge
 from ..models.task import Task
 from redis.asyncio import Redis
 from ..utils.models import BaseMessage
 
-
 class ValidationError(Exception):
     """Custom validation error for event system."""
     pass
-
 
 # Define available channels
 CHANNELS = {
@@ -50,18 +50,6 @@ RETRY_CONFIG = {
     "max_delay": 60,  # seconds
     "exponential_base": 2
 }
-
-# Add connection pool metrics
-REDIS_POOL_CONNECTIONS = Gauge(
-    'redis_pool_connections',
-    'Number of connections in the Redis connection pool',
-    ['pool_type']
-)
-REDIS_POOL_MAXSIZE = Gauge(
-    'redis_pool_maxsize',
-    'Maximum number of connections in the Redis connection pool',
-    ['pool_type']
-)
 
 # Define standard event types
 class EventTypes:
@@ -123,7 +111,7 @@ class EventSystem:
         """
         try:
             if not self.redis:
-                await self.connect()
+                return False
             await self.redis.ping()
             self._connected = True
             return True
@@ -153,8 +141,8 @@ class EventSystem:
         if self.pubsub:
             channels = list(self.handlers.keys())
             for channel in channels:
-                await self.unsubscribe(channel)
-            await self.pubsub.close()
+                self.unsubscribe(channel)
+            self.pubsub.close()
             self.pubsub = None
         await self.disconnect()
 
@@ -275,3 +263,17 @@ class EventSystem:
         if not self._connected:
             return None
         return self.redis 
+
+# Global event system instance
+_event_system: Optional[EventSystem] = None
+
+def get_event_system() -> EventSystem:
+    """Get the global event system instance.
+    
+    Returns:
+        EventSystem: The global event system instance
+    """
+    global _event_system
+    if _event_system is None:
+        _event_system = EventSystem()
+    return _event_system 

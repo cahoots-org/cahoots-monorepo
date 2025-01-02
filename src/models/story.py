@@ -1,6 +1,6 @@
 # src/models/story.py
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from .task import Task
 
 class Story(BaseModel):
@@ -9,6 +9,7 @@ class Story(BaseModel):
     description: str
     tasks: List[Task] = []
     status: str = "backlog"
+    assigned_to: Optional[str] = None
     
     def to_dict(self) -> dict:
         return {
@@ -16,7 +17,8 @@ class Story(BaseModel):
             "title": self.title,
             "description": self.description,
             "tasks": [task.to_dict() for task in self.tasks],
-            "status": self.status
+            "status": self.status,
+            "assigned_to": self.assigned_to
         }
     
     @classmethod

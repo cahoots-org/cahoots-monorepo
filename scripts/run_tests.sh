@@ -51,7 +51,9 @@ cd "$(dirname "$0")/.."
 # Run unit tests first
 print_header "Running unit tests"
 python -m pytest tests/ \
-    -v \
+    -vv \
+    -s \
+    --log-cli-level=DEBUG \
     --cov=src \
     --cov-report=term-missing \
     --cov-config=pyproject.toml \

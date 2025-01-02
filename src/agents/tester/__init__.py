@@ -1,8 +1,10 @@
-# src/agents/tester.py
-from .base_agent import BaseAgent
-from ..services.github_service import GitHubService
-from ..models.project import Project
-from ..utils.event_system import EventSystem, CHANNELS
+# src/agents/tester/__init__.py
+from ..base_agent import BaseAgent
+from ...services.github_service import GitHubService
+from ...models.project import Project
+from ...utils.event_system import EventSystem, CHANNELS
+from ...utils.base_logger import BaseLogger
+from ...core.messaging import validate_message_type, create_success_response, create_error_response
 from typing import List, Dict, Optional, Any
 import asyncio
 import os
@@ -26,22 +28,28 @@ class TestSuite:
         self.test_cases = test_cases
 
 class Tester(BaseAgent):
-    def __init__(self):
-        """Initialize the tester agent."""
-        super().__init__("gpt-4-1106-preview")
+    def __init__(self, event_system: Optional[EventSystem] = None, start_listening: bool = True):
+        """Initialize the tester agent.
+        
+        Args:
+            event_system: Optional event system instance. If not provided, will get from singleton.
+            start_listening: Whether to start listening for events immediately
+        """
+        # Initialize base class first to set up task manager and event system
+        super().__init__(model_name="gpt-4-1106-preview", start_listening=start_listening, event_system=event_system)
+        
+        # Set up tester-specific attributes
         self.github = GitHubService()
         self.tester_id = os.getenv("TESTER_ID")
         
         if not self.tester_id:
             raise RuntimeError("TESTER_ID environment variable is required")
             
+        self.tester_id = self.tester_id.replace("-", "_")  # Normalize to underscore
+        
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
-        self.logger.info("Setting up event system")
-        await self.event_system.connect()
-        await self.event_system.subscribe("system", self.handle_system_message)
-        await self.event_system.subscribe("story_assigned", self.handle_story_assigned)
-        self._listening_task = asyncio.create_task(self.start_listening())
+        await super().setup_events()  # This handles system and story_assigned subscriptions
         self.logger.info("Event system setup complete")
         
     async def _handle_message(self, message: dict) -> Dict[str, Any]:
@@ -56,58 +64,60 @@ class Tester(BaseAgent):
         Raises:
             ValueError: If the message has an unknown type
         """
-        if message["type"] == "test_request":
-            return self.handle_test_request(message)
-        else:
-            error_msg = f"Unknown message type: {message['type']}"
-            self.logger.error(error_msg)
-            raise ValueError(error_msg)
-    
-    async def handle_story_assigned(self, data: Dict):
-        """Handle story assignment event"""
-        self.logger.info(f"Received story assignment: {data}")
-        
-        # Ensure we have all required fields
-        required_fields = ["story_id", "title", "description", "assigned_to"]
-        if not all(field in data for field in required_fields):
-            self.logger.error(f"Missing required fields in story assignment. Required: {required_fields}, Got: {list(data.keys())}")
-            return
+        # Validate message type
+        valid_types = ["test_request"]
+        error = validate_message_type(message, valid_types, self.logger)
+        if error:
+            return error
             
-        if data.get("assigned_to") != self.tester_id:
-            self.logger.info(f"Story assigned to {data.get('assigned_to')}, but I am {self.tester_id}. Ignoring.")
-            return
+        return await self.handle_test_request(message)
+    
+    async def handle_story_assigned(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle story assigned messages."""
+        # Use base class validation
+        error = await super().handle_story_assigned(message)
+        if error.get("status") == "error":
+            return error
             
         try:
             # Generate test suite for the story
-            test_suite = self.create_test_suite(data["story_id"], data["title"], data["description"])
+            test_suite = self.create_test_suite(message["story_id"], message["title"], message["description"])
             
             # Run the tests
             test_results = self.run_test_suite(test_suite)
             
             # Notify about test completion
             await self.event_system.publish("tests_completed", {
-                "story_id": data["story_id"],
+                "story_id": message["story_id"],
                 "tester_id": self.tester_id,
                 "test_suite": test_suite.__dict__,
                 "results": test_results
             })
             
+            return create_success_response(
+                test_suite=test_suite.__dict__,
+                results=test_results
+            )
+            
         except Exception as e:
             self.logger.error(f"Failed to handle story assignment: {str(e)}")
             self.logger.error(f"Stack trace:", exc_info=True)
+            return create_error_response(str(e))
     
-    def handle_test_request(self, message: dict) -> dict:
+    async def handle_test_request(self, message: dict) -> dict:
         """Handle test request"""
-        project = Project.from_dict(message["project"])
-        test_suite = self.generate_test_suite(project)
-        test_results = self.run_tests(test_suite)
-        
-        return {
-            "status": "success",
-            "passed": test_results["passed"],
-            "coverage": test_results["coverage"],
-            "report": test_results["report"]
-        }
+        try:
+            project = Project.from_dict(message["project"])
+            test_suite = self.generate_test_suite(project)
+            test_results = self.run_tests(test_suite)
+            
+            return create_success_response(
+                passed=test_results["passed"],
+                coverage=test_results["coverage"],
+                report=test_results["report"]
+            )
+        except Exception as e:
+            return create_error_response(str(e))
     
     def create_test_suite(self, story_id: str, title: str, description: str) -> TestSuite:
         """Create a test suite for a story"""
@@ -234,55 +244,55 @@ class Tester(BaseAgent):
             - Integration tests
             - End-to-end tests
             - Edge cases
-            - Performance tests
             """
             
             test_cases = self.generate_response(prompt)
-            test_suite[story.id] = {
-                "story": story.to_dict(),
-                "test_cases": test_cases
-            }
+            test_suite[story.id] = test_cases
             
         return test_suite
     
     def run_tests(self, test_suite: dict) -> dict:
-        """Run the test suite and generate a test report."""
-        self.logger.info("Running test suite")
-        
+        """Run tests and collect results."""
         total_tests = 0
         passed_tests = 0
         test_results = {}
         
-        for story_id, details in test_suite.items():
-            prompt = f"""Execute and evaluate these test cases:
-            {details['test_cases']}
+        for story_id, test_cases in test_suite.items():
+            story_results = []
+            for test_case in test_cases:
+                total_tests += 1
+                result = self.execute_test(test_case)
+                story_results.append(result)
+                if result["status"] == "passed":
+                    passed_tests += 1
+                    
+            test_results[story_id] = story_results
             
-            Provide:
-            - Pass/fail status
-            - Error messages
-            - Performance metrics
-            """
-            
-            results = self.generate_response(prompt)
-            
-            # Parse results
-            story_total = len(results.split("\n"))
-            story_passed = len([r for r in results.split("\n") if "PASS" in r])
-            
-            total_tests += story_total
-            passed_tests += story_passed
-            
-            test_results[story_id] = {
-                "story": details['story'],
-                "results": results,
-                "passed": story_passed,
-                "total": story_total
-            }
-        
         coverage = (passed_tests / total_tests * 100) if total_tests > 0 else 0
         
         return {
-            "passed": passed_tests == total_tests,
+            "passed": passed_tests,
+            "total": total_tests,
             "coverage": coverage,
             "report": test_results
         }
+    
+    def execute_test(self, test_case: dict) -> dict:
+        """Execute a single test case."""
+        prompt = f"""Execute this test case and provide results:
+        {test_case}
+        
+        Provide:
+        - Pass/fail status
+        - Actual result
+        - Error messages (if any)
+        - Performance metrics
+        """
+        
+        result = self.generate_response(prompt)
+        
+        return {
+            "test_case": test_case,
+            "status": "passed" if "PASS" in result.upper() else "failed",
+            "result": result
+        } 

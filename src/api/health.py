@@ -7,7 +7,8 @@ from datetime import datetime
 from ..utils.event_system import EventSystem
 from ..utils.logger import Logger
 from ..utils.config import config
-from .core import event_system, get_event_system
+from ..utils.metrics import get_metrics
+from .core import get_event_system
 
 router = APIRouter()
 logger = Logger("Health")
@@ -35,10 +36,11 @@ class HealthResponse(BaseModel):
     system_metrics: SystemMetrics = Field(..., description="System resource metrics")
     services: Dict[str, ServiceHealth] = Field(..., description="Individual service health status")
     redis_connected: bool = Field(..., description="Redis connection status")
+    metrics: Dict[str, Any] = Field(..., description="Application metrics")
 
 start_time = time.time()
 
-async def check_service_health(service_name: str, url: str) -> ServiceHealth:
+async def check_service_health(service_name: str, url: str, event_system: EventSystem) -> ServiceHealth:
     """Check health of an individual service."""
     try:
         start = time.time()
@@ -92,57 +94,53 @@ async def get_health_check(
     """
     services = {}
     is_healthy = True
+    redis_connected = False
 
     # Check Redis health
     try:
-        if not event_system.is_connected():
-            redis_health = ServiceHealth(
-                status="unhealthy",
-                latency_ms=0.0,
-                last_check=datetime.utcnow(),
-                details={"error": "Redis not connected"}
-            )
+        start = time.time()
+        redis_connected = await event_system.verify_connection()
+        latency = round((time.time() - start) * 1000, 2)
+        
+        services["redis"] = ServiceHealth(
+            status="healthy" if redis_connected else "unhealthy",
+            latency_ms=latency,
+            last_check=datetime.utcnow(),
+            details={}
+        )
+        
+        if not redis_connected:
             is_healthy = False
-        else:
-            start = time.time()
-            await event_system.redis.ping()
-            redis_health = ServiceHealth(
-                status="healthy",
-                latency_ms=round((time.time() - start) * 1000, 2),
-                last_check=datetime.utcnow(),
-                details={}
-            )
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            
     except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        redis_health = ServiceHealth(
+        logger.error("Redis health check failed", error=str(e))
+        services["redis"] = ServiceHealth(
             status="unhealthy",
-            latency_ms=0.0,
+            latency_ms=0,
             last_check=datetime.utcnow(),
             details={"error": str(e)}
         )
         is_healthy = False
-
-    services["redis"] = redis_health
+        redis_connected = False
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
     # Get system metrics
     system_metrics = get_system_metrics()
 
-    # Set response status code
-    if not is_healthy:
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    else:
-        response.status_code = status.HTTP_200_OK
+    # Get application metrics
+    metrics = get_metrics()
 
-    # Calculate uptime
-    current_time = time.time()
-    uptime = int(round(current_time - start_time))
-
-    return {
+    # Build response
+    health_data = {
         "status": "healthy" if is_healthy else "unhealthy",
         "environment": config.env,
         "version": config.api.version,
-        "uptime_seconds": uptime,
-        "system_metrics": system_metrics.dict(),
-        "services": {k: v.dict() for k, v in services.items()},
-        "redis_connected": redis_health.status == "healthy"
-    } 
+        "uptime_seconds": int(time.time() - start_time),
+        "system_metrics": system_metrics,
+        "services": services,
+        "redis_connected": redis_connected,
+        "metrics": metrics
+    }
+
+    return health_data 
