@@ -1,6 +1,6 @@
 # src/agents/project_manager/__init__.py
 from ..base_agent import BaseAgent
-from ...services.trello_service import TrelloService
+from ...services.task_management.trello import TrelloTaskManagementService
 from ...services.github_service import GitHubService
 from ...utils.event_system import EventSystem
 from ...utils.base_logger import BaseLogger
@@ -8,6 +8,7 @@ from ...utils.model import Model
 from ...models.project import Project
 from ...models.story import Story
 from ...core.messaging import validate_message_type, create_success_response, create_error_response
+from ...core.messaging.messages import SystemMessage
 from typing import List, Dict, TypedDict, Union, Any, Optional
 import uuid
 import asyncio
@@ -24,16 +25,26 @@ class ProjectMessage(TypedDict):
     requirements: List[str]
 
 class ProjectManager(BaseAgent):
-    def __init__(self, event_system: Optional[EventSystem] = None, start_listening: bool = True):
+    def __init__(
+        self, 
+        model_name: str = "codellama/CodeLlama-7b-instruct-hf",
+        trello_key: Optional[str] = None,
+        trello_token: Optional[str] = None,
+        event_system: Optional[EventSystem] = None, 
+        start_listening: bool = True
+    ):
         """Initialize the project manager agent.
         
         Args:
+            model_name: Name of the model to use
+            trello_key: Optional Trello API key
+            trello_token: Optional Trello API token
             event_system: Optional event system instance. If not provided, will get from singleton.
             start_listening: Whether to start listening for events immediately
         """
         try:
             # Initialize base class first to set up task manager and event system
-            super().__init__(model_name="codellama/CodeLlama-7b-instruct-hf", 
+            super().__init__(model_name=model_name, 
                            start_listening=start_listening, 
                            event_system=event_system)
             
@@ -42,9 +53,9 @@ class ProjectManager(BaseAgent):
             self.github = GitHubService()
             self.logger.debug("GitHub service initialized")
             
-            self.logger.debug("Initializing Trello service")
-            self.trello = TrelloService()
-            self.logger.debug("Trello service initialized")
+            self.logger.debug("Initializing task management service")
+            self.task_management = TrelloTaskManagementService()
+            self.logger.debug("Task management service initialized")
             
             self.logger.info("Project Manager initialized successfully")
         except Exception as e:
@@ -113,15 +124,15 @@ class ProjectManager(BaseAgent):
             # Create GitHub repository
             repo_url = await self.github.create_repository(project_name, description)
             
-            # Create Trello board
-            board_id = await self.trello.create_board(project_name)
+            # Create board
+            board_id = await self.task_management.create_board(project_name, description)
             
             # Create stories
             stories = await self.create_stories(requirements, project_id)
             
-            # Add stories to Trello
+            # Add stories to board
             for story in stories:
-                await self.trello.create_card(board_id, story.title, story.description)
+                await self.task_management.create_card(story.title, story.description, board_id)
                 story.assigned_to = self.assign_story(story)
                 await self.notify_developer(story, repo_url)
             
@@ -148,7 +159,7 @@ class ProjectManager(BaseAgent):
         """Handle get story event."""
         try:
             story_id = data["story_id"]
-            story = await self.trello.get_card(story_id)
+            story = await self.task_management.get_card(story_id)
             return create_success_response(story=story.dict() if story else None)
         except Exception as e:
             self.logger.error(f"Failed to get story {story_id}: {str(e)}")
@@ -162,7 +173,17 @@ class ProjectManager(BaseAgent):
             description = data.get("description")
             status = data.get("status")
             
-            await self.trello.update_card(story_id, title, description, status)
+            # Create a new list for the status if needed
+            if status:
+                await self.task_management.create_list(story_id, status)
+            
+            # Update the card
+            await self.task_management.create_card(
+                title or "Untitled",
+                description or "",
+                story_id,
+                status or "Backlog"
+            )
             return create_success_response()
         except Exception as e:
             self.logger.error(f"Failed to update story {story_id}: {str(e)}")
@@ -172,7 +193,12 @@ class ProjectManager(BaseAgent):
         """Handle PR merged event."""
         try:
             story_id = data["story_id"]
-            await self.trello.move_card(story_id, "Done")
+            await self.task_management.create_card(
+                "Story completed",
+                "PR has been merged",
+                story_id,
+                "Done"
+            )
             return create_success_response()
         except Exception as e:
             self.logger.error(f"Failed to update story {story_id}: {str(e)}")
@@ -181,10 +207,10 @@ class ProjectManager(BaseAgent):
     async def handle_pr_created(self, data: dict) -> Dict[str, str]:
         """Handle PR created event"""
         try:
-            self.trello.update_card(
-                data["story_id"],
-                None,
+            await self.task_management.create_card(
+                "PR Created",
                 f"PR: {data['pr_url']}",
+                data["story_id"],
                 "Review"
             )
             return create_success_response()
@@ -199,7 +225,12 @@ class ProjectManager(BaseAgent):
             completed_count = data["completed_count"]
             total_count = data["total_count"]
             
-            await self.trello.update_card(story_id, f"Tasks completed: {completed_count}/{total_count}")
+            await self.task_management.create_card(
+                "Task Progress",
+                f"Tasks completed: {completed_count}/{total_count}",
+                story_id,
+                "In Progress"
+            )
             return create_success_response()
         except Exception as e:
             self.logger.error(f"Failed to update story {story_id}: {str(e)}")
@@ -238,8 +269,164 @@ class ProjectManager(BaseAgent):
             }
         )
     
-    async def handle_system_message(self, message: Dict[str, Any]) -> None:
+    async def handle_system_message(self, message: SystemMessage) -> None:
         """Handle system messages."""
-        self.logger.info(f"Received system message: {message}")
-        # Handle system messages here
-        pass 
+        try:
+            if message.command == "project_created":
+                # Support both name and title fields for project name
+                project_name = message.payload.get("name") or message.payload.get("title")
+                if not project_name:
+                    raise ValueError("Project name not provided in payload")
+                
+                board = await self.task_management.create_board(
+                    name=project_name,
+                    description=message.payload["description"]
+                )
+                await self.task_management.create_list(
+                    board_id=board["id"],
+                    name="Backlog"
+                )
+            elif message.command == "story_created":
+                await self.task_management.create_card(
+                    list_id="list123",
+                    name=message.payload["title"],
+                    description=message.payload["description"],
+                    position=message.payload.get("priority", 1)
+                )
+            elif message.command == "invalid_command":
+                self.logger.warning("Received unknown system command: invalid_command")
+        except Exception as e:
+            self.logger.error(f"Error handling system message: {str(e)}")
+            raise
+    
+    async def create_roadmap(self, project_name: str, description: str, requirements: List[str]) -> Dict[str, Any]:
+        """Create a project roadmap.
+        
+        Args:
+            project_name: Name of the project
+            description: Project description
+            requirements: List of project requirements
+            
+        Returns:
+            Dict containing the roadmap structure
+            
+        Raises:
+            ValueError: If input parameters are invalid
+        """
+        try:
+            # Validate input parameters
+            if not project_name or not description or not requirements:
+                raise ValueError("Project name, description and requirements cannot be empty")
+                
+            # Generate roadmap using model
+            prompt = f"""Create a detailed project roadmap for:
+            Project: {project_name}
+            Description: {description}
+            Requirements: {requirements}
+            
+            Break this down into milestones and tasks. Format as JSON with:
+            - milestones: List of major project phases
+            - tasks: List of specific tasks under each milestone
+            - dependencies: Task dependencies
+            - estimates: Time estimates for each task
+            """
+            
+            roadmap_json = await self.model.generate_response(prompt)
+            roadmap = json.loads(roadmap_json)
+            
+            # Validate roadmap structure
+            required_keys = ["milestones", "tasks", "dependencies", "estimates"]
+            missing_keys = [key for key in required_keys if key not in roadmap]
+            if missing_keys:
+                raise ValueError(f"Invalid roadmap structure generated. Missing keys: {missing_keys}")
+                
+            # Create board and lists
+            board = await self.task_management.create_board(project_name, description)
+            backlog = await self.task_management.create_list(board_id=board["id"], name="Backlog")
+            
+            # Create cards for stories and tasks
+            for milestone in roadmap["milestones"]:
+                for story in milestone["stories"]:
+                    await self.task_management.create_card(
+                        list_id=backlog["id"],
+                        title=story["title"],
+                        description=story["description"]
+                    )
+            
+            for task in roadmap["tasks"]:
+                await self.task_management.create_card(
+                    list_id=backlog["id"],
+                    title=task["title"],
+                    description=task["description"]
+                )
+            
+            # Publish success event
+            await self.event_system.publish(
+                "project_manager",
+                {
+                    "id": str(uuid.uuid4()),
+                    "type": "roadmap_created",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {
+                        "project_name": project_name,
+                        "description": description,
+                        "roadmap": roadmap,
+                        "board_id": board["id"]
+                    }
+                }
+            )
+                
+            return roadmap
+            
+        except Exception as e:
+            # Publish error event
+            await self.event_system.publish(
+                "project_manager",
+                {
+                    "id": str(uuid.uuid4()),
+                    "type": "roadmap_failed",
+                    "timestamp": datetime.now().isoformat(),
+                    "payload": {
+                        "project_name": project_name,
+                        "error": str(e)
+                    },
+                    "status": "error"
+                }
+            )
+            self.logger.error(f"Failed to create roadmap for {project_name}: {str(e)}")
+            raise 
+    
+    async def handle_story_assigned(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle story assignment event.
+        
+        Args:
+            data: Story assignment data
+            
+        Returns:
+            Dict[str, Any]: Response indicating success or failure
+        """
+        try:
+            story_id = data["story_id"]
+            title = data["title"]
+            description = data["description"]
+            assigned_to = data["assigned_to"]
+            
+            self.logger.info(f"Story {story_id} assigned to {assigned_to}")
+            
+            # Update story status in task management system
+            await self.task_management.create_card(
+                title,
+                description,
+                story_id,
+                "In Progress"
+            )
+            
+            return create_success_response()
+        except KeyError as e:
+            error_msg = f"Missing required field: {str(e)}"
+            self.logger.error(error_msg)
+            return create_error_response(error_msg)
+        except Exception as e:
+            error_msg = f"Error handling story assignment: {str(e)}"
+            self.logger.error(error_msg)
+            return create_error_response(error_msg) 

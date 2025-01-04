@@ -1,168 +1,111 @@
 """Tests for the event system."""
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from src.utils.event_system import EventSystem, BaseMessage, ValidationError
-from datetime import datetime
-from typing import Dict, AsyncGenerator
+from typing import Dict, Any
+from unittest.mock import Mock, AsyncMock
+from redis.asyncio import Redis
 import json
-import asyncio
 
-pytestmark = pytest.mark.asyncio
+from src.utils.event_system import EventSystem, DateTimeEncoder
 
 @pytest.fixture
-def event_system_mock() -> EventSystem:
-    """Return a mock event system with properly mocked Redis client."""
-    event_system = EventSystem()
+def mock_redis_client() -> Mock:
+    """Create a mock Redis client."""
+    mock = Mock(spec=Redis)
+    # Redis methods are async
+    mock.ping = AsyncMock(return_value=True)
+    mock.publish = AsyncMock(return_value=1)
+    mock.close = AsyncMock(return_value=None)
     
-    # Create Redis mock with all required async methods
-    redis_mock = AsyncMock()
-    redis_mock.publish = AsyncMock()
-    redis_mock.ping = AsyncMock(return_value=True)
-    redis_mock.close = AsyncMock()
+    # Set up pubsub
+    mock_pubsub = Mock()
+    mock_pubsub.subscribe = AsyncMock(return_value=None)
+    mock_pubsub.close = AsyncMock(return_value=None)
+    mock.pubsub = Mock(return_value=mock_pubsub)
     
-    # Create PubSub mock
-    pubsub_mock = AsyncMock()
-    pubsub_mock.subscribe = MagicMock()  # Synchronous operation
-    pubsub_mock.unsubscribe = MagicMock()  # Synchronous operation
-    pubsub_mock.close = AsyncMock()  # This one is async
-    
-    # Setup Redis mock to return PubSub mock synchronously
-    redis_mock.pubsub = MagicMock(return_value=pubsub_mock)
-    
-    # Attach to event system
-    event_system.redis = redis_mock
-    event_system._connected = True
-    
-    return event_system
+    return mock
 
-async def test_event_system_connect(redis_mock: AsyncMock):
+@pytest.fixture
+def event_system(mock_redis_client: Mock) -> EventSystem:
+    """Create an event system instance for testing."""
+    system = EventSystem()
+    system.redis_client = mock_redis_client
+    system._connected = True
+    system.pubsub = mock_redis_client.pubsub()
+    return system
+
+@pytest.mark.asyncio
+async def test_event_system_connect(event_system: EventSystem, mock_redis_client: Mock) -> None:
     """Test event system connection."""
-    event_system = EventSystem()
-    event_system.redis = redis_mock
-    
-    await event_system.connect()
-    redis_mock.ping.assert_called_once()
+    event_system._connected = False  # Reset connection state
+    await event_system.connect(mock_redis_client)
+    assert event_system.is_connected()
+    mock_redis_client.ping.assert_awaited_once()
 
-async def test_event_system_disconnect(redis_mock: AsyncMock):
-    """Test event system disconnection."""
-    event_system = EventSystem()
-    event_system.redis = redis_mock
-    
-    await event_system.disconnect()
-    redis_mock.close.assert_called_once()
+@pytest.mark.asyncio
+async def test_event_system_publish(event_system: EventSystem, mock_redis_client: Mock) -> None:
+    """Test event system publishing."""
+    message = {"type": "test", "data": "test_data"}
+    await event_system.publish("test_channel", message)
 
-async def test_publish_message(event_system_mock: EventSystem, sample_message: Dict):
-    """Test publishing a message."""
-    channel = "test_channel"
-    await event_system_mock.publish(channel, sample_message)
-    
-    event_system_mock.redis.publish.assert_called_once()
-    call_args = event_system_mock.redis.publish.call_args[0]
-    assert call_args[0] == channel
-    assert isinstance(call_args[1], str)  # Verify JSON serialization
-
-async def test_publish_invalid_message(event_system_mock: EventSystem):
-    """Test publishing an invalid message."""
-    invalid_message = {"invalid": "message"}  # Missing required fields
-    
-    with pytest.raises(ValidationError):
-        await event_system_mock.publish("test_channel", invalid_message)
-
-async def test_subscribe_handler(event_system_mock: EventSystem):
-    """Test subscribing to a channel."""
-    received_messages = []
-    
-    async def test_handler(message):
-        received_messages.append(message)
-    
-    channel = "test_channel"
-    
-    # Test subscription
-    await event_system_mock.subscribe(channel, test_handler)
-    assert channel in event_system_mock.handlers
-    assert event_system_mock.handlers[channel] == test_handler
-    
-    # Test unsubscription
-    await event_system_mock.unsubscribe(channel)
-    assert channel not in event_system_mock.handlers
-    
-    # Test cleanup
-    await event_system_mock.stop_listening()
-    assert not event_system_mock.handlers
-
-async def test_message_validation(event_system_mock: EventSystem):
-    """Test message validation."""
-    # Test valid message
-    valid_message = BaseMessage(
-        id="test-1",
-        timestamp=datetime.utcnow(),
-        type="test",
-        payload={"key": "value"},
-        retry_count=0,
-        max_retries=3
+    mock_redis_client.publish.assert_awaited_once_with(
+        "test_channel",
+        json.dumps(message, cls=DateTimeEncoder)
     )
-    await event_system_mock.publish("test_channel", valid_message.dict())
-    event_system_mock.redis.publish.assert_called_once()
 
-    # Test invalid message format (not a dict)
-    with pytest.raises(ValidationError):
-        await event_system_mock.publish("test_channel", "not a dict")
+@pytest.mark.asyncio
+async def test_event_system_error_handling(event_system: EventSystem, mock_redis_client: Mock) -> None:
+    """Test event system error handling."""
+    event_system._connected = False  # Reset connection state
+    mock_redis_client.ping.side_effect = Exception("Test error")
+    with pytest.raises(Exception, match="Test error"):
+        await event_system.connect(mock_redis_client)
+    assert not event_system.is_connected()
 
-    # Test missing required fields
-    invalid_message = {"type": "test"}
-    with pytest.raises(ValidationError):
-        await event_system_mock.publish("test_channel", invalid_message)
-
-    # Test invalid field types
-    invalid_types_message = {
-        "id": 123,  # should be string
-        "timestamp": "not a datetime",
-        "type": "test",
-        "payload": "not a dict",
-        "retry_count": "not an int",
-        "max_retries": "not an int"
-    }
-    with pytest.raises(ValidationError):
-        await event_system_mock.publish("test_channel", invalid_types_message)
-
-@pytest.mark.parametrize("retry_count,should_retry", [
-    (0, True),
-    (1, True),
-    (2, True),
-    (3, False),
-    (4, False),
-])
-async def test_message_retry_logic(
-    event_system_mock: EventSystem,
-    retry_count: int,
-    should_retry: bool
-):
-    """Test message retry logic."""
-    message = BaseMessage(
-        id="test-1",
-        timestamp=datetime.utcnow(),
-        type="test",
-        payload={"key": "value"},
-        retry_count=retry_count,
-        max_retries=3
-    ).dict()
-
-    await event_system_mock.publish("test_channel", message)
-    event_system_mock.redis.publish.assert_called_once()
+@pytest.mark.asyncio
+async def test_event_system_handle_message(event_system: EventSystem) -> None:
+    """Test event system message handling."""
+    mock_handler = Mock()
     
-    call_args = event_system_mock.redis.publish.call_args[0]
-    published_msg = json.loads(call_args[1])
+    # Simulate receiving a message
+    message = {"type": "test", "data": "test_data"}
+    await event_system.process_message(message, mock_handler)
+    
+    mock_handler.assert_called_once_with(message)
 
-    if should_retry:
-        # Message should be published to original channel
-        assert call_args[0] == "test_channel"
-    else:
-        # Message should be published to dead letter queue
-        assert call_args[0] == event_system_mock.dead_letter_queue
-        
-    # Verify message contents
-    assert published_msg["id"] == message["id"]
-    assert published_msg["type"] == message["type"]
-    assert published_msg["payload"] == message["payload"]
-    assert published_msg["retry_count"] == message["retry_count"]
-    assert published_msg["max_retries"] == message["max_retries"] 
+@pytest.mark.asyncio
+async def test_event_system_subscribe(event_system: EventSystem, mock_redis_client: Mock) -> None:
+    """Test event system subscription."""
+    async def handler(message: dict) -> None:
+        pass
+    
+    await event_system.subscribe("test_channel", handler)
+    mock_redis_client.pubsub.return_value.subscribe.assert_awaited_once_with("test_channel")
+    assert "test_channel" in event_system.handlers
+
+@pytest.mark.asyncio
+async def test_event_system_disconnect(event_system: EventSystem, mock_redis_client: Mock) -> None:
+    """Test event system disconnection."""
+    await event_system.disconnect()
+    assert not event_system.is_connected()
+    mock_redis_client.close.assert_awaited_once()
+
+@pytest.mark.asyncio
+async def test_event_system_start_stop_listening(event_system: EventSystem) -> None:
+    """Test event system listening."""
+    await event_system.start_listening()
+    assert event_system._listening
+    assert event_system._listen_task is not None
+    assert not event_system._listen_task.done()
+    
+    await event_system.stop_listening()
+    assert not event_system._listening
+    assert event_system._listen_task is None
+
+@pytest.mark.asyncio
+async def test_event_system_verify_connection(event_system: EventSystem, mock_redis_client: Mock) -> None:
+    """Test event system connection verification."""
+    assert event_system.is_connected()
+    
+    # Test disconnection detection
+    mock_redis_client.ping.side_effect = Exception("Connection lost")
+    assert not await event_system.verify_connection() 

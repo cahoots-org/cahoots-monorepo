@@ -25,7 +25,9 @@ class Developer(BaseAgent):
             focus: The developer's focus area ("frontend" or "backend")
             event_system: Optional event system instance. If not provided, will get from singleton.
         """
-        super().__init__("gpt-4-1106-preview", start_listening=False, event_system=event_system)  # Don't start listening until fully initialized
+        # Initialize base class with start_listening=False to prevent double initialization
+        super().__init__("gpt-4-1106-preview", start_listening=False, event_system=event_system)
+        
         self.github = GitHubService()
         self.developer_id = developer_id
         self.logger = BaseLogger(self.__class__.__name__)
@@ -53,10 +55,15 @@ class Developer(BaseAgent):
             if hasattr(manager, "_task_manager"):
                 manager._task_manager = self._task_manager
         
-        # Start listening after initialization if requested
+        # Start listening after full initialization if requested
         if start_listening:
-            self._task_manager.create_task(self.start_listening())
+            self._task_manager.create_task(self.setup_and_start())
             
+    async def setup_and_start(self) -> None:
+        """Set up event subscriptions and start listening."""
+        await self.setup_events()
+        await self.start()
+
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
         await super().setup_events()
@@ -427,4 +434,13 @@ class Developer(BaseAgent):
             return {
                 "status": "error",
                 "message": str(e)
-            } 
+            }
+            
+    async def handle_system_message(self, message: Dict[str, Any]) -> None:
+        """Handle system messages.
+        
+        Args:
+            message: System message data
+        """
+        self.logger.info(f"Received system message: {message}")
+        # No specific handling needed for system messages in Developer 

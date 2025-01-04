@@ -2,7 +2,7 @@ import asyncio
 import httpx
 from typing import Any, Dict, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ..utils.config import ServiceConfig
 from ..utils.logger import Logger
 from ..utils.metrics import (
@@ -52,7 +52,18 @@ class CircuitBreakerState:
         return False
 
 class ServiceResponse(BaseModel):
-    """Standard service response model"""
+    """Standard service response model."""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "success": True,
+                "data": {"key": "value"},
+                "error": None,
+                "status_code": 200
+            }
+        }
+    )
+    
     success: bool
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None

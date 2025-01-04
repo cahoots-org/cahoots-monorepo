@@ -16,6 +16,29 @@ class TaskManager:
         self._logger = BaseLogger(name)
         self._running = False
         self._cleanup_timeout = 5.0  # Timeout for cleanup in seconds
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+    
+    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+        """Ensure an event loop is available and return it.
+        
+        Returns:
+            The current event loop or a new one if none exists
+            
+        Raises:
+            RuntimeError: If no event loop can be created
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            except Exception as e:
+                self._logger.error(f"Failed to create event loop: {e}")
+                raise RuntimeError("No event loop available and unable to create one") from e
+        
+        self._loop = loop
+        return loop
     
     def create_task(self, coro: Coroutine) -> asyncio.Task:
         """Create and track an async task.
@@ -25,8 +48,12 @@ class TaskManager:
             
         Returns:
             The created task
+            
+        Raises:
+            RuntimeError: If no event loop is available
         """
-        task = asyncio.create_task(coro)
+        loop = self._ensure_loop()
+        task = loop.create_task(coro)
         self._tasks.add(task)
         task.add_done_callback(self._handle_task_done)
         return task
@@ -83,6 +110,13 @@ class TaskManager:
         """Cleanup resources and cancel tasks."""
         self._logger.debug("Starting task manager cleanup")
         await self.cancel_all()
+        if self._loop and not self._loop.is_closed():
+            try:
+                # Clean up the event loop
+                self._loop.stop()
+                self._loop.close()
+            except Exception as e:
+                self._logger.error(f"Error cleaning up event loop: {e}")
         self._logger.debug("Task manager cleanup complete")
     
     @property

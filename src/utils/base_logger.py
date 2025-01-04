@@ -121,6 +121,15 @@ class BaseLogger:
     def critical(self, message: str, **kwargs):
         """Log critical level message."""
         self._log("critical", message, **kwargs)
+    
+    @classmethod
+    def get_logger(cls) -> "BaseLogger":
+        """Get the logger instance.
+
+        Returns:
+            BaseLogger: The logger instance.
+        """
+        return cls()
 
 # Configure logging on module import with default level
 setup_logging()

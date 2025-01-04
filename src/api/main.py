@@ -47,47 +47,58 @@ logger.setLevel(logging.DEBUG)
 # Register error handlers
 register_error_handlers(app)
 
-# Add request tracking middleware
-class RequestTrackingMiddleware(BaseHTTPMiddleware):
-    """Middleware for tracking request metrics."""
-    
-    async def dispatch(self, request: Request, call_next) -> Response:
-        """Track request metrics."""
-        logger.debug(f"Starting request processing: {request.method} {request.url.path}")
-        request_id = request.headers.get("X-Request-ID", "unknown")
-        start_time = time.time()
-        
-        # Handle API key verification
-        if not request.url.path.startswith(("/health", "/metrics")):
-            logger.debug("Verifying API key")
-            api_key = request.headers.get("X-API-Key")
-            if not api_key or not verify_api_key(api_key):
-                logger.warning("Invalid API key")
-                return Response(
-                    content="Invalid API key",
-                    status_code=401
-                )
-        
-        logger.debug("Calling next middleware")
-        response = await call_next(request)
-        duration = time.time() - start_time
-        logger.debug(f"Request completed in {duration:.3f}s")
-        
-        # Track request metrics
-        logger.debug("Recording metrics")
-        track_request(
-            method=request.method,
-            endpoint=request.url.path,
-            status_code=response.status_code,
-            duration=duration
-        )
-        
-        # Add request ID to response headers
-        response.headers["X-Request-ID"] = request_id
-        logger.debug(f"Returning response with status {response.status_code}")
-        return response
+@app.middleware("http")
+async def request_tracking_middleware(request: Request, call_next: Callable) -> Response:
+    """Track request metrics and add request ID."""
+    logger.debug(f"Starting request processing: {request.method} {request.url.path}")
+    start_time = time.time()
 
-app.add_middleware(RequestTrackingMiddleware)
+    # Skip authentication for health and metrics endpoints
+    if not request.url.path.startswith(("/health", "/metrics")):
+        # Get API key from header
+        api_key = request.headers.get("X-API-Key")
+        logger.debug("Verifying API key")
+        try:
+            if not api_key or not await verify_api_key(api_key):
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "Invalid API key"}
+                )
+        except HTTPException as e:
+            return JSONResponse(
+                status_code=e.status_code,
+                content={"detail": e.detail}
+            )
+
+    logger.debug("Calling next middleware")
+    response = await call_next(request)
+
+    # Track request duration
+    duration = time.time() - start_time
+    logger.debug(f"Request completed in {duration:.3f}s")
+
+    # Add response time header (in milliseconds)
+    response.headers["X-Response-Time"] = f"{duration * 1000:.2f}ms"
+
+    # Record metrics
+    logger.debug("Recording metrics")
+    request_count.labels(
+        method=request.method,
+        path=request.url.path,
+        status=response.status_code
+    ).inc()
+    request_latency.labels(
+        method=request.method,
+        path=request.url.path
+    ).observe(duration)
+
+    # Add request ID to response headers if provided
+    request_id = request.headers.get("X-Request-ID")
+    if request_id:
+        response.headers["X-Request-ID"] = request_id
+
+    logger.debug(f"Returning response with status {response.status_code}")
+    return response
 
 @app.get("/health")
 async def health_check(
@@ -111,25 +122,24 @@ def metrics() -> StarletteResponse:
 @app.post("/projects")
 async def create_project(
     project: Project,
+    event_system: Annotated[EventSystem, Depends(get_event_system)],
     api_key: str = Depends(verify_api_key)
 ) -> Dict:
     """Create a new project."""
     logger.info(f"Creating project: {project.model_dump()}")
     try:
-        event_system = get_event_system()
-        
         # Format message according to event system requirements
         message = {
-            "id": project.id,
+            "project_id": project.id,
             "timestamp": datetime.now().isoformat(),
             "type": "project_created",
             "payload": project.model_dump()
         }
         
-        await event_system.publish("projects", message)
+        await event_system.publish("project_created", message)
         logger.debug("Project created successfully")
         return {
-            "id": project.id,
+            "project_id": project.id,
             "status": "success"
         }
     except Exception as e:
