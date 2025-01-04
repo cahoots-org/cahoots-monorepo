@@ -144,3 +144,38 @@ async def get_health_check(
     }
 
     return health_data 
+
+"""Health check endpoint."""
+from datetime import datetime
+from typing import Dict, Any
+
+from src.utils.event_system import EventSystem
+
+async def health_check(event_system: EventSystem) -> Dict[str, Any]:
+    """Check the health of system components.
+    
+    Args:
+        event_system: Event system instance to check
+        
+    Returns:
+        Dict[str, Any]: Health check response
+    """
+    components = {}
+    overall_status = "healthy"
+    
+    # Check event system
+    try:
+        if event_system.is_connected():
+            components["event_system"] = "healthy"
+        else:
+            components["event_system"] = "unhealthy"
+            overall_status = "unhealthy"
+    except Exception as e:
+        components["event_system"] = "error"
+        overall_status = "unhealthy"
+    
+    return {
+        "status": overall_status,
+        "components": components,
+        "timestamp": datetime.now().isoformat()
+    } 

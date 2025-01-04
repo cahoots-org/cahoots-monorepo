@@ -12,43 +12,8 @@ from src.api.main import app
 from src.utils.event_system import EventSystem
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create an event loop for the test session."""
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    try:
-        yield loop
-    finally:
-        try:
-            # Cancel all running tasks
-            pending = asyncio.all_tasks(loop)
-            if pending:
-                # Give tasks a chance to complete
-                loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
-                )
-                
-                # Cancel any remaining tasks
-                for task in pending:
-                    if not task.done():
-                        task.cancel()
-            
-            # Shutdown async generators
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            
-            # Close the loop
-            loop.close()
-        except Exception as e:
-            print(f"Error during event loop cleanup: {e}")
-        finally:
-            asyncio.set_event_loop(None)
-
-
 @pytest_asyncio.fixture
-async def redis_client() -> AsyncGenerator[Redis, None]:
+async def redis_client(event_loop: asyncio.AbstractEventLoop) -> AsyncGenerator[Redis, None]:
     """Create a Redis client for testing."""
     client = Redis(
         host=os.getenv("REDIS_HOST", "localhost"),
@@ -74,8 +39,7 @@ async def event_system(redis_client: Redis) -> AsyncGenerator[EventSystem, None]
     
     # Create test event system
     system = EventSystem()
-    system.redis = redis_client
-    system._connected = True
+    await system.connect(redis_client)
     
     # Replace global event system
     import src.api.core

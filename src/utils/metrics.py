@@ -1,9 +1,24 @@
 from prometheus_client import Counter, Gauge, Histogram
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Generator, Callable, TypeVar, Union
 from functools import wraps
 import time
+from contextlib import contextmanager
 from fastapi import Request
 import psutil
+
+# HTTP request metrics
+http_requests_total = Counter(
+    'http_requests_total',
+    'Total number of HTTP requests',
+    ['method', 'path', 'status']
+)
+
+http_request_duration_seconds = Histogram(
+    'http_request_duration_seconds',
+    'HTTP request duration in seconds',
+    ['method', 'path'],
+    buckets=(0.1, 0.5, 1.0, 2.0, 5.0)
+)
 
 # Service-specific metrics
 MASTER_DISPATCH_TIME = Histogram(
@@ -108,6 +123,12 @@ MESSAGE_DLQ_COUNTER = Counter(
     ['channel', 'error_type']
 )
 
+MESSAGE_ERROR_COUNTER = Counter(
+    'message_error_total',
+    'Total number of message processing errors',
+    ['channel']
+)
+
 # Service metrics
 SERVICE_REQUEST_COUNTER = Counter(
     'service_request_total',
@@ -146,19 +167,6 @@ CIRCUIT_BREAKER_FAILURES = Counter(
     ['service']
 )
 
-# Request metrics
-http_requests_total = Counter(
-    'http_requests_total',
-    'Total number of HTTP requests',
-    ['method', 'endpoint', 'status']
-)
-
-http_request_duration_seconds = Histogram(
-    'http_request_duration_seconds',
-    'HTTP request duration in seconds',
-    ['method', 'endpoint']
-)
-
 # Redis metrics
 redis_pool_size = Gauge(
     'redis_pool_size',
@@ -172,10 +180,9 @@ redis_pool_maxsize = Gauge(
 
 # Trello metrics
 TRELLO_REQUEST_TIME = Histogram(
-    'trello_request_seconds',
-    'Time spent on Trello API requests',
-    ['method', 'endpoint'],
-    buckets=(0.1, 0.5, 1.0, 2.0, 5.0)
+    "trello_request_seconds",
+    "Time spent in Trello API requests",
+    ["method", "endpoint"]
 )
 
 TRELLO_ERROR_COUNTER = Counter(
@@ -183,6 +190,68 @@ TRELLO_ERROR_COUNTER = Counter(
     'Total number of Trello API errors',
     ['method', 'endpoint', 'status_code']
 )
+
+GITHUB_REQUEST_TIME = Histogram(
+    "github_request_seconds",
+    "Time spent on GitHub API requests",
+    ["endpoint"]
+)
+
+# Type variables for generic function types
+F = TypeVar('F', bound=Callable[..., Any])
+
+def track_time(metric: Histogram, labels: Optional[Dict[str, str]] = None) -> Union[Callable[[F], F], Generator[None, None, None]]:
+    """Track time spent in a code block or function using a Prometheus histogram.
+    
+    Can be used as either a decorator or a context manager:
+    
+    As a decorator:
+        @track_time(metric, labels)
+        async def my_function():
+            ...
+            
+    As a context manager:
+        with track_time(metric, labels):
+            ...
+    
+    Args:
+        metric: The histogram metric to update
+        labels: Labels to apply to the metric
+        
+    Returns:
+        Union[Callable, Generator]: Either a decorator function or a context manager
+    """
+    if labels is None:
+        labels = {}
+
+    def decorator(func: F) -> F:
+        @wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            start_time = time.time()
+            try:
+                result = await func(*args, **kwargs)
+                return result
+            finally:
+                duration = time.time() - start_time
+                metric.labels(**labels).observe(duration)
+        return wrapper  # type: ignore
+
+    # If called with a function, return the decorator
+    if callable(metric):
+        func, metric = metric, TRELLO_REQUEST_TIME
+        return decorator(func)
+
+    # If called without a function, return a context manager
+    @contextmanager
+    def context_manager() -> Generator[None, None, None]:
+        start_time = time.time()
+        try:
+            yield
+        finally:
+            duration = time.time() - start_time
+            metric.labels(**labels).observe(duration)
+
+    return context_manager()
 
 def track_request(method: str, endpoint: str, status_code: int, duration: float):
     """Track request metrics.
@@ -269,24 +338,6 @@ def update_redis_metrics(pool_size: int, max_size: int):
     """
     redis_pool_size.set(pool_size)
     redis_pool_maxsize.set(max_size)
-
-def track_time(metric: Histogram, labels: Optional[Dict[str, str]] = None):
-    """Decorator to track execution time of a function"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            start_time = time.time()
-            try:
-                result = await func(*args, **kwargs)
-                return result
-            finally:
-                duration = time.time() - start_time
-                if labels:
-                    metric.labels(**labels).observe(duration)
-                else:
-                    metric.observe(duration)
-        return wrapper
-    return decorator 
 
 def get_metrics() -> Dict[str, Any]:
     """Get basic system metrics.

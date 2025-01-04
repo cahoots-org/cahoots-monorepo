@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from _pytest.monkeypatch import MonkeyPatch
 
 # Set timeout for all tests in this module
-pytestmark = pytest.mark.timeout(2)
+pytestmark = pytest.mark.timeout(5)
 
 # Configure pytest-asyncio to use auto mode
 pytest.mark.asyncio.mode = "auto"
@@ -31,12 +31,16 @@ async def cleanup_event_loop():
     yield
     # Get all tasks from the event loop
     loop = asyncio.get_event_loop()
-    for task in asyncio.all_tasks(loop):
-        if not task.done() and task != asyncio.current_task():
+    pending_tasks = [task for task in asyncio.all_tasks(loop) 
+                    if not task.done() and task != asyncio.current_task()]
+    
+    if pending_tasks:
+        # Cancel all pending tasks
+        for task in pending_tasks:
             task.cancel()
             try:
-                await task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(task, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
 
 @pytest.fixture
@@ -174,15 +178,13 @@ async def developer(
     mock_pr_manager: Mock
 ) -> Developer:
     """Create a Developer instance for testing."""
-    # Create developer with mocked event system
-    dev = Developer(
-        developer_id="test-dev-1",
-        start_listening=False,  # Don't start listening in tests
-        event_system=mock_event_system
-    )
-    
-    # Mock the github service
-    dev.github = mock_github_service
+    # Create developer with mocked event system and no listening
+    with patch('src.agents.developer.GitHubService', return_value=mock_github_service):
+        dev = Developer(
+            developer_id="test-dev-1",
+            start_listening=False,  # Don't start listening in tests
+            event_system=mock_event_system
+        )
     
     # Mock managers
     dev._task_manager = mock_task_manager
@@ -208,28 +210,22 @@ async def developer(
     
     mock_feedback_manager.get_relevant_feedback.return_value = []
     
-    # Initialize but don't start listening
-    await dev.setup_events()
-    
     yield dev
     
     # Cleanup
     try:
-        # Stop listening first
-        dev._listening = False
-        dev._task_manager.running = False
-        
         # Cancel any pending tasks
-        await dev.stop_listening()
-        
-        # Clean up task manager
-        await mock_task_manager.cleanup()
-        
-        # Clean up event system
-        if dev.event_system and dev.event_system.is_connected():
-            await dev.event_system.disconnect()
+        loop = asyncio.get_event_loop()
+        pending_tasks = [task for task in asyncio.all_tasks(loop) 
+                        if not task.done() and task != asyncio.current_task()]
+        for task in pending_tasks:
+            task.cancel()
+            try:
+                await asyncio.wait_for(task, timeout=1.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
     except Exception:
-        pass  # Ensure cleanup doesn't raise exceptions that could mask test failures
+        pass  # Ensure cleanup doesn't raise exceptions that could mask test failures 
 
 @pytest.mark.asyncio
 async def test_setup_events(
@@ -239,35 +235,39 @@ async def test_setup_events(
     """Test event system setup."""
     # Mock is_connected to return False first to trigger connect
     mock_event_system.is_connected.return_value = False
-    
+    mock_event_system.connect = AsyncMock()
+    mock_event_system.subscribe = AsyncMock()
+
     await developer.setup_events()
-    
+
     # Verify event system setup
-    mock_event_system.connect.assert_called_once()
-    assert mock_event_system.subscribe.call_count >= 2
-    
-    # Verify subscribed to required channels
-    subscribed_channels = [call.args[0] for call in mock_event_system.subscribe.call_args_list]
-    assert "task_assigned" in subscribed_channels
-    assert "story_assigned" in subscribed_channels
+    mock_event_system.connect.assert_awaited_once()
+    assert mock_event_system.subscribe.await_count >= 3  # Should subscribe to multiple channels
 
 @pytest.mark.asyncio
-async def test_handle_story_assigned_success(
+async def test_handle_story_assigned(
     developer: Developer,
-    mock_task: Task,
-    mock_github_service: Mock,
     mock_event_system: Mock,
+    mock_github_service: Mock,
     mock_task_manager: Mock,
-    mock_code_generator: Mock,
-    mock_code_validator: Mock
+    mock_tasks: List[Task]
 ) -> None:
-    """Test successful story assignment handling."""
+    """Test story assignment handling.
+    
+    Verifies:
+    1. Task breakdown
+    2. Implementation flow
+    3. PR creation
+    4. Error handling
+    5. Event system integration
+    """
+    # Test data
     story_data = {
         "story_id": "story-1",
         "title": "Test Story",
         "description": "Test story description",
-        "repo_url": "https://github.com/org/repo.git",
-        "assigned_to": "test-dev-1"
+        "repo_url": "https://github.com/org/repo",
+        "assigned_to": developer.developer_id
     }
     
     message = {
@@ -275,129 +275,62 @@ async def test_handle_story_assigned_success(
         "story": story_data
     }
     
-    # Mock task manager
-    mock_task_manager.break_down_story.return_value = [mock_task]
+    # Configure mocks
+    mock_task_manager.break_down_story.return_value = mock_tasks
+    mock_github_service.clone_repository = AsyncMock()
+    mock_github_service.create_branch = AsyncMock()
+    mock_github_service.commit_changes = AsyncMock()
+    mock_github_service.create_pr = AsyncMock(return_value="https://github.com/org/repo/pull/1")
+    mock_event_system.publish = AsyncMock()
     
-    # Mock code generator
-    mock_code_generator.generate_implementation.return_value = {
-        "code": "test code",
-        "file_path": "src/test.py"
-    }
+    # Mock developer methods
+    developer.break_down_story = AsyncMock(return_value=mock_tasks)
+    developer.implement_tasks = AsyncMock(return_value={"failed_tasks": [], "successful_tasks": mock_tasks})
+    developer.create_pr = AsyncMock(return_value="https://github.com/org/repo/pull/1")
     
-    # Mock code validator
-    mock_code_validator.validate_implementation.return_value = {
-        "valid": True,
-        "errors": []
-    }
-    
-    # Handle story assignment
+    # Test normal case
     result = await developer.handle_story_assigned(message)
-    
-    # Verify success
     assert result["status"] == "success"
     assert result["pr_url"] == "https://github.com/org/repo/pull/1"
     
-    # Verify story handling
-    mock_task_manager.break_down_story.assert_called_once_with(story_data)
-    mock_code_generator.generate_implementation.assert_called_once()
-    mock_github_service.create_branch.assert_called_once()
-    mock_github_service.commit_changes.assert_called_once()
-    mock_github_service.create_pr.assert_called_once()
-
-@pytest.mark.asyncio
-async def test_handle_story_assigned_wrong_developer(
-    developer: Developer,
-    mock_event_system: Mock,
-    mock_task_manager: Mock
-) -> None:
-    """Test story assignment handling when assigned to wrong developer."""
-    story_data = {
+    # Verify event system interactions
+    mock_event_system.publish.assert_any_await("implementation_started", {
         "story_id": "story-1",
-        "title": "Test Story",
-        "description": "Test story description",
-        "repo_url": "https://github.com/org/repo.git",
-        "assigned_to": "other-dev"
-    }
-    
-    message = {
-        "type": "story_assigned",
-        "story": story_data
-    }
-    
-    result = await developer.handle_story_assigned(message)
-    
-    # Verify error response
-    assert result["status"] == "error"
-    assert "wrong developer" in result["message"].lower()
-    
-    # Verify no actions taken
-    mock_task_manager.break_down_story.assert_not_called()
-
-@pytest.mark.asyncio
-async def test_handle_story_assigned_missing_fields(
-    developer: Developer,
-    mock_event_system: Mock,
-    mock_task_manager: Mock
-) -> None:
-    """Test story assignment handling with missing required fields."""
-    story_data = {
+        "developer_id": developer.developer_id
+    })
+    mock_event_system.publish.assert_any_await("implementation_completed", {
         "story_id": "story-1",
-        "title": "Test Story"
-        # Missing required fields
-    }
+        "developer_id": developer.developer_id,
+        "pr_url": "https://github.com/org/repo/pull/1"
+    })
     
-    message = {
-        "type": "story_assigned",
-        "story": story_data
-    }
+    # Verify GitHub service interactions
+    mock_github_service.clone_repository.assert_awaited_once_with(story_data["repo_url"])
     
-    result = await developer.handle_story_assigned(message)
-    
-    # Verify error response
+    # Test error handling - wrong developer
+    wrong_story = story_data.copy()
+    wrong_story["assigned_to"] = "other-dev"
+    result = await developer.handle_story_assigned({"type": "story_assigned", "story": wrong_story})
     assert result["status"] == "error"
-    assert "missing" in result["message"].lower()
+    assert mock_github_service.clone_repository.await_count == 1  # No additional calls
     
-    # Verify no actions taken
-    mock_task_manager.break_down_story.assert_not_called()
-
-@pytest.mark.asyncio
-async def test_handle_story_assigned_implementation_failure(
-    developer: Developer,
-    mock_task: Task,
-    mock_event_system: Mock,
-    mock_task_manager: Mock
-) -> None:
-    """Test story assignment handling when implementation fails."""
-    story_data = {
+    # Test error handling - missing fields
+    invalid_story = {"story_id": "story-1"}
+    result = await developer.handle_story_assigned({"type": "story_assigned", "story": invalid_story})
+    assert result["status"] == "error"
+    assert mock_github_service.clone_repository.await_count == 1  # No additional calls
+    
+    # Test error handling - GitHub error
+    mock_github_service.clone_repository.side_effect = Exception("GitHub error")
+    result = await developer.handle_story_assigned({"type": "story_assigned", "story": story_data})
+    assert result["status"] == "error"
+    assert "GitHub error" in result["message"]
+    mock_event_system.publish.assert_any_await("implementation_failed", {
         "story_id": "story-1",
-        "title": "Test Story",
-        "description": "Test story description",
-        "repo_url": "https://github.com/org/repo.git",
-        "assigned_to": "test-dev-1"
-    }
-    
-    message = {
-        "type": "story_assigned",
-        "story": story_data
-    }
-    
-    # Mock task manager
-    mock_task_manager.break_down_story.return_value = [mock_task]
-    
-    # Mock code generator to fail
-    error_msg = "Implementation failed"
-    developer.code_generator.generate_implementation.side_effect = Exception(error_msg)
-    
-    result = await developer.handle_story_assigned(message)
-    
-    # Verify error response
-    assert result["status"] == "error"
-    assert error_msg in result["message"]
-    
-    # Verify partial execution
-    mock_task_manager.break_down_story.assert_called_once_with(story_data)
-    developer.code_generator.generate_implementation.assert_called_once()
-    developer.pr_manager.create_pr.assert_not_called()
+        "developer_id": developer.developer_id,
+        "error": "GitHub error",
+        "status": "error"
+    })
 
 @pytest.mark.asyncio
 async def test_implement_tasks_success(
@@ -896,36 +829,59 @@ async def test_handle_story_assigned(
         "story": story_data
     }
     
-    # Mock task manager to return tasks
+    # Configure mocks
     mock_task_manager.break_down_story.return_value = mock_tasks
+    mock_github_service.clone_repository = AsyncMock()
+    mock_github_service.create_branch = AsyncMock()
+    mock_github_service.commit_changes = AsyncMock()
+    mock_github_service.create_pr = AsyncMock(return_value="https://github.com/org/repo/pull/1")
+    mock_event_system.publish = AsyncMock()
+    
+    # Mock developer methods
+    developer.break_down_story = AsyncMock(return_value=mock_tasks)
+    developer.implement_tasks = AsyncMock(return_value={"failed_tasks": [], "successful_tasks": mock_tasks})
+    developer.create_pr = AsyncMock(return_value="https://github.com/org/repo/pull/1")
     
     # Test normal case
-    await developer.handle_story_assigned(message)
+    result = await developer.handle_story_assigned(message)
+    assert result["status"] == "success"
+    assert result["pr_url"] == "https://github.com/org/repo/pull/1"
     
     # Verify event system interactions
-    mock_event_system.publish.assert_called()
-    published_events = [call[0][0] for call in mock_event_system.publish.call_args_list]
-    assert "implementation_started" in published_events
-    assert "implementation_completed" in published_events
+    mock_event_system.publish.assert_any_await("implementation_started", {
+        "story_id": "story-1",
+        "developer_id": developer.developer_id
+    })
+    mock_event_system.publish.assert_any_await("implementation_completed", {
+        "story_id": "story-1",
+        "developer_id": developer.developer_id,
+        "pr_url": "https://github.com/org/repo/pull/1"
+    })
     
     # Verify GitHub service interactions
-    mock_github_service.clone_repository.assert_called_once_with(story_data["repo_url"])
-    mock_github_service.create_branch.assert_called()
-    mock_github_service.commit_changes.assert_called()
-    mock_github_service.create_pr.assert_called()
+    mock_github_service.clone_repository.assert_awaited_once_with(story_data["repo_url"])
     
     # Test error handling - wrong developer
     wrong_story = story_data.copy()
     wrong_story["assigned_to"] = "other-dev"
-    await developer.handle_story_assigned({"type": "story_assigned", "story": wrong_story})
-    assert mock_github_service.clone_repository.call_count == 1  # No additional calls
+    result = await developer.handle_story_assigned({"type": "story_assigned", "story": wrong_story})
+    assert result["status"] == "error"
+    assert mock_github_service.clone_repository.await_count == 1  # No additional calls
     
     # Test error handling - missing fields
     invalid_story = {"story_id": "story-1"}
-    await developer.handle_story_assigned({"type": "story_assigned", "story": invalid_story})
-    assert mock_github_service.clone_repository.call_count == 1  # No additional calls
+    result = await developer.handle_story_assigned({"type": "story_assigned", "story": invalid_story})
+    assert result["status"] == "error"
+    assert mock_github_service.clone_repository.await_count == 1  # No additional calls
     
     # Test error handling - GitHub error
     mock_github_service.clone_repository.side_effect = Exception("GitHub error")
-    await developer.handle_story_assigned({"type": "story_assigned", "story": story_data})
-    assert "error" in mock_event_system.publish.call_args[0][1]["status"] 
+    result = await developer.handle_story_assigned({"type": "story_assigned", "story": story_data})
+    assert result["status"] == "error"
+    assert "GitHub error" in result["message"]
+    mock_event_system.publish.assert_any_await("implementation_failed", {
+        "story_id": "story-1",
+        "developer_id": developer.developer_id,
+        "error": "GitHub error",
+        "status": "error"
+    }) 

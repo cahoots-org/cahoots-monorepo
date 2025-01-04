@@ -13,9 +13,9 @@ class GitHubService:
     def __init__(self):
         self.config = Config()
         self.logger = Logger("GitHubService")
-        if not self.config.github_api_key:
-            raise RuntimeError("GITHUB_API_KEY environment variable is required for GitHub integration")
-        self.github = Github(self.config.github_api_key)
+        if "github" not in self.config.services:
+            raise RuntimeError("GitHub service configuration is required")
+        self.github = Github(self.config.services["github"].api_key)
         self.workspace_dir = os.getenv("WORKSPACE_DIR", "/workspace")
         
     def check_connection(self):

@@ -1,89 +1,189 @@
 """Data models for the application."""
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class BaseMessage(BaseModel):
     """Base message model."""
-    id: str = Field(..., description="Unique message identifier")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Message timestamp")
-    type: str = Field(..., description="Message type")
-    payload: Dict = Field(default_factory=dict, description="Message payload")
-    retry_count: int = Field(default=0, description="Number of retry attempts")
-    max_retries: int = Field(default=3, description="Maximum number of retry attempts")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "msg-123",
+                "timestamp": "2024-02-20T12:00:00Z",
+                "type": "system",
+                "payload": {},
+                "retry_count": 0,
+                "max_retries": 3
+            }
+        }
+    )
+    
+    id: str
+    timestamp: datetime = datetime.utcnow
+    type: str
+    payload: Dict = {}
+    retry_count: int = 0
+    max_retries: int = 3
 
 
 class SystemMetrics(BaseModel):
-    """System resource metrics."""
-    cpu_percent: float = Field(..., description="CPU usage percentage")
-    memory_percent: float = Field(..., description="Memory usage percentage")
-    disk_percent: float = Field(..., description="Disk usage percentage")
-    open_file_descriptors: int = Field(..., description="Number of open file descriptors")
+    """System metrics data."""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "cpu_percent": 45.2,
+                "memory_percent": 62.8,
+                "disk_percent": 78.1,
+                "open_file_descriptors": 128
+            }
+        }
+    )
+    
+    cpu_percent: float
+    memory_percent: float
+    disk_percent: float
+    open_file_descriptors: int
 
 
 class ServiceHealth(BaseModel):
     """Service health details."""
-    status: str = Field(..., description="Service status (healthy/unhealthy)")
-    latency_ms: float = Field(..., description="Service latency in milliseconds")
-    last_check: datetime = Field(..., description="Last health check timestamp")
-    details: Dict[str, Any] = Field(default_factory=dict, description="Additional health details")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "healthy",
+                "latency_ms": 42.5,
+                "last_check": "2024-02-20T12:00:00Z",
+                "details": {"version": "1.0.0"}
+            }
+        }
+    )
+    
+    status: str
+    latency_ms: float
+    last_check: datetime
+    details: Dict[str, Any] = {}
 
 
 class HealthResponse(BaseModel):
     """Health check response."""
-    status: str = Field(..., description="Overall system health status")
-    environment: str = Field(..., description="Current environment")
-    version: str = Field(..., description="Application version")
-    uptime_seconds: int = Field(..., description="Application uptime in seconds")
-    system_metrics: SystemMetrics = Field(..., description="System resource metrics")
-    services: Dict[str, ServiceHealth] = Field(..., description="Individual service health status")
-    redis_connected: bool = Field(..., description="Redis connection status")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "healthy",
+                "environment": "production",
+                "version": "1.0.0",
+                "uptime_seconds": 3600,
+                "system_metrics": {
+                    "cpu_percent": 45.2,
+                    "memory_percent": 62.8,
+                    "disk_percent": 78.1,
+                    "open_file_descriptors": 128
+                },
+                "services": {
+                    "redis": {
+                        "status": "healthy",
+                        "latency_ms": 42.5,
+                        "last_check": "2024-02-20T12:00:00Z",
+                        "details": {}
+                    }
+                },
+                "redis_connected": True
+            }
+        }
+    )
+    
+    status: str
+    environment: str
+    version: str
+    uptime_seconds: int
+    system_metrics: SystemMetrics
+    services: Dict[str, ServiceHealth]
+    redis_connected: bool
 
 
 class Project(BaseModel):
     """Project model."""
-    id: str = Field(..., example="project-123", description="Unique project identifier")
-    name: str = Field(..., min_length=1, max_length=100, example="My Project", description="Project name")
-    description: str = Field(..., min_length=1, example="A new project", description="Project description")
-
-    class Config:
-        """Pydantic model configuration."""
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "project-123",
                 "name": "AI Chat Bot",
                 "description": "An AI-powered chat bot for customer service"
             }
-        }
+        },
+        str_min_length=1,
+        str_max_length=100
+    )
+    
+    id: str
+    name: str
+    description: str
+    
+    @field_validator('name', 'description')
+    def validate_string_length(cls, v: str) -> str:
+        if len(v) < 1:
+            raise ValueError("Field must not be empty")
+        if len(v) > 100:
+            raise ValueError("Field must not exceed 100 characters")
+        return v
 
 
 class ProjectResponse(BaseModel):
     """Project response model."""
-    id: str = Field(..., example="project-123", description="Project identifier")
-    name: str = Field(..., example="My Project", description="Project name")
-    description: str = Field(..., example="A new project", description="Project description")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "project-123",
+                "name": "AI Chat Bot",
+                "description": "An AI-powered chat bot for customer service",
+                "created_at": "2024-02-20T12:00:00Z",
+                "updated_at": "2024-02-20T12:00:00Z",
+                "status": "active"
+            }
+        }
+    )
+    
+    id: str
+    name: str
+    description: str
+    created_at: datetime = datetime.utcnow
+    updated_at: datetime = datetime.utcnow
+    status: str = "active"
 
 
 class ProjectsResponse(BaseModel):
     """Projects list response model."""
-    projects: List[ProjectResponse] = Field(default_factory=list, description="List of projects")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "total": 1,
+                "page": 1,
+                "per_page": 10,
+                "projects": [
+                    {
+                        "id": "project-123",
+                        "name": "AI Chat Bot",
+                        "description": "An AI-powered chat bot for customer service",
+                        "created_at": "2024-02-20T12:00:00Z",
+                        "updated_at": "2024-02-20T12:00:00Z",
+                        "status": "active"
+                    }
+                ]
+            }
+        }
+    )
+    
+    total: int
+    page: int = 1
+    per_page: int = 10
+    projects: List[ProjectResponse] = []
 
 
 class Task(BaseModel):
     """Task model."""
-    id: str = Field(..., example="task-123", description="Unique task identifier")
-    project_id: str = Field(..., example="project-123", description="Project identifier")
-    title: str = Field(..., min_length=1, max_length=100, example="Implement feature", description="Task title")
-    description: str = Field(..., min_length=1, example="Implement new feature", description="Task description")
-    status: str = Field(default="pending", example="pending", description="Task status")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Task creation timestamp")
-    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Task update timestamp")
-    assigned_to: Optional[str] = Field(None, example="user-123", description="Assigned user identifier")
-
-    class Config:
-        """Pydantic model configuration."""
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "task-123",
                 "project_id": "project-123",
@@ -94,21 +194,75 @@ class Task(BaseModel):
                 "updated_at": "2024-01-01T00:00:00Z",
                 "assigned_to": "user-123"
             }
-        }
+        },
+        str_min_length=1,
+        str_max_length=100
+    )
+    
+    id: str
+    project_id: str
+    title: str
+    description: str
+    status: str = "pending"
+    created_at: datetime = datetime.utcnow
+    updated_at: datetime = datetime.utcnow
+    assigned_to: Optional[str] = None
+    
+    @field_validator('title', 'description')
+    def validate_string_length(cls, v: str) -> str:
+        if len(v) < 1:
+            raise ValueError("Field must not be empty")
+        if len(v) > 100:
+            raise ValueError("Field must not exceed 100 characters")
+        return v
 
 
 class TaskResponse(BaseModel):
     """Task response model."""
-    id: str = Field(..., example="task-123", description="Task identifier")
-    project_id: str = Field(..., example="project-123", description="Project identifier")
-    title: str = Field(..., example="Implement feature", description="Task title")
-    description: str = Field(..., example="Implement new feature", description="Task description")
-    status: str = Field(..., example="pending", description="Task status")
-    created_at: datetime = Field(..., description="Task creation timestamp")
-    updated_at: datetime = Field(..., description="Task update timestamp")
-    assigned_to: Optional[str] = Field(None, example="user-123", description="Assigned user identifier")
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "task-123",
+                "project_id": "project-123",
+                "title": "Implement feature",
+                "description": "Implement new feature",
+                "status": "pending",
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z",
+                "assigned_to": "user-123"
+            }
+        }
+    )
+    
+    id: str
+    project_id: str
+    title: str
+    description: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    assigned_to: Optional[str] = None
 
 
 class TasksResponse(BaseModel):
     """Tasks list response model."""
-    tasks: List[TaskResponse] = Field(default_factory=list, description="List of tasks") 
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "tasks": [
+                    {
+                        "id": "task-123",
+                        "project_id": "project-123",
+                        "title": "Implement feature",
+                        "description": "Implement new feature",
+                        "status": "pending",
+                        "created_at": "2024-01-01T00:00:00Z",
+                        "updated_at": "2024-01-01T00:00:00Z",
+                        "assigned_to": "user-123"
+                    }
+                ]
+            }
+        }
+    )
+    
+    tasks: List[TaskResponse] = [] 
