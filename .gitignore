@@ -29,3 +29,7 @@ include/
 workspace/
 
 .DS_Store
+
+# Secret files
+k8s/overlays/development/secrets.yaml
+k8s/overlays/development/patches/configmap.yaml
