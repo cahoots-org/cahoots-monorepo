@@ -39,6 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest-cov
+          pip install github3.py
 
       - name: Run tests with coverage
         env:
@@ -175,4 +176,4 @@ jobs:
       - name: Deploy to production
         run: |
           kubectl --kubeconfig=kubeconfig.yaml -n production set image deployment/ai-dev-team \
-            ai-dev-team=ghcr.io/${{ github.repository }}:${{ github.sha }} 
+            ai-dev-team=ghcr.io/${{ github.repository }}:${{ github.sha }}
