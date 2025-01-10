@@ -208,3 +208,137 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 ## License
 
 This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
+
+## Stripe Integration
+
+### Local Development Setup
+
+1. Install required tools:
+```bash
+brew install stripe/stripe-cli/stripe
+brew install ngrok
+```
+
+2. Configure environment variables in `.env`:
+```
+STRIPE_SECRET_KEY=sk_test_your_test_key
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+```
+
+3. Start your local development server:
+```bash
+source venv/bin/activate
+python -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+4. Create a tunnel to your local server:
+```bash
+ngrok http 8000
+```
+
+5. Configure webhook in Stripe Dashboard:
+   - Go to Developers > Webhooks
+   - Add endpoint: `https://your-ngrok-url/webhook/stripe`
+   - Select events:
+     - customer.subscription.created
+     - customer.subscription.updated
+     - customer.subscription.deleted
+     - invoice.paid
+     - invoice.payment_failed
+     - payment_intent.succeeded
+     - payment_intent.payment_failed
+
+6. Test webhooks using Stripe CLI:
+```bash
+# Login to Stripe
+stripe login
+
+# Test specific events
+stripe trigger customer.subscription.created
+stripe trigger invoice.paid
+stripe trigger invoice.payment_failed
+```
+
+### Production Deployment
+
+1. Configure environment variables on your production server:
+```
+STRIPE_SECRET_KEY=sk_live_your_live_key
+STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+```
+
+2. Configure webhook in Stripe Dashboard:
+   - Go to Developers > Webhooks
+   - Add endpoint: `https://your-production-domain/webhook/stripe`
+   - Select the same events as in development
+   - Store the webhook signing secret securely
+   - Update your deployment configuration with the new secret
+
+3. Security considerations:
+   - Always use HTTPS for webhook endpoints
+   - Keep webhook signing secrets secure
+   - Rotate secrets periodically
+   - Monitor webhook events in Stripe Dashboard
+   - Set up retry rules for failed webhook deliveries
+
+4. Monitoring and logging:
+   - Monitor webhook delivery in Stripe Dashboard
+   - Check application logs for webhook processing
+   - Set up alerts for webhook failures
+   - Monitor subscription and payment events
+
+### Testing Webhook Integration
+
+1. Local testing:
+```bash
+# Start local server
+python -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# In another terminal, start ngrok
+ngrok http 8000
+
+# In another terminal, trigger test events
+stripe trigger customer.subscription.created
+```
+
+2. Webhook event types for testing:
+```bash
+# Subscription events
+stripe trigger customer.subscription.created
+stripe trigger customer.subscription.updated
+stripe trigger customer.subscription.deleted
+
+# Payment events
+stripe trigger invoice.paid
+stripe trigger invoice.payment_failed
+stripe trigger payment_intent.succeeded
+stripe trigger payment_intent.payment_failed
+```
+
+3. Verify webhook processing:
+   - Check application logs
+   - Verify database updates
+   - Check Stripe Dashboard events
+   - Monitor event system messages
+
+### Troubleshooting
+
+1. Webhook failures:
+   - Verify webhook signing secret
+   - Check endpoint URL configuration
+   - Ensure server is accessible
+   - Check application logs
+   - Verify event handling logic
+
+2. Common issues:
+   - Invalid webhook signatures
+   - Server not accessible
+   - Missing event handlers
+   - Database connection issues
+   - Redis connection issues
+
+3. Debug tools:
+   - Stripe CLI logs
+   - Application logs
+   - Stripe Dashboard webhook logs
+   - Database transaction logs

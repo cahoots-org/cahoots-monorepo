@@ -10,7 +10,7 @@ async def test_health_check_integration(
 ) -> None:
     """Test the health check endpoint with integrated services."""
     # Configure mock event system
-    mock_event_system.is_connected = Mock(return_value=True)
+    mock_event_system.is_connected = True
     mock_event_system.connect = AsyncMock()
     mock_event_system.verify_connection = AsyncMock(return_value=True)
     mock_event_system._connected = True
@@ -18,8 +18,7 @@ async def test_health_check_integration(
     # Configure mock Redis
     mock_redis = AsyncMock()
     mock_redis.ping = AsyncMock(return_value=True)
-    mock_event_system.get_redis = AsyncMock(return_value=mock_redis)
-    mock_event_system.redis_client = mock_redis
+    mock_event_system.redis = mock_redis
     
     # Patch event system
     with patch("src.api.core.get_event_system", return_value=mock_event_system), \
@@ -34,6 +33,7 @@ async def test_health_check_integration(
         assert data["status"] == "healthy"
         assert isinstance(data["uptime_seconds"], int)
         assert data["redis_connected"] is True
+        assert data["components"]["event_system"] == "healthy"
         
         # Check Redis service health
         redis_health = data["services"]["redis"]

@@ -12,8 +12,8 @@ class Developer:
             event_system: Optional event system instance
             start_listening: Whether to start listening for events
         """
-        self.github_service = github_service or GitHubService()
-        self.event_system = event_system or get_event_system()
+        self.github_service = github_service
+        self.event_system = event_system
         self.logger = get_logger("Developer")
         self._listening = False
         self._listening_task = None

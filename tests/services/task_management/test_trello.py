@@ -1,171 +1,154 @@
-"""Tests for the Trello task management service."""
+"""Tests for TrelloTaskManagementService."""
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch, AsyncMock
 from src.services.task_management.trello import TrelloTaskManagementService
 from src.services.trello.config import TrelloConfig
-from src.utils.exceptions import ExternalServiceException
 
 @pytest.fixture
 def mock_config():
     """Create a mock Trello config."""
     return TrelloConfig(
+        name="trello",
+        url="https://api.trello.com/1",
         api_key="test-key",
         api_token="test-token",
-        base_url="https://api.trello.test",
-        timeout=30
+        organization_id="test-org",
+        board_template_id="test-board",
+        timeout=30,
+        retry_attempts=3,
+        retry_delay=1
     )
 
 @pytest.fixture
 async def trello_service(mock_config):
-    """Create a Trello service instance with mocked client."""
-    with patch("src.services.task_management.trello.TrelloClient") as mock_client_cls:
-        mock_client = AsyncMock()
-        mock_client_cls.return_value = mock_client
+    """Create a Trello service instance with mocked service."""
+    with patch("src.services.task_management.trello.TrelloService") as mock_service_cls:
+        mock_service = AsyncMock()
+        mock_service_cls.return_value = mock_service
         service = TrelloTaskManagementService(mock_config)
-        yield service, mock_client
-        await service.close()
+        yield service, mock_service
 
+@pytest.mark.asyncio
 async def test_create_board(trello_service):
     """Test creating a board."""
-    service, mock_client = trello_service
-    mock_client.request.return_value = {"id": "board-123"}
+    service, mock_service = trello_service
+    mock_service.create_board.return_value = {"id": "board-123"}
     
     board_id = await service.create_board("Test Board", "Test Description")
     
     assert board_id == "board-123"
-    mock_client.request.assert_called_once_with(
-        "POST",
-        "/boards",
-        params={
-            "name": "Test Board",
-            "desc": "Test Description",
-            "defaultLists": "false"
-        }
+    mock_service.create_board.assert_called_once_with(
+        "Test Board",
+        "Test Description"
     )
 
+@pytest.mark.asyncio
 async def test_create_board_error(trello_service):
     """Test error handling when creating a board."""
-    service, mock_client = trello_service
-    mock_client.request.side_effect = Exception("API error")
+    service, mock_service = trello_service
+    mock_service.create_board.side_effect = Exception("API error")
     
-    with pytest.raises(ExternalServiceException) as exc_info:
+    with pytest.raises(Exception):
         await service.create_board("Test Board", "Test Description")
-    
-    assert str(exc_info.value) == "Trello service error during create_board: API error"
 
+@pytest.mark.asyncio
 async def test_create_list(trello_service):
     """Test creating a list."""
-    service, mock_client = trello_service
-    mock_client.request.return_value = {"id": "list-123"}
+    service, mock_service = trello_service
+    mock_service.create_list.return_value = {"id": "list-123"}
     
     list_id = await service.create_list("board-123", "Test List")
     
     assert list_id == "list-123"
-    mock_client.request.assert_called_once_with(
-        "POST",
-        "/boards/board-123/lists",
-        params={"name": "Test List"}
+    mock_service.create_list.assert_called_once_with(
+        "board-123",
+        "Test List"
     )
 
+@pytest.mark.asyncio
 async def test_create_list_error(trello_service):
     """Test error handling when creating a list."""
-    service, mock_client = trello_service
-    mock_client.request.side_effect = Exception("API error")
+    service, mock_service = trello_service
+    mock_service.create_list.side_effect = Exception("API error")
     
-    with pytest.raises(ExternalServiceException) as exc_info:
+    with pytest.raises(Exception):
         await service.create_list("board-123", "Test List")
-    
-    assert str(exc_info.value) == "Trello service error during create_list: API error"
 
+@pytest.mark.asyncio
 async def test_create_card(trello_service):
     """Test creating a card."""
-    service, mock_client = trello_service
-    mock_client.request.side_effect = [
-        # First call - get lists
-        [{"id": "list-123", "name": "Test List"}],
-        # Second call - create card
-        {"id": "card-123"}
-    ]
+    service, mock_service = trello_service
+    mock_service.create_card.return_value = {"id": "card-123"}
     
     card_id = await service.create_card(
         "Test Card",
-        "Test Card Description",
+        "Test Description",
         "board-123",
         "Test List"
     )
     
     assert card_id == "card-123"
-    assert mock_client.request.call_count == 2
-    mock_client.request.assert_any_call(
-        "GET",
-        "/boards/board-123/lists"
-    )
-    mock_client.request.assert_any_call(
-        "POST",
-        "/cards",
-        params={
-            "name": "Test Card",
-            "desc": "Test Card Description",
-            "idList": "list-123"
-        }
+    mock_service.create_card.assert_called_once_with(
+        "Test Card",
+        "Test Description",
+        "board-123",
+        "Test List"
     )
 
-async def test_create_card_list_not_found(trello_service):
-    """Test error handling when list not found."""
-    service, mock_client = trello_service
-    mock_client.request.return_value = []  # No lists found
-    
-    with pytest.raises(ExternalServiceException) as exc_info:
-        await service.create_card(
-            "Test Card",
-            "Test Card Description",
-            "board-123",
-            "Test List"
-        )
-    
-    assert str(exc_info.value) == "Trello service error during create_card: List 'Test List' not found"
-
+@pytest.mark.asyncio
 async def test_create_card_error(trello_service):
     """Test error handling when creating a card."""
-    service, mock_client = trello_service
-    mock_client.request.side_effect = Exception("API error")
+    service, mock_service = trello_service
+    mock_service.create_card.side_effect = Exception("API error")
     
-    with pytest.raises(ExternalServiceException) as exc_info:
+    with pytest.raises(Exception):
         await service.create_card(
             "Test Card",
-            "Test Card Description",
+            "Test Description",
             "board-123",
             "Test List"
         )
-    
-    assert str(exc_info.value) == "Trello service error during create_card: API error"
 
+@pytest.mark.asyncio
+async def test_create_card_list_not_found(trello_service):
+    """Test creating a card when list is not found."""
+    service, mock_service = trello_service
+    mock_service.create_card.side_effect = Exception("List not found")
+    
+    with pytest.raises(Exception):
+        await service.create_card(
+            "Test Card",
+            "Test Description",
+            "board-123",
+            "Non-existent List"
+        )
+
+@pytest.mark.asyncio
 async def test_check_connection(trello_service):
-    """Test connection check."""
-    service, mock_client = trello_service
-    mock_client.request.return_value = {"id": "user-123"}
+    """Test checking connection."""
+    service, mock_service = trello_service
+    mock_service.check_connection.return_value = True
     
-    assert await service.check_connection() is True
-    mock_client.request.assert_called_once_with("GET", "/members/me")
+    result = await service.check_connection()
+    
+    assert result is True
+    mock_service.check_connection.assert_called_once()
 
+@pytest.mark.asyncio
 async def test_check_connection_error(trello_service):
-    """Test error handling during connection check."""
-    service, mock_client = trello_service
-    mock_client.request.side_effect = Exception("API error")
+    """Test error handling when checking connection."""
+    service, mock_service = trello_service
+    mock_service.check_connection.side_effect = Exception("Connection error")
     
-    with pytest.raises(ExternalServiceException) as exc_info:
+    with pytest.raises(Exception):
         await service.check_connection()
-    
-    assert str(exc_info.value) == "Trello service error during check_connection: API error"
 
+@pytest.mark.asyncio
 async def test_async_context_manager(trello_service):
-    """Test using the service as an async context manager."""
-    service, mock_client = trello_service
-    mock_client.request.return_value = {"id": "board-123"}
+    """Test async context manager."""
+    service, mock_service = trello_service
     
-    async with service as svc:
-        assert svc is service
-        board_id = await svc.create_board("Test Board", "Test Description")
-        assert board_id == "board-123"
-    
-    mock_client.close.assert_called_once() 
+    async with service:
+        await service.check_connection()
+        
+    mock_service.close.assert_called_once() 

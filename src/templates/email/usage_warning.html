@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Usage Warning - {{ metric }} - AI Dev Team{% endblock %}
+
+{% block header %}Usage Warning{% endblock %}
+
+{% block content %}
+<h2>Usage Limit Warning</h2>
+
+<p>Dear {{ organization_name }},</p>
+
+<p>
+    Your organization is approaching the usage limit for <strong>{{ metric }}</strong>.
+    To ensure uninterrupted service, please review your usage or consider upgrading your plan.
+</p>
+
+<div class="info-box">
+    <h3>Usage Details</h3>
+    <p><strong>Metric:</strong> {{ metric }}</p>
+    <p><strong>Current Usage:</strong> {{ current_usage }}</p>
+    <p><strong>Limit:</strong> {{ limit }}</p>
+    <p><strong>Usage Percentage:</strong> {{ percentage }}%</p>
+</div>
+
+<p>Options to avoid service interruption:</p>
+<ul>
+    <li>Upgrade to a higher tier with increased limits</li>
+    <li>Review and optimize your current usage</li>
+    <li>Contact our support team for custom solutions</li>
+</ul>
+
+<p>
+    <a href="{{ billing_url }}" class="button">Upgrade Plan</a>
+    <a href="{{ usage_url }}" class="button">View Usage Details</a>
+</p>
+
+<p>
+    If you need assistance or have questions about your usage,
+    please contact our support team at
+    <a href="mailto:support@aidevteam.com">support@aidevteam.com</a>.
+</p>
+
+<p>
+    Best regards,<br>
+    The AI Dev Team
+</p>
+{% endblock %} 

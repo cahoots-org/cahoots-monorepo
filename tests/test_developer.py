@@ -121,7 +121,9 @@ def mock_event_system() -> AsyncMock:
     mock = AsyncMock()
     mock.publish = AsyncMock()
     mock.subscribe = AsyncMock()
-    mock.is_connected = Mock(return_value=True)
+    mock.connect = AsyncMock()
+    mock._connected = True  # Internal state
+    mock.is_connected = False  # Direct property instead of using property()
     mock.disconnect = AsyncMock()
     return mock
 
@@ -233,12 +235,11 @@ async def test_setup_events(
     mock_event_system: Mock
 ) -> None:
     """Test event system setup."""
-    # Mock is_connected to return False first to trigger connect
-    mock_event_system.is_connected.return_value = False
-    mock_event_system.connect = AsyncMock()
+    # Set is_connected to False to trigger connect
+    mock_event_system._connected = False
     mock_event_system.subscribe = AsyncMock()
 
-    await developer.setup_events()
+    await developer.start()  # This will handle setup_events internally
 
     # Verify event system setup
     mock_event_system.connect.assert_awaited_once()

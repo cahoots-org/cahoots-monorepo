@@ -1,144 +1,41 @@
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: redis
-  labels:
-    app: redis
+  name: ai-dev-team-redis
 spec:
-  serviceName: redis
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
-      app: redis
+      app: ai-dev-team-redis
   template:
     metadata:
       labels:
-        app: redis
+        app: ai-dev-team-redis
     spec:
-      securityContext:
-        fsGroup: 1000
       containers:
       - name: redis
-        image: redis:7.2-alpine
-        command:
-          - redis-server
-          - "/etc/redis/redis.conf"
-          - "--requirepass"
-          - "$(REDIS_PASSWORD)"
+        image: redis:7.0
+        args: ["--requirepass", "$(REDIS_PASSWORD)"]
         ports:
         - containerPort: 6379
-          name: redis
-        - containerPort: 16379
-          name: gossip
-        env:
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: ai-dev-team-secrets
-              key: REDIS_PASSWORD
+        envFrom:
+        - configMapRef:
+            name: ai-dev-team-config
         resources:
           requests:
-            cpu: 200m
-            memory: 512Mi
+            memory: "128Mi"
+            cpu: "100m"
           limits:
-            cpu: 1000m
-            memory: 1Gi
-        volumeMounts:
-        - name: redis-config
-          mountPath: /etc/redis
-        - name: redis-data
-          mountPath: /data
-        securityContext:
-          runAsNonRoot: true
-          runAsUser: 999
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-        livenessProbe:
-          exec:
-            command:
-            - sh
-            - -c
-            - redis-cli -a "$(REDIS_PASSWORD)" ping
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          exec:
-            command:
-            - sh
-            - -c
-            - redis-cli -a "$(REDIS_PASSWORD)" ping
-          initialDelaySeconds: 5
-          periodSeconds: 10
-      volumes:
-      - name: redis-config
-        configMap:
-          name: redis-config
-  volumeClaimTemplates:
-  - metadata:
-      name: redis-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 10Gi
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: redis-config
-data:
-  redis.conf: |
-    appendonly yes
-    protected-mode no
-    maxmemory 900mb
-    maxmemory-policy allkeys-lru
-    save 900 1
-    save 300 10
-    save 60 10000
-    tcp-keepalive 300
-    timeout 0
-    tcp-backlog 511
-    databases 16
-    maxclients 10000
-    io-threads 4
-    io-threads-do-reads yes
-    lazyfree-lazy-eviction yes
-    lazyfree-lazy-expire yes
-    lazyfree-lazy-server-del yes
-    replica-lazy-flush yes
-    dynamic-hz yes
-    activedefrag yes
-    active-defrag-ignore-bytes 100mb
-    active-defrag-threshold-lower 10
-    active-defrag-threshold-upper 100
-    active-defrag-cycle-min 1
-    active-defrag-cycle-max 75
-    active-defrag-max-scan-fields 1000
+            memory: "256Mi"
+            cpu: "200m"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis
+  name: ai-dev-team-redis
 spec:
-  selector:
-    app: redis
   ports:
   - port: 6379
     targetPort: 6379
-    name: redis
-  - port: 16379
-    targetPort: 16379
-    name: gossip
-  clusterIP: None
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: redis-pdb
-spec:
-  minAvailable: 2
   selector:
-    matchLabels:
-      app: redis 
+    app: ai-dev-team-redis 

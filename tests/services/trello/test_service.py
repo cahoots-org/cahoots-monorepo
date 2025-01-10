@@ -1,127 +1,170 @@
 """Tests for TrelloService."""
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch, Mock
 from src.services.trello.service import TrelloService
 from src.services.trello.config import TrelloConfig
 from src.utils.exceptions import ExternalServiceException
 
 @pytest.fixture
-def config() -> TrelloConfig:
-    """Create a test config."""
+def trello_config() -> TrelloConfig:
+    """Create test Trello config."""
     return TrelloConfig(
-        api_key="test_key",
-        api_token="test_token",
-        base_url="https://test.trello.com",
-        timeout=5
+        api_key="test-key",
+        api_token="test-token"
     )
 
 @pytest.fixture
-async def service(config: TrelloConfig) -> TrelloService:
-    """Create a test service instance."""
-    service = TrelloService(config=config)
-    service.client.request = AsyncMock()
+async def trello_service(trello_config: TrelloConfig) -> TrelloService:
+    """Create test Trello service."""
+    service = TrelloService(config=trello_config)
     yield service
     await service.close()
 
 @pytest.mark.asyncio
-async def test_create_board(service: TrelloService) -> None:
-    """Test board creation."""
-    mock_response = {"id": "test_board_id"}
-    service.client.request.return_value = mock_response
-    
-    board_id = await service.create_board("Test Board", "Test Description")
-    
-    assert board_id == "test_board_id"
-    service.client.request.assert_called_once_with(
-        "POST",
-        "/boards",
-        params={
-            "name": "Test Board",
-            "desc": "Test Description",
-            "defaultLists": "false"
-        }
-    )
+async def test_init_with_env_config() -> None:
+    """Test initializing service with config from environment."""
+    mock_config = Mock(spec=TrelloConfig)
+    mock_config.api_key = "env-key"
+    mock_config.api_token = "env-token"
+    mock_config.base_url = "https://api.trello.com/1"
+    mock_config.timeout = 30
+
+    with patch("src.services.trello.config.TrelloConfig.from_env", return_value=mock_config):
+        service = TrelloService()
+        assert service.config.api_key == "env-key"
+        assert service.config.api_token == "env-token"
+        assert service.config.base_url == "https://api.trello.com/1"
+        assert service.config.timeout == 30
 
 @pytest.mark.asyncio
-async def test_create_list(service: TrelloService) -> None:
-    """Test list creation."""
-    mock_response = {"id": "test_list_id"}
-    service.client.request.return_value = mock_response
-    
-    list_id = await service.create_list("test_board_id", "Test List")
-    
-    assert list_id == "test_list_id"
-    service.client.request.assert_called_once_with(
-        "POST",
-        f"/boards/test_board_id/lists",
-        params={"name": "Test List"}
-    )
+async def test_init_with_custom_config(trello_config: TrelloConfig) -> None:
+    """Test initializing service with custom config."""
+    service = TrelloService(config=trello_config)
+    assert service.config == trello_config
+    assert service.client.api_key == trello_config.api_key
+    assert service.client.api_token == trello_config.api_token
 
 @pytest.mark.asyncio
-async def test_create_card(service: TrelloService) -> None:
-    """Test card creation."""
-    lists_response = [
-        {"id": "list123", "name": "Backlog"},
-        {"id": "list456", "name": "In Progress"}
-    ]
-    card_response = {"id": "card123"}
-    
-    service.client.request.side_effect = [
-        lists_response,
-        card_response
-    ]
-    
-    card_id = await service.create_card(
-        "Test Card",
-        "Test Description",
-        "board123",
-        "Backlog"
-    )
-    
-    assert card_id == "card123"
-    assert service.client.request.call_count == 2
-    
-    service.client.request.assert_any_call(
-        "GET",
-        "/boards/board123/lists"
-    )
-    
-    service.client.request.assert_any_call(
-        "POST",
-        "/cards",
-        params={
-            "name": "Test Card",
-            "desc": "Test Description",
-            "idList": "list123"
-        }
-    )
+async def test_create_board(trello_service: TrelloService) -> None:
+    """Test creating a board."""
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={
+        "id": "test-board-id",
+        "name": "Test Board",
+        "url": "https://trello.com/b/test-board-id"
+    })
+    mock_response.__aenter__.return_value = mock_response
 
-@pytest.mark.asyncio
-async def test_create_card_list_not_found(service: TrelloService) -> None:
-    """Test card creation with non-existent list."""
-    service.client.request.return_value = []
-    
-    with pytest.raises(ExternalServiceException, match="Trello service error during create_card: List 'Backlog' not found"):
-        await service.create_card(
-            "Test Card",
-            "Test Description",
-            "board123",
-            "Backlog"
+    with patch("aiohttp.ClientSession.request", return_value=mock_response):
+        board = await trello_service.create_board(
+            name="Test Board",
+            description="Test Description"
         )
+        assert board["id"] == "test-board-id"
+        assert board["name"] == "Test Board"
+        assert board["url"] == "https://trello.com/b/test-board-id"
 
 @pytest.mark.asyncio
-async def test_check_connection_success(service: TrelloService) -> None:
-    """Test successful connection check."""
-    service.client.request.return_value = {"id": "test_user"}
-    
-    result = await service.check_connection()
-    assert result is True
-    service.client.request.assert_called_once_with("GET", "/members/me")
+async def test_create_list(trello_service: TrelloService) -> None:
+    """Test creating a list."""
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={
+        "id": "test-list-id",
+        "name": "Test List"
+    })
+    mock_response.__aenter__.return_value = mock_response
+
+    with patch("aiohttp.ClientSession.request", return_value=mock_response):
+        list_data = await trello_service.create_list(
+            board_id="test-board-id",
+            name="Test List",
+            position="top"
+        )
+        assert list_data["id"] == "test-list-id"
+        assert list_data["name"] == "Test List"
 
 @pytest.mark.asyncio
-async def test_check_connection_failure(service: TrelloService) -> None:
-    """Test failed connection check."""
-    service.client.request.side_effect = Exception("Connection failed")
-    
-    with pytest.raises(ExternalServiceException, match="Trello service error during check_connection: Connection failed"):
-        await service.check_connection() 
+async def test_create_card(trello_service: TrelloService) -> None:
+    """Test creating a card."""
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={
+        "id": "test-card-id",
+        "name": "Test Card",
+        "url": "https://trello.com/c/test-card-id"
+    })
+    mock_response.__aenter__.return_value = mock_response
+
+    with patch("aiohttp.ClientSession.request", return_value=mock_response):
+        card = await trello_service.create_card(
+            list_id="test-list-id",
+            name="Test Card",
+            description="Test Description",
+            position="top",
+            labels=["label1", "label2"]
+        )
+        assert card["id"] == "test-card-id"
+        assert card["name"] == "Test Card"
+        assert card["url"] == "https://trello.com/c/test-card-id"
+
+@pytest.mark.asyncio
+async def test_create_card_no_labels(trello_service: TrelloService) -> None:
+    """Test creating a card without labels."""
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={
+        "id": "test-card-id",
+        "name": "Test Card",
+        "url": "https://trello.com/c/test-card-id"
+    })
+    mock_response.__aenter__.return_value = mock_response
+
+    with patch("aiohttp.ClientSession.request", return_value=mock_response) as mock_request:
+        card = await trello_service.create_card(
+            list_id="test-list-id",
+            name="Test Card",
+            description="Test Description",
+            position="top"
+        )
+        assert card["id"] == "test-card-id"
+        assert card["name"] == "Test Card"
+        assert card["url"] == "https://trello.com/c/test-card-id"
+        
+        # Verify labels were not included in request
+        call_args = mock_request.call_args[1]
+        assert "idLabels" not in call_args["json"]
+
+@pytest.mark.asyncio
+async def test_check_connection(trello_service: TrelloService) -> None:
+    """Test checking connection."""
+    # Test successful connection
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value={"id": "test-user"})
+    mock_response.__aenter__.return_value = mock_response
+
+    with patch("aiohttp.ClientSession.request", return_value=mock_response):
+        assert await trello_service.check_connection() is True
+
+    # Test failed connection
+    mock_response = AsyncMock()
+    mock_response.status = 401
+    mock_response.text = AsyncMock(return_value="Unauthorized")
+    mock_response.__aenter__.return_value = mock_response
+
+    with patch("aiohttp.ClientSession.request", return_value=mock_response):
+        assert await trello_service.check_connection() is False
+
+@pytest.mark.asyncio
+async def test_service_error_handling(trello_service: TrelloService) -> None:
+    """Test error handling."""
+    mock_response = AsyncMock()
+    mock_response.status = 400
+    mock_response.text = AsyncMock(return_value="API Error")
+    mock_response.__aenter__.return_value = mock_response
+
+    with patch("aiohttp.ClientSession.request", return_value=mock_response):
+        with pytest.raises(ExternalServiceException, match="Trello API request failed: API Error"):
+            await trello_service.create_board("Test Board") 

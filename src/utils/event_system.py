@@ -1,313 +1,252 @@
-"""Event system for handling asynchronous messages."""
+"""Distributed event system implementation using Redis."""
+from typing import Dict, Any, Optional, Callable, Awaitable, List
 import json
-import os
+import logging
 import asyncio
-import redis.asyncio as redis
-from redis.asyncio.connection import ConnectionPool, SSLConnection
-from redis.asyncio.retry import Retry
-from redis.asyncio.client import PubSub
-from redis.backoff import ExponentialBackoff
-from typing import Callable, Dict, Any, Optional, Union, List, Set, AsyncGenerator, Awaitable
-from pydantic import BaseModel, ValidationError as PydanticValidationError
 from datetime import datetime
-from ..utils.logger import Logger
-from ..utils.config import config
-from ..utils.task_manager import TaskManager
-from ..utils.metrics import (
-    MESSAGE_PUBLISH_COUNTER,
-    MESSAGE_PROCESSING_TIME,
-    MESSAGE_RETRY_COUNTER,
-    MESSAGE_DLQ_COUNTER,
-    MESSAGE_ERROR_COUNTER,
-    track_time,
-    redis_pool_size,
-    redis_pool_maxsize
-)
-from prometheus_client import Gauge
-from ..models.task import Task
+from uuid import uuid4
 from redis.asyncio import Redis
-from ..utils.models import BaseMessage
-import time
 
-class ValidationError(Exception):
-    """Custom validation error for event system."""
-    pass
-
-# Define available channels
-CHANNELS = {
-    "system": "system",
-    "project_manager": "project_manager",
-    "developer": "developer",
-    "ux_designer": "ux_designer",
-    "tester": "tester",
-    "story_assigned": "story_assigned",
-    "pr_created": "pr_created",
-    "pr_merged": "pr_merged",
-    "task_completed": "task_completed"
-}
-
-# Define retry configuration
-RETRY_CONFIG = {
-    "max_retries": 3,
-    "initial_delay": 1,  # seconds
-    "max_delay": 60,  # seconds
-    "exponential_base": 2
-}
-
-# Define standard event types
-class EventTypes:
-    TASK_STARTED = "task_started"
-    TASK_BLOCKED = "task_blocked"
-    TASK_RESUMED = "task_resumed"
-    TASK_FAILED = "task_failed"
-    PR_CREATED = "pr_created"
-    PR_REVIEWED = "pr_reviewed"
-    TESTS_STARTED = "tests_started"
-    TESTS_FAILED = "tests_failed"
-    TESTS_PASSED = "tests_passed"
-    STORY_ASSIGNED = "story_assigned"
-
-logger = Logger("EventSystem")
+from src.utils.event_constants import (
+    EventSchema,
+    EventType,
+    EventPriority,
+    EventStatus,
+    EventError,
+    CommunicationPattern,
+    CHANNELS
+)
 
 class DateTimeEncoder(json.JSONEncoder):
-    """Custom JSON encoder for datetime objects."""
-    
-    def default(self, obj: Any) -> Any:
-        """Convert datetime objects to ISO format strings."""
+    """JSON encoder that handles datetime objects."""
+    def default(self, obj):
         if isinstance(obj, datetime):
             return obj.isoformat()
+        if isinstance(obj, (EventType, EventPriority, EventStatus, CommunicationPattern)):
+            return obj.value
         return super().default(obj)
 
 class EventSystem:
-    """Event system for pub/sub messaging."""
+    """Redis-based distributed event system implementation."""
 
-    def __init__(self) -> None:
-        """Initialize event system."""
-        self.logger = Logger("EventSystem")
-        self.redis_client: Optional[Redis] = None
-        self.pubsub: Optional[PubSub] = None
-        self._connected = False
-        self._listening = False
-        self.handlers: Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]] = {}
-        self._task_manager = TaskManager("EventSystem")
-        self._listen_task: Optional[asyncio.Task] = None
-        self.logger.info("Event system initialized")
-
-    async def connect(self, redis_client: Optional[Redis] = None) -> None:
-        """Connect to Redis.
+    def __init__(self, redis: Redis, service_name: Optional[str] = None):
+        """Initialize the distributed event system.
         
         Args:
-            redis_client: Optional Redis client to use. If not provided, a new one will be created.
+            redis: Redis client instance
+            service_name: Optional service name
         """
-        if self._connected:
-            return
+        self.redis = redis
+        self._service_name = service_name
+        self._connected = False
+        self._handlers: Dict[str, List[Callable[[EventSchema], Awaitable[None]]]] = {}
+        self._pubsub_tasks: Dict[str, asyncio.Task] = {}
 
-        try:
-            if redis_client:
-                self.redis_client = redis_client
-            else:
-                # Create Redis client with retry logic
-                retry = Retry(ExponentialBackoff(cap=10, base=1), 3)
-                
-                # Construct Redis URL from config
-                redis_url = f"redis://{config.redis.host}:{config.redis.port}/{config.redis.db}"
-                if config.redis.password and config.redis.password.get_secret_value():
-                    redis_url = f"redis://:{config.redis.password.get_secret_value()}@{config.redis.host}:{config.redis.port}/{config.redis.db}"
-                
-                self.redis_client = await Redis.from_url(
-                    redis_url,
-                    encoding="utf-8",
-                    decode_responses=True,
-                    retry=retry,
-                    retry_on_timeout=True
-                )
-            
-            # Verify connection
-            await self.redis_client.ping()
-            
-            # Create pubsub instance
-            self.pubsub = self.redis_client.pubsub()
-            self._connected = True
-            self.logger.info("Connected to Redis")
-        except Exception as e:
-            self.logger.error(f"Failed to connect to Redis: {e}")
-            self._connected = False
-            if self.redis_client:
-                await self.redis_client.close()
-                self.redis_client = None
-            raise
-
+    @property
     def is_connected(self) -> bool:
-        """Check if connected to Redis."""
-        return self._connected and self.redis_client is not None
-
-    async def disconnect(self) -> None:
-        """Disconnect from Redis and clean up resources."""
-        await self.stop_listening()
-        if self.redis_client:
-            await self.redis_client.close()
-            self.redis_client = None
-        self._connected = False
-        self.logger.info("Event system disconnected")
-
-    async def publish(self, channel: str, message: Dict[str, Any]) -> None:
-        """Publish a message to a channel."""
-        if not self._connected or not self.redis_client:
-            raise RuntimeError("Event system not connected")
-        
-        try:
-            await self.redis_client.publish(channel, json.dumps(message, cls=DateTimeEncoder))
-            MESSAGE_PUBLISH_COUNTER.labels(channel=channel).inc()
-        except Exception as e:
-            self.logger.error(f"Failed to publish message to {channel}: {e}")
-            MESSAGE_ERROR_COUNTER.labels(channel=channel).inc()
-            raise
-
-    async def subscribe(self, channel: str, handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None) -> None:
-        """Subscribe to a channel and optionally register a message handler."""
-        if not self._connected or not self.pubsub:
-            raise RuntimeError("Event system not connected")
-        
-        try:
-            await self.pubsub.subscribe(channel)
-            if handler:
-                self.handlers[channel] = handler
-            self.logger.info(f"Subscribed to channel: {channel}")
-        except Exception as e:
-            self.logger.error(f"Failed to subscribe to {channel}: {e}")
-            raise
-
-    async def unsubscribe(self, channel: str) -> None:
-        """Unsubscribe from a channel."""
-        if not self._connected or not self.pubsub:
-            raise RuntimeError("Event system not connected")
-        
-        try:
-            await self.pubsub.unsubscribe(channel)
-            if channel in self.handlers:
-                del self.handlers[channel]
-            self.logger.info(f"Unsubscribed from channel: {channel}")
-        except Exception as e:
-            self.logger.error(f"Failed to unsubscribe from {channel}: {e}")
-            raise
-
-    async def start_listening(self) -> None:
-        """Start listening for messages."""
-        if not self._connected or not self.pubsub:
-            raise RuntimeError("Event system not connected")
-        
-        if self._listening:
-            return
-        
-        self.logger.info("Started listening for messages")
-        self._listening = True
-        
-        # Create a background task for listening
-        self._listen_task = asyncio.create_task(self._listen_loop())
-
-    async def _listen_loop(self) -> None:
-        """Background loop for listening to messages."""
-        try:
-            while self._listening and self._connected:
-                try:
-                    message = await self.pubsub.get_message(ignore_subscribe_messages=True)
-                    if message and isinstance(message, dict):
-                        channel = message.get("channel", "unknown")
-                        MESSAGE_PUBLISH_COUNTER.labels(channel=channel).inc()
-                        if channel and channel in self.handlers:
-                            data = message.get("data")
-                            if isinstance(data, str):
-                                try:
-                                    parsed_data = json.loads(data)
-                                    await self.process_message(parsed_data, self.handlers[channel])
-                                except json.JSONDecodeError:
-                                    self.logger.error("Failed to decode message data")
-                                    MESSAGE_ERROR_COUNTER.labels(channel=channel).inc()
-                    await asyncio.sleep(0.01)  # Prevent busy loop
-                except Exception as e:
-                    self.logger.error(f"Error in message listener: {e}")
-                    MESSAGE_RETRY_COUNTER.labels(channel="unknown").inc()
-                    await asyncio.sleep(1)  # Basic retry delay
-        except asyncio.CancelledError:
-            self.logger.info("Message listener cancelled")
-            self._listening = False
-        except Exception as e:
-            self.logger.error(f"Fatal error in message listener: {e}")
-            self._listening = False
-            raise
-
-    async def stop_listening(self) -> None:
-        """Stop listening for messages."""
-        self._listening = False
-        if self._listen_task:
-            self._listen_task.cancel()
-            try:
-                await self._listen_task
-            except asyncio.CancelledError:
-                pass
-            self._listen_task = None
-        if self.pubsub:
-            try:
-                await self.pubsub.unsubscribe()
-                await self.pubsub.close()
-            except Exception as e:
-                self.logger.error(f"Error stopping listener: {e}")
-        self.logger.info("Stopped listening for messages")
-
-    async def get_message(self) -> Optional[Dict[str, Any]]:
-        """Get a message from Redis pubsub.
-        
-        Returns:
-            Optional[Dict[str, Any]]: Message data if available, None otherwise
-        """
-        if not self._connected or not self.pubsub:
-            return None
-        
-        try:
-            message = await self.pubsub.get_message(ignore_subscribe_messages=True)
-            if message and message.get("type") == "message":
-                data = message.get("data")
-                if isinstance(data, str):
-                    try:
-                        return json.loads(data)
-                    except json.JSONDecodeError:
-                        self.logger.error("Failed to decode message data")
-                        MESSAGE_ERROR_COUNTER.labels(channel="unknown").inc()
-                        return None
-        except Exception as e:
-            self.logger.error(f"Error getting message: {e}")
-            MESSAGE_ERROR_COUNTER.labels(channel="unknown").inc()
-        return None
-
-    async def process_message(
-        self,
-        message: Dict[str, Any],
-        handler: Callable[[Dict[str, Any]], Awaitable[None]]
-    ) -> None:
-        """Process a message with its handler.
-        
-        Args:
-            message: Message to process
-            handler: Handler function to call
-        """
-        try:
-            with track_time(MESSAGE_PROCESSING_TIME.labels(channel=message.get("channel", "unknown"))):
-                await handler(message)
-        except Exception as e:
-            self.logger.error(f"Error processing message: {e}")
-            MESSAGE_ERROR_COUNTER.labels(channel=message.get("channel", "unknown")).inc()
+        """Check if event system is connected."""
+        return self._connected
 
     async def verify_connection(self) -> bool:
-        """Verify Redis connection is healthy.
+        """Verify Redis connection is active.
         
         Returns:
-            bool: True if connection is healthy, False otherwise
+            bool: True if connection is active, False otherwise
         """
-        if not self._connected or not self.redis_client:
-            return False
         try:
-            await self.redis_client.ping()
+            await self.redis.ping()
             return True
         except Exception as e:
-            self.logger.error(f"Connection verification failed: {e}")
-            return False 
+            logging.error(f"Redis connection verification failed: {str(e)}")
+            return False
+
+    @property
+    def service_name(self) -> Optional[str]:
+        """Return the service name."""
+        return self._service_name
+
+    async def connect(self) -> None:
+        """Connect to Redis and start listening for events."""
+        try:
+            await self.redis.ping()
+            self._connected = True
+        except Exception as e:
+            logging.error(f"Failed to connect to Redis: {str(e)}")
+            self._connected = False
+            raise EventError("Failed to connect to Redis") from e
+
+    async def disconnect(self) -> None:
+        """Disconnect from Redis."""
+        self._connected = False
+        
+        # Cancel all pubsub tasks
+        for task in self._pubsub_tasks.values():
+            task.cancel()
+        self._pubsub_tasks.clear()
+        
+        # Unsubscribe from all channels
+        for channel in list(self._handlers.keys()):
+            pubsub = self.redis.pubsub()
+            pubsub.unsubscribe(channel)
+        self._handlers.clear()
+
+    async def publish(self, event: EventSchema) -> None:
+        """Publish an event to Redis.
+        
+        Args:
+            event: Event to publish
+        """
+        if not self.is_connected:
+            raise EventError("Event system not connected")
+
+        if not event.service_name:
+            event.service_name = self.service_name
+
+        try:
+            event_data = event.model_dump()
+            event_json = json.dumps(event_data, cls=DateTimeEncoder)
+            await self.redis.publish(event.channel, event_json)
+            await self.redis.set(
+                f"event:{event.id}",
+                event_json,
+                ex=86400  # Store for 24 hours
+            )
+        except Exception as e:
+            logging.error(f"Failed to publish event: {str(e)}")
+            event.status = EventStatus.FAILED
+            raise EventError(f"Failed to publish event: {str(e)}") from e
+
+    async def subscribe(self, channel: str, handler: Callable[[EventSchema], Awaitable[None]]) -> None:
+        """Subscribe to events on a channel.
+        
+        Args:
+            channel: Channel to subscribe to
+            handler: Event handler function
+        """
+        if not self.is_connected:
+            raise EventError("Event system not connected")
+
+        if channel not in self._handlers:
+            self._handlers[channel] = []
+            
+            # Start Redis subscription
+            pubsub = self.redis.pubsub()
+            pubsub.subscribe(channel)
+            
+            # Start background task to process messages
+            task = asyncio.create_task(self._process_messages(pubsub, channel))
+            self._pubsub_tasks[channel] = task
+            
+        self._handlers[channel].append(handler)
+
+    async def unsubscribe(self, channel: str, handler: Callable[[EventSchema], Awaitable[None]]) -> None:
+        """Unsubscribe from events on a channel.
+        
+        Args:
+            channel: Channel to unsubscribe from
+            handler: Event handler function to remove
+        """
+        if channel in self._handlers:
+            self._handlers[channel].remove(handler)
+            if not self._handlers[channel]:
+                del self._handlers[channel]
+                pubsub = self.redis.pubsub()
+                pubsub.unsubscribe(channel)
+                
+                # Cancel the pubsub task
+                if channel in self._pubsub_tasks:
+                    self._pubsub_tasks[channel].cancel()
+                    del self._pubsub_tasks[channel]
+
+    async def _process_messages(self, pubsub, channel: str) -> None:
+        """Process messages from Redis subscription.
+        
+        Args:
+            pubsub: Redis pubsub connection
+            channel: Channel being processed
+        """
+        while True:
+            try:
+                message = pubsub.get_message(ignore_subscribe_messages=True)
+                if message and channel in self._handlers:
+                    event_data = json.loads(message["data"])
+                    event = EventSchema(**event_data)
+                    
+                    for handler in self._handlers[channel]:
+                        try:
+                            await handler(event)
+                        except Exception as e:
+                            logging.error(f"Error in event handler: {str(e)}")
+                            event.status = EventStatus.FAILED
+                await asyncio.sleep(0.1)  # Avoid tight loop
+            except Exception as e:
+                logging.error(f"Error processing message: {str(e)}")
+                await asyncio.sleep(1)  # Longer sleep on error
+
+    async def replay_events(self, channel: str) -> List[EventSchema]:
+        """Replay events from a channel.
+        
+        Args:
+            channel: Channel to replay events from
+            
+        Returns:
+            List of events from the channel
+        """
+        if not self.is_connected:
+            raise EventError("Event system not connected")
+
+        try:
+            # Get all events for channel from Redis
+            keys = await self.redis.keys(f"event:*")
+            events = []
+            
+            for key in keys:
+                event_data = await self.redis.get(key)
+                if event_data:
+                    event = EventSchema(**json.loads(event_data))
+                    if event.channel == channel:
+                        events.append(event)
+                        
+            return sorted(events, key=lambda e: e.timestamp)
+            
+        except Exception as e:
+            logging.error(f"Failed to replay events: {str(e)}")
+            raise EventError(f"Failed to replay events: {str(e)}") from e
+
+    def create_event(
+        self,
+        type: EventType,
+        channel: str,
+        data: Dict[str, Any],
+        priority: EventPriority = EventPriority.MEDIUM,
+        correlation_id: Optional[str] = None,
+        reply_to: Optional[str] = None,
+        pattern: CommunicationPattern = CommunicationPattern.PUBLISH_SUBSCRIBE
+    ) -> EventSchema:
+        """Create a new event.
+        
+        Args:
+            type: Event type
+            channel: Target channel
+            data: Event data
+            priority: Event priority
+            correlation_id: Optional correlation ID
+            reply_to: Optional reply-to channel
+            pattern: Communication pattern
+            
+        Returns:
+            Created event
+        """
+        return EventSchema(
+            id=str(uuid4()),
+            type=type,
+            channel=channel,
+            priority=priority,
+            status=EventStatus.PENDING,
+            timestamp=datetime.utcnow(),
+            data=data,
+            correlation_id=correlation_id,
+            reply_to=reply_to,
+            pattern=pattern,
+            service_name=self.service_name
+        ) 

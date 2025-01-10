@@ -1,6 +1,7 @@
 # Version control
 .git
 .gitignore
+.gitattributes
 
 # Python
 __pycache__/
@@ -24,30 +25,49 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual environments
+# Virtual Environment
 venv/
-env/
 ENV/
+env/
+.env
+.venv
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+.project
+.pydevproject
+.settings
 
-# Docker
-.docker/
-docker-compose*.yml
-Dockerfile*
+# Testing
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+htmlcov/
 
-# Logs and databases
+# Logs
 *.log
-*.sqlite3
-*.db
+logs/
 
 # Local development
 .DS_Store
-node_modules/
-coverage/
-.coverage
-htmlcov/ 
+*.sqlite3
+workspace/
+.cursorrules
+
+# Documentation
+docs/_build/
+site/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml 

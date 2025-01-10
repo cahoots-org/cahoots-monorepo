@@ -7,6 +7,25 @@ from typing import Any, Dict, List
 from src.agents.ux_designer import UXDesigner
 from src.services.github_service import GitHubService
 from src.utils.config import Config, ServiceConfig
+from src.utils.base_logger import BaseLogger
+
+@pytest.fixture
+def mock_base_logger() -> Mock:
+    """Create a mock base logger."""
+    mock = Mock(spec=BaseLogger)
+    mock.info = Mock()
+    mock.error = Mock()
+    mock.warning = Mock()
+    mock.debug = Mock()
+    return mock
+
+@pytest.fixture
+def mock_model() -> Mock:
+    """Create a mock model."""
+    mock = Mock()
+    mock.generate = AsyncMock()
+    mock.generate.return_value = "Test response"
+    return mock
 
 @pytest.fixture
 async def ux_designer(
@@ -34,12 +53,28 @@ async def ux_designer(
     }
     monkeypatch.setattr("src.utils.config.config", mock_config)
     
+    # Create mock github_config with design system settings
+    github_config = {
+        'design_system': {
+            'version': '1.0',
+            'model': 'gpt-4-1106-preview',
+            'brand_context': {
+                'primary_color': '#007bff',
+                'font_family': 'Inter, system-ui, sans-serif'
+            }
+        }
+    }
+    
     # Create designer with start_listening=False to prevent automatic task creation
-    designer = UXDesigner(event_system=mock_event_system, start_listening=False)
+    designer = UXDesigner(
+        event_system=mock_event_system,
+        start_listening=False,
+        github_service=mock_github_service,
+        github_config=github_config
+    )
     designer.logger = mock_base_logger
     designer.event_system = mock_event_system
     designer.model = mock_model
-    designer.github_service = mock_github_service
     designer._running = False
     
     yield designer

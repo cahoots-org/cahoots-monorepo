@@ -1,83 +1,19 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - ../../base
+namespace: ai-dev-team
 
-namespace: ai-dev-team-dev
+resources:
+- ../../base
 
 patches:
-  - target:
-      kind: ConfigMap
-      name: ai-dev-team-config
-    patch: |-
-      - op: replace
-        path: /data/default.yaml
-        value: |
-          env: development
-          debug: true
-          log_level: DEBUG
+- path: patches/configmap.yaml
+  target:
+    kind: ConfigMap
+    name: ai-dev-team-config
 
-          redis:
-            host: redis
-            port: 6379
-            db: 0
-            cluster_mode: false
-
-          auth:
-            token_expire_minutes: 30
-            hash_algorithm: HS256
-            min_password_length: 8
-
-          services:
-            project_manager:
-              name: project_manager
-              url: http://pm:8000
-              timeout: 30
-              retry_attempts: 3
-              retry_delay: 1
-            
-            developer:
-              name: developer
-              url: http://developer:8000
-              timeout: 30
-              retry_attempts: 3
-              retry_delay: 1
-            
-            ux_designer:
-              name: ux_designer
-              url: http://ux:8000
-              timeout: 30
-              retry_attempts: 3
-              retry_delay: 1
-            
-            tester:
-              name: tester
-              url: http://tester:8000
-              timeout: 30
-              retry_attempts: 3
-              retry_delay: 1
-            
-            code_review:
-              name: code_review
-              url: http://master:8000
-              timeout: 30
-              retry_attempts: 3
-              retry_delay: 1
-
-images:
-  - name: ai-dev-team/master
-    newName: ai-dev-team-master
-    newTag: dev
-  - name: ai-dev-team/pm
-    newName: ai-dev-team-pm
-    newTag: dev
-  - name: ai-dev-team/developer
-    newName: ai-dev-team-developer
-    newTag: dev
-  - name: ai-dev-team/ux
-    newName: ai-dev-team-ux
-    newTag: dev
-  - name: ai-dev-team/tester
-    newName: ai-dev-team-tester
-    newTag: dev 
+secretGenerator:
+- name: ai-dev-team-secrets
+  behavior: merge
+  files:
+  - secrets.yaml=secrets.yaml 

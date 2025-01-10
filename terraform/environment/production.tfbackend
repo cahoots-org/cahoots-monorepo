@@ -1,0 +1,5 @@
+bucket         = "ai-dev-team-terraform-state-prod"
+key            = "production/terraform.tfstate"
+region         = "us-west-2"
+dynamodb_table = "ai-dev-team-terraform-locks-prod"
+encrypt        = true 

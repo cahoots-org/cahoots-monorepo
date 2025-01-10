@@ -1,7 +1,8 @@
 """Data models for the application."""
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
+import uuid
 
 
 class BaseMessage(BaseModel):
@@ -66,40 +67,12 @@ class ServiceHealth(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Health check response."""
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "status": "healthy",
-                "environment": "production",
-                "version": "1.0.0",
-                "uptime_seconds": 3600,
-                "system_metrics": {
-                    "cpu_percent": 45.2,
-                    "memory_percent": 62.8,
-                    "disk_percent": 78.1,
-                    "open_file_descriptors": 128
-                },
-                "services": {
-                    "redis": {
-                        "status": "healthy",
-                        "latency_ms": 42.5,
-                        "last_check": "2024-02-20T12:00:00Z",
-                        "details": {}
-                    }
-                },
-                "redis_connected": True
-            }
-        }
-    )
-    
+    """Health check response model."""
     status: str
-    environment: str
-    version: str
-    uptime_seconds: int
-    system_metrics: SystemMetrics
-    services: Dict[str, ServiceHealth]
+    uptime: int
     redis_connected: bool
+    components: Dict[str, str]
+    services: Dict[str, Dict[str, Any]]
 
 
 class Project(BaseModel):
@@ -107,7 +80,6 @@ class Project(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "id": "project-123",
                 "name": "AI Chat Bot",
                 "description": "An AI-powered chat bot for customer service"
             }
@@ -116,7 +88,7 @@ class Project(BaseModel):
         str_max_length=100
     )
     
-    id: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
     description: str
     
@@ -131,25 +103,11 @@ class Project(BaseModel):
 
 class ProjectResponse(BaseModel):
     """Project response model."""
-    model_config = ConfigDict(
-        json_schema_extra={
-            "example": {
-                "id": "project-123",
-                "name": "AI Chat Bot",
-                "description": "An AI-powered chat bot for customer service",
-                "created_at": "2024-02-20T12:00:00Z",
-                "updated_at": "2024-02-20T12:00:00Z",
-                "status": "active"
-            }
-        }
-    )
-    
     id: str
     name: str
     description: str
-    created_at: datetime = datetime.utcnow
-    updated_at: datetime = datetime.utcnow
-    status: str = "active"
+    created_at: str
+    status: str
 
 
 class ProjectsResponse(BaseModel):

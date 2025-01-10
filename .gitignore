@@ -27,3 +27,5 @@ include/
 
 # Generated files
 workspace/
+
+.DS_Store

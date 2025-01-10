@@ -1,3 +1,4 @@
+"""Model utility for interacting with Together.xyz API."""
 from typing import Optional
 import os
 import requests
@@ -19,21 +20,25 @@ class Model:
         """
         self.model_name = model_name
         
-        # Get Together service config
-        together_service = config.services.get("together")
-        if not together_service or not together_service.api_key:
+        # Get config
+        if "together" not in config.services:
+            raise RuntimeError("Together service not configured")
+            
+        service_config = config.services["together"]
+        
+        # Set up API configuration
+        self.api_key = service_config.api_key
+        if not self.api_key:
             raise RuntimeError("Together API key not configured")
             
-        self.api_key = together_service.api_key
-        self.api_base = together_service.url + "/chat/completions"
+        self.api_base = f"{service_config.url}/chat/completions"
+        
+        # Set up headers
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-
-        # For test environments, use mock responses
-        self.is_test = os.getenv("ENV", "development") == "test"
-
+    
     async def generate_response(self, prompt: str) -> str:
         """Generate response from model.
         
@@ -41,66 +46,39 @@ class Model:
             prompt: Prompt to send to model
             
         Returns:
-            str: Generated response
+            Model response
             
         Raises:
-            HTTPError: If API request fails
+            RuntimeError: If API request fails
         """
-        # In test environment, return mock response
-        if self.is_test:
-            if "roadmap" in prompt.lower():
-                return json.dumps({
-                    "milestones": [
-                        {"id": "m1", "name": "Planning", "description": "Initial project planning phase"},
-                        {"id": "m2", "name": "Development", "description": "Core development phase"}
-                    ],
-                    "tasks": [
-                        {"id": "t1", "milestone": "m1", "name": "Requirements gathering", "description": "Collect and document requirements"},
-                        {"id": "t2", "milestone": "m1", "name": "Architecture design", "description": "Design system architecture"},
-                        {"id": "t3", "milestone": "m2", "name": "Core implementation", "description": "Implement core features"}
-                    ],
-                    "dependencies": [
-                        {"from": "t1", "to": "t2"},
-                        {"from": "t2", "to": "t3"}
-                    ],
-                    "estimates": {
-                        "t1": "3d",
-                        "t2": "5d",
-                        "t3": "10d"
-                    }
-                })
-            elif "test suite" in prompt.lower():
-                return """Title: Test Login Flow
-Description: Verify user can log in successfully
-Steps:
-1. Navigate to login page
-2. Enter valid credentials
-3. Click submit
-Expected Result: User is logged in and redirected to dashboard
----
-Title: Test Invalid Login
-Description: Verify error handling for invalid credentials
-Steps:
-1. Navigate to login page
-2. Enter invalid credentials
-3. Click submit
-Expected Result: Error message is displayed
----"""
-            return "Test response"
-
-        data = {
-            "model": self.model_name,
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.7,
-            "max_tokens": 1024
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(
-                self.api_base,
-                headers=self.headers,
-                json=data
-            )
-            await response.raise_for_status()
-            result = await response.json()
-            return result["choices"][0]["message"]["content"] 
+        try:
+            async with aiohttp.ClientSession() as session:
+                data = {
+                    "model": self.model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 1000,
+                    "temperature": 0.7,
+                    "top_p": 0.9
+                }
+                
+                async with session.post(
+                    self.api_base,
+                    headers=self.headers,
+                    json=data
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        raise RuntimeError(f"API request failed: {error_text}")
+                        
+                    response_data = await response.json()
+                    try:
+                        return response_data["choices"][0]["message"]["content"]
+                    except (KeyError, IndexError) as e:
+                        raise RuntimeError(f"Invalid API response: {str(e)}")
+                        
+        except aiohttp.ClientError as e:
+            raise RuntimeError(f"Failed to connect to API: {str(e)}")
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"Invalid API response: {str(e)}")
+        except Exception as e:
+            raise RuntimeError(f"Unexpected error: {str(e)}") 

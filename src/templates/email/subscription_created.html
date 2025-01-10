@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Welcome to {{ tier_name }} Plan - AI Dev Team{% endblock %}
+
+{% block header %}Welcome to AI Dev Team!{% endblock %}
+
+{% block content %}
+<h2>Welcome aboard, {{ organization_name }}!</h2>
+
+<p>Thank you for subscribing to our {{ tier_name }} plan. We're excited to have you on board!</p>
+
+<div class="info-box">
+    <h3>Subscription Details</h3>
+    <p><strong>Plan:</strong> {{ tier_name }}</p>
+    <p><strong>Amount:</strong> ${{ "%.2f"|format(amount) }}/month</p>
+    <p><strong>Next Billing Date:</strong> {{ next_billing_date }}</p>
+</div>
+
+<p>Here's what you can do next:</p>
+<ul>
+    <li>Set up your team members and roles</li>
+    <li>Configure your project settings</li>
+    <li>Explore our API documentation</li>
+    <li>Check out our getting started guide</li>
+</ul>
+
+<p>
+    <a href="{{ dashboard_url }}" class="button">Go to Dashboard</a>
+</p>
+
+<p>
+    Need help getting started? Our support team is here to help!
+    Just reply to this email or contact us at <a href="mailto:support@aidevteam.com">support@aidevteam.com</a>.
+</p>
+
+<p>
+    Best regards,<br>
+    The AI Dev Team
+</p>
+{% endblock %} 

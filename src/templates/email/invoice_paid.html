@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Received - Invoice {{ invoice_number }} - AI Dev Team{% endblock %}
+
+{% block header %}Payment Received{% endblock %}
+
+{% block content %}
+<h2>Thank You for Your Payment</h2>
+
+<p>Dear {{ organization_name }},</p>
+
+<p>We've received your payment for invoice {{ invoice_number }}. Thank you!</p>
+
+<div class="info-box">
+    <h3>Payment Details</h3>
+    <p><strong>Invoice Number:</strong> {{ invoice_number }}</p>
+    <p><strong>Amount Paid:</strong> ${{ "%.2f"|format(amount) }}</p>
+    <p><strong>Payment Date:</strong> {{ payment_date }}</p>
+</div>
+
+<p>
+    You can view and download your invoice from your billing dashboard:
+</p>
+
+<p>
+    <a href="{{ billing_url }}" class="button">View Invoice</a>
+</p>
+
+<p>
+    If you have any questions about this payment or your subscription,
+    please don't hesitate to contact our support team at
+    <a href="mailto:support@aidevteam.com">support@aidevteam.com</a>.
+</p>
+
+<p>
+    Best regards,<br>
+    The AI Dev Team
+</p>
+{% endblock %} 

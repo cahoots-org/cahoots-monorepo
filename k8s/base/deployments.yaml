@@ -1,0 +1,268 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-dev-team-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-dev-team-master
+  template:
+    metadata:
+      labels:
+        app: ai-dev-team-master
+    spec:
+      containers:
+      - name: master
+        image: ai-dev-team-master:latest
+        imagePullPolicy: Never
+        command: ["python", "-m", "src.api.main"]
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: ai-dev-team-config
+        - secretRef:
+            name: ai-dev-team-secrets
+        env:
+        - name: CONFIG_PATH
+          value: /app/config/default.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: health-check
+          mountPath: /health
+          readOnly: true
+        - name: default-config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: health-check
+        configMap:
+          name: ai-dev-team-health-check
+          defaultMode: 0755
+      - name: default-config
+        configMap:
+          name: ai-dev-team-default-config
+          defaultMode: 0644
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-dev-team-project-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-dev-team-project-manager
+  template:
+    metadata:
+      labels:
+        app: ai-dev-team-project-manager
+    spec:
+      containers:
+      - name: project-manager
+        image: ai-dev-team-project-manager:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: ai-dev-team-config
+        - secretRef:
+            name: ai-dev-team-secrets
+        env:
+        - name: AGENT_TYPE
+          value: project_manager
+        - name: CONFIG_PATH
+          value: /app/config/default.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: health-check
+          mountPath: /health
+          readOnly: true
+        - name: default-config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: health-check
+        configMap:
+          name: ai-dev-team-health-check
+          defaultMode: 0755
+      - name: default-config
+        configMap:
+          name: ai-dev-team-default-config
+          defaultMode: 0644
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-dev-team-developer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-dev-team-developer
+  template:
+    metadata:
+      labels:
+        app: ai-dev-team-developer
+    spec:
+      containers:
+      - name: developer
+        image: ai-dev-team-developer:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: ai-dev-team-config
+        - secretRef:
+            name: ai-dev-team-secrets
+        env:
+        - name: AGENT_TYPE
+          value: developer
+        - name: CONFIG_PATH
+          value: /app/config/default.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: health-check
+          mountPath: /health
+          readOnly: true
+        - name: default-config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: health-check
+        configMap:
+          name: ai-dev-team-health-check
+          defaultMode: 0755
+      - name: default-config
+        configMap:
+          name: ai-dev-team-default-config
+          defaultMode: 0644
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-dev-team-ux-designer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-dev-team-ux-designer
+  template:
+    metadata:
+      labels:
+        app: ai-dev-team-ux-designer
+    spec:
+      containers:
+      - name: ux-designer
+        image: ai-dev-team-ux-designer:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: ai-dev-team-config
+        - secretRef:
+            name: ai-dev-team-secrets
+        env:
+        - name: AGENT_TYPE
+          value: ux-designer
+        - name: CONFIG_PATH
+          value: /app/config/default.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: health-check
+          mountPath: /health
+          readOnly: true
+        - name: default-config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: health-check
+        configMap:
+          name: ai-dev-team-health-check
+          defaultMode: 0755
+      - name: default-config
+        configMap:
+          name: ai-dev-team-default-config
+          defaultMode: 0644
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-dev-team-tester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-dev-team-tester
+  template:
+    metadata:
+      labels:
+        app: ai-dev-team-tester
+    spec:
+      containers:
+      - name: tester
+        image: ai-dev-team-tester:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: ai-dev-team-config
+        - secretRef:
+            name: ai-dev-team-secrets
+        env:
+        - name: AGENT_TYPE
+          value: tester
+        - name: CONFIG_PATH
+          value: /app/config/default.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: health-check
+          mountPath: /health
+          readOnly: true
+        - name: default-config
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: health-check
+        configMap:
+          name: ai-dev-team-health-check
+          defaultMode: 0755
+      - name: default-config
+        configMap:
+          name: ai-dev-team-default-config
+          defaultMode: 0644 

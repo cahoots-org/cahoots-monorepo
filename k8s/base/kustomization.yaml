@@ -1,85 +1,24 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-resources:
-  - config.yaml
-  - secrets.yaml
-  - workload.yaml
-  - ingress.yaml
-  - knative.yaml
-  - redis.yaml
-  - network-policies.yaml
-  - monitoring.yaml
+namespace: ai-dev-team
 
 commonLabels:
   app.kubernetes.io/name: ai-dev-team
-  app.kubernetes.io/part-of: ai-dev-team
+  app.kubernetes.io/managed-by: kustomize
 
-commonAnnotations:
-  prometheus.io/scrape: "true"
-  prometheus.io/port: "8000"
-  prometheus.io/path: "/metrics"
+resources:
+- redis.yaml
+- configmap.yaml
+- services.yaml
+- deployments.yaml
+- health-check-configmap.yaml
 
 configMapGenerator:
-  - name: ai-dev-team-config
-    behavior: merge
-    files:
-      - default.yaml=config.yaml
-
-secretGenerator:
-  - name: ai-dev-team-secrets
-    behavior: merge
-    files:
-      - secrets.yaml
-
-images:
-  - name: ai-dev-team/master
-    newName: ai-dev-team/master
-    newTag: v1.0.0
-  - name: ai-dev-team/pm
-    newName: ai-dev-team/pm
-    newTag: v1.0.0
-  - name: ai-dev-team/developer
-    newName: ai-dev-team/developer
-    newTag: v1.0.0
-  - name: ai-dev-team/ux
-    newName: ai-dev-team/ux
-    newTag: v1.0.0
-  - name: ai-dev-team/tester
-    newName: ai-dev-team/tester
-    newTag: v1.0.0
-
-# Resource quotas to prevent resource exhaustion
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: ai-dev-team-quota
-spec:
-  hard:
-    requests.cpu: "8"
-    requests.memory: 16Gi
-    limits.cpu: "16"
-    limits.memory: 32Gi
-    pods: "20"
-
-# Pod security policy
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
-metadata:
-  name: ai-dev-team-psp
-spec:
-  privileged: false
-  seLinux:
-    rule: RunAsAny
-  runAsUser:
-    rule: MustRunAsNonRoot
-  fsGroup:
-    rule: MustRunAs
-    ranges:
-    - min: 1000
-      max: 65535
-  volumes:
-  - configMap
-  - secret
-  - emptyDir
-  - persistentVolumeClaim 
+- name: ai-dev-team-config
+  behavior: merge
+  literals:
+  - REDIS_HOST=ai-dev-team-redis
+  - REDIS_PORT=6379
+  - REDIS_DB=0
+  - LOG_LEVEL=DEBUG 

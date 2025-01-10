@@ -50,26 +50,14 @@ class ModelGenerationError(ModelError):
     """Raised when model generation fails."""
     pass
 
-class AgentError(AIDTException):
-    """Base class for agent-related errors."""
+class TestError(AIDTException):
+    """Base class for test-related errors."""
     pass
 
-class AgentInitializationError(AgentError):
-    """Raised when agent initialization fails."""
+class TestExecutionError(TestError):
+    """Raised when test execution fails."""
     pass
 
-class AgentCommunicationError(AgentError):
-    """Raised when agent communication fails."""
-    pass
-
-class StoryError(AIDTException):
-    """Base class for story-related errors."""
-    pass
-
-class StoryAssignmentError(StoryError):
-    """Raised when story assignment fails."""
-    pass
-
-class StoryValidationError(StoryError):
-    """Raised when story validation fails."""
+class TestTimeoutError(TestError):
+    """Raised when test execution times out."""
     pass 

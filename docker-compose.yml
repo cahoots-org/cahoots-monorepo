@@ -1,79 +1,35 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_dev_team
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   redis:
-    image: redis:latest
+    image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-  master:
-    build: .
-    command: python -m uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-    env_file: .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - LOG_LEVEL=debug
-    ports:
-      - "8000:8000"
-    depends_on:
-      - redis
-
-  pm:
-    build: .
-    env_file: .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=pm
-      - LOG_LEVEL=debug
-    depends_on:
-      - redis
-
-  developer-1:
-    build: .
-    env_file: .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=developer
-      - DEVELOPER_ID=developer_1
-      - LOG_LEVEL=debug
-    depends_on:
-      - redis
-
-  developer-2:
-    build: .
-    env_file: .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=developer
-      - DEVELOPER_ID=developer_2
-      - LOG_LEVEL=debug
-    depends_on:
-      - redis
-
-  ux-designer:
-    build: .
-    env_file: .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=ux
-      - DESIGNER_ID=ux_designer
-      - LOG_LEVEL=debug
-    depends_on:
-      - redis
-
-  tester:
-    build: .
-    env_file: .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=tester
-      - TESTER_ID=tester
-      - LOG_LEVEL=debug
-    depends_on:
-      - redis
+volumes:
+  postgres_data:
+  redis_data: 

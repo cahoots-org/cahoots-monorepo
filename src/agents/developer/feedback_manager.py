@@ -25,8 +25,13 @@ class FeedbackManager:
                      - content (the actual feedback)
                      - context (code or PR context)
                      - outcome (success/failure)
+                     - timestamp (optional)
         """
-        self.feedback_history.append(feedback)
+        # Preserve the existing timestamp or use current time as fallback
+        feedback_copy = feedback.copy()
+        if "timestamp" not in feedback_copy:
+            feedback_copy["timestamp"] = time.time()
+        self.feedback_history.append(feedback_copy)
         
     def get_relevant_feedback(self, context: str) -> List[Dict[str, Any]]:
         """Retrieve relevant feedback based on current context.
@@ -40,15 +45,22 @@ class FeedbackManager:
         # Generate embeddings for context and feedback entries
         context_embedding = self.agent.generate_embedding(context)
         
-        relevant_feedback = []
+        # Calculate similarity scores for all feedback
+        scored_feedback = []
         for entry in self.feedback_history:
             entry_embedding = self.agent.generate_embedding(entry["context"])
             similarity = self._calculate_similarity(context_embedding, entry_embedding)
+            self.logger.debug(f"Similarity with entry '{entry['context']}': {similarity}")
             
-            if similarity > 0.8:  # Threshold for relevance
-                relevant_feedback.append(entry)
+            if similarity > 0.8:  # Standard threshold for cosine similarity
+                scored_feedback.append((similarity, entry))
                 
-        return sorted(relevant_feedback, key=lambda x: x.get("timestamp", 0), reverse=True)[:5]
+        # Sort by similarity score (descending) and then by timestamp (descending)
+        return [entry for _, entry in sorted(
+            scored_feedback,
+            key=lambda x: (x[0], x[1].get("timestamp", 0)),
+            reverse=True
+        )][:5]
         
     def format_feedback_for_prompt(self, feedback: List[Dict[str, Any]]) -> str:
         """Format feedback history for inclusion in the prompt.

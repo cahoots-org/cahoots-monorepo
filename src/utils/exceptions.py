@@ -1,75 +1,253 @@
 """Custom exceptions for the application."""
+from typing import Dict, Any, Optional
 
-class BaseAppException(Exception):
-    """Base exception class for the application."""
-    def __init__(self, message: str, details: dict = None):
+class BaseError(Exception):
+    """Base class for all application exceptions."""
+    
+    def __init__(
+        self,
+        message: str,
+        code: str = "UNKNOWN_ERROR",
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the exception.
+        
+        Args:
+            message: Error message
+            code: Error code
+            details: Additional error details
+        """
+        super().__init__(message)
         self.message = message
+        self.code = code
         self.details = details or {}
-        super().__init__(self.message)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert the exception to a dictionary.
+        
+        Returns:
+            Dict containing error information
+        """
+        return {
+            "code": self.code,
+            "message": self.message,
+            "details": self.details
+        }
 
-class ExternalServiceException(BaseAppException):
+class ValidationError(BaseError):
+    """Raised when validation fails."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the validation error.
+        
+        Args:
+            message: Error message
+            details: Validation error details
+        """
+        super().__init__(
+            message=message,
+            code="VALIDATION_ERROR",
+            details=details
+        )
+
+class ConfigurationError(BaseError):
+    """Raised when there is a configuration error."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the configuration error.
+        
+        Args:
+            message: Error message
+            details: Configuration error details
+        """
+        super().__init__(
+            message=message,
+            code="CONFIGURATION_ERROR",
+            details=details
+        )
+
+class ExternalServiceException(Exception):
     """Exception raised when an external service call fails."""
-    def __init__(self, service: str, operation: str, error: str, details: dict = None):
+    
+    def __init__(self, service: str, operation: str, error: str) -> None:
+        """Initialize the exception.
+        
+        Args:
+            service: Name of the service that failed
+            operation: Name of the operation that failed
+            error: Error message
+        """
         self.service = service
         self.operation = operation
-        message = f"{service} service error during {operation}: {error}"
-        super().__init__(message, details)
+        self.error = error
+        super().__init__(f"{service} service error during {operation}: {error}")
 
-class ValidationException(BaseAppException):
-    """Exception raised when validation fails."""
-    pass
+class ConnectionError(BaseError):
+    """Raised when a connection fails."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the connection error.
+        
+        Args:
+            message: Error message
+            details: Connection error details
+        """
+        super().__init__(
+            message=message,
+            code="CONNECTION_ERROR",
+            details=details
+        )
 
-class ConfigurationException(BaseAppException):
-    """Exception raised when configuration is invalid."""
-    pass
+class ProcessingError(BaseError):
+    """Raised when processing fails."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the processing error.
+        
+        Args:
+            message: Error message
+            details: Processing error details
+        """
+        super().__init__(
+            message=message,
+            code="PROCESSING_ERROR",
+            details=details
+        )
 
-class AuthenticationException(BaseAppException):
-    """Exception raised when authentication fails."""
-    pass
+class AuthenticationError(BaseError):
+    """Raised when authentication fails."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the authentication error.
+        
+        Args:
+            message: Error message
+            details: Authentication error details
+        """
+        super().__init__(
+            message=message,
+            code="AUTHENTICATION_ERROR",
+            details=details
+        )
 
-class AuthorizationException(BaseAppException):
-    """Exception raised when authorization fails."""
-    pass
+class AuthorizationError(BaseError):
+    """Raised when authorization fails."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the authorization error.
+        
+        Args:
+            message: Error message
+            details: Authorization error details
+        """
+        super().__init__(
+            message=message,
+            code="AUTHORIZATION_ERROR",
+            details=details
+        )
 
-class RateLimitException(BaseAppException):
-    """Exception raised when rate limit is exceeded."""
-    pass
+class ResourceNotFoundError(BaseError):
+    """Raised when a requested resource is not found."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the resource not found error.
+        
+        Args:
+            message: Error message
+            details: Resource not found error details
+        """
+        super().__init__(
+            message=message,
+            code="RESOURCE_NOT_FOUND",
+            details=details
+        )
 
-class ResourceNotFoundException(BaseAppException):
-    """Exception raised when a requested resource is not found."""
-    pass
+class ResourceExistsError(BaseError):
+    """Raised when attempting to create a resource that already exists."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the resource exists error.
+        
+        Args:
+            message: Error message
+            details: Resource exists error details
+        """
+        super().__init__(
+            message=message,
+            code="RESOURCE_EXISTS",
+            details=details
+        )
 
-class DuplicateResourceException(BaseAppException):
-    """Exception raised when attempting to create a duplicate resource."""
-    pass
+class TimeoutError(BaseError):
+    """Raised when an operation times out."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the timeout error.
+        
+        Args:
+            message: Error message
+            details: Timeout error details
+        """
+        super().__init__(
+            message=message,
+            code="TIMEOUT_ERROR",
+            details=details
+        )
 
-class InvalidStateException(BaseAppException):
-    """Exception raised when an operation is invalid for the current state."""
-    pass
-
-class PayloadTooLargeException(BaseAppException):
-    """Exception raised when request payload exceeds size limit."""
-    def __init__(self, max_size: int, actual_size: int):
-        message = f"Payload size {actual_size} bytes exceeds maximum of {max_size} bytes"
-        details = {
-            "max_size": max_size,
-            "actual_size": actual_size
-        }
-        super().__init__(message, details)
-
-class ServiceUnavailableException(BaseAppException):
-    """Exception raised when a service is temporarily unavailable."""
-    def __init__(self, service_name: str = "Unknown", details: dict = None):
-        message = f"Service {service_name} is temporarily unavailable"
-        super().__init__(message, details)
-
-class RateLimitExceededException(BaseAppException):
-    """Exception raised when API rate limit is exceeded."""
-    def __init__(self, limit: int, window: int, retry_after: int = None):
-        message = f"Rate limit of {limit} requests per {window} seconds exceeded"
-        details = {
-            "limit": limit,
-            "window": window,
-            "retry_after": retry_after
-        }
-        super().__init__(message, details) 
+class DependencyError(BaseError):
+    """Raised when a required dependency is missing or invalid."""
+    
+    def __init__(
+        self,
+        message: str,
+        dependency_name: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """Initialize the dependency error.
+        
+        Args:
+            message: Error message
+            dependency_name: Name of the missing/invalid dependency
+            details: Additional error details
+        """
+        super().__init__(
+            message=message,
+            code="DEPENDENCY_ERROR",
+            details={"dependency": dependency_name, **(details or {})}
+        ) 

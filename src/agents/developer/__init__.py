@@ -1,5 +1,6 @@
 """Developer agent that implements code based on tasks."""
 from typing import List, Dict, Any, Optional
+import re
 
 from ..base_agent import BaseAgent
 from ...models.task import Task
@@ -16,7 +17,7 @@ from .pr_manager import PRManager
 class Developer(BaseAgent):
     """Developer agent that implements code based on tasks."""
     
-    def __init__(self, developer_id: str, start_listening: bool = True, focus: str = "backend", event_system: Optional[EventSystem] = None):
+    def __init__(self, developer_id: str, start_listening: bool = True, focus: str = "backend", event_system: Optional[EventSystem] = None, github_service: Optional[GitHubService] = None, github_config: Optional[Any] = None):
         """Initialize the developer agent.
         
         Args:
@@ -24,11 +25,13 @@ class Developer(BaseAgent):
             start_listening: Whether to start listening for events immediately
             focus: The developer's focus area ("frontend" or "backend")
             event_system: Optional event system instance. If not provided, will get from singleton.
+            github_service: Optional GitHub service instance for testing
+            github_config: Optional GitHub config for testing
         """
         # Initialize base class with start_listening=False to prevent double initialization
         super().__init__("gpt-4-1106-preview", start_listening=False, event_system=event_system)
         
-        self.github = GitHubService()
+        self.github = github_service or GitHubService(github_config)
         self.developer_id = developer_id
         self.logger = BaseLogger(self.__class__.__name__)
         self.focus = focus
@@ -66,10 +69,13 @@ class Developer(BaseAgent):
 
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
+        # Ensure event system is connected and base handlers are registered
         await super().setup_events()
-        await self.event_system.subscribe("task_assigned", self._handle_message)
-        await self.event_system.subscribe("story_assigned", self._handle_message)
-        await self.event_system.subscribe("review_requested", self._handle_message)
+        
+        # Register developer-specific handlers
+        await self.event_handler.register_handler("task_assigned", self._handle_message)
+        await self.event_handler.register_handler("story_assigned", self._handle_message)
+        await self.event_handler.register_handler("review_requested", self._handle_message)
         
     async def stop_listening(self) -> None:
         """Stop listening for events and cleanup all tasks."""
@@ -103,9 +109,49 @@ class Developer(BaseAgent):
         Returns:
             bool: True if any task needs UX design, False otherwise
         """
+        ux_keywords = {
+            'ui', 'ux', 'user interface', 'user experience', 'design', 'layout',
+            'wireframe', 'mockup', 'prototype', 'frontend', 'front-end', 'front end',
+            'usability', 'accessibility', 'a11y', 'responsive', 'mobile', 'desktop',
+            'interaction', 'animation', 'transition', 'style', 'css', 'sass', 'less',
+            'theme', 'component', 'widget', 'modal', 'dialog', 'form', 'input',
+            'button', 'menu', 'navigation', 'nav', 'header', 'footer', 'sidebar'
+        }
+        
         for task in tasks:
-            if "ui" in task.title.lower() or "ux" in task.title.lower():
+            # Check title and description
+            text = f"{task.title.lower()} {task.description.lower()}"
+            
+            # Check for UX keywords
+            if any(keyword in text for keyword in ux_keywords):
                 return True
+                
+            # Check metadata
+            if task.metadata:
+                # Check required skills
+                if 'required_skills' in task.metadata:
+                    skills = [s.lower() for s in task.metadata['required_skills']]
+                    if any(skill in ux_keywords for skill in skills):
+                        return True
+                
+                # Check task type
+                if 'type' in task.metadata:
+                    task_type = task.metadata['type'].lower()
+                    if task_type in {'ui', 'ux', 'design', 'frontend'}:
+                        return True
+                        
+                # Check task tags
+                if 'tags' in task.metadata:
+                    tags = [t.lower() for t in task.metadata['tags']]
+                    if any(tag in ux_keywords for tag in tags):
+                        return True
+                        
+                # Check task category
+                if 'category' in task.metadata:
+                    category = task.metadata['category'].lower()
+                    if category in {'ui', 'ux', 'design', 'frontend'}:
+                        return True
+        
         return False
         
     def _get_relevant_feedback(self, context: str) -> List[Dict[str, Any]]:
@@ -417,18 +463,95 @@ class Developer(BaseAgent):
         """Handle code review request.
         
         Args:
-            message: Review request message
-            
+            message: Review request message containing:
+                - pr_url: URL of the pull request
+                - repo_name: Name of the repository
+                - branch: Branch name
+                - files: List of files changed
+                
         Returns:
-            Dict[str, Any]: Review results
+            Dict[str, Any]: Review results containing:
+                - status: Review status (success/error)
+                - approved: Whether the changes are approved
+                - comments: List of review comments
+                - suggestions: List of code suggestions
         """
         try:
-            # TODO: Implement code review logic
+            self.logger.info(f"Reviewing PR: {message['pr_url']}")
+            
+            # Extract PR number from URL
+            pr_number = await self.github.get_pull_request_number(message['pr_url'])
+            
+            # Get PR details
+            pr_details = await self.github.get_pull_request(pr_number)
+            changed_files = pr_details['changed_files']
+            
+            review_comments = []
+            suggestions = []
+            critical_issues = []
+            
+            # Review each changed file
+            for file_path in changed_files:
+                file_content = await self.github.get_file_content(file_path, pr_details['head'])
+                
+                # Skip if file is deleted
+                if file_content is None:
+                    continue
+                
+                # 1. Code Quality Checks
+                quality_issues = await self._check_code_quality(file_path, file_content)
+                review_comments.extend(quality_issues)
+                
+                # 2. Test Coverage Analysis
+                if file_path.endswith('.py') and not file_path.startswith('tests/'):
+                    test_issues = await self._check_test_coverage(file_path, file_content)
+                    review_comments.extend(test_issues)
+                
+                # 3. Security Analysis
+                security_issues = await self._check_security(file_path, file_content)
+                if security_issues:
+                    critical_issues.extend(security_issues)
+                    review_comments.extend(security_issues)
+                
+                # 4. Performance Review
+                perf_issues = await self._check_performance(file_path, file_content)
+                review_comments.extend(perf_issues)
+                
+                # 5. Documentation Check
+                doc_issues = await self._check_documentation(file_path, file_content)
+                review_comments.extend(doc_issues)
+                
+                # 6. Generate Improvement Suggestions
+                file_suggestions = await self._generate_suggestions(file_path, file_content)
+                suggestions.extend(file_suggestions)
+            
+            # Determine approval status
+            approved = len(critical_issues) == 0 and len(review_comments) <= 5
+            
+            # Format review message
+            review_message = self._format_review_message(
+                review_comments,
+                suggestions,
+                critical_issues,
+                approved
+            )
+            
+            # Post review comments
+            await self.github.post_review_comments(
+                pr_number,
+                review_comments,
+                approved,
+                review_message
+            )
+            
             return {
                 "status": "success",
-                "approved": True,
-                "comments": []
+                "approved": approved,
+                "comments": review_comments,
+                "suggestions": suggestions,
+                "critical_issues": critical_issues
             }
+            
         except Exception as e:
             self.logger.error(f"Failed to handle review request: {str(e)}")
             return {
@@ -436,6 +559,248 @@ class Developer(BaseAgent):
                 "message": str(e)
             }
             
+    async def _check_code_quality(self, file_path: str, content: str) -> List[Dict[str, Any]]:
+        """Check code quality using static analysis."""
+        issues = []
+        
+        # Run static analysis
+        try:
+            # Use ruff for linting
+            result = await self.code_validator.run_linter(content)
+            
+            for issue in result:
+                issues.append({
+                    "type": "style",
+                    "file": file_path,
+                    "line": issue["line"],
+                    "message": issue["message"],
+                    "severity": "low"
+                })
+                
+            # Check complexity
+            complexity = await self.code_validator.check_complexity(content)
+            if complexity > 10:  # McCabe complexity threshold
+                issues.append({
+                    "type": "complexity",
+                    "file": file_path,
+                    "message": f"Function complexity of {complexity} exceeds threshold of 10",
+                    "severity": "medium"
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"Code quality check failed for {file_path}: {str(e)}")
+            
+        return issues
+        
+    async def _check_test_coverage(self, file_path: str, content: str) -> List[Dict[str, Any]]:
+        """Analyze test coverage for the changed code."""
+        issues = []
+        
+        try:
+            # Get corresponding test file
+            test_file = f"tests/{file_path.replace('src/', '')}"
+            test_file = test_file.replace('.py', '_test.py')
+            
+            # Check if test file exists
+            if not await self.github.file_exists(test_file):
+                issues.append({
+                    "type": "test",
+                    "file": file_path,
+                    "message": "No corresponding test file found",
+                    "severity": "high"
+                })
+                return issues
+                
+            # Analyze test coverage
+            coverage = await self.code_validator.check_test_coverage(content)
+            if coverage < 80:
+                issues.append({
+                    "type": "test",
+                    "file": file_path,
+                    "message": f"Test coverage of {coverage}% is below required 80%",
+                    "severity": "medium"
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"Test coverage check failed for {file_path}: {str(e)}")
+            
+        return issues
+        
+    async def _check_security(self, file_path: str, content: str) -> List[Dict[str, Any]]:
+        """Check for security issues in the code."""
+        issues = []
+        
+        try:
+            # Run security checks using bandit
+            security_issues = await self.code_validator.run_security_check(content)
+            
+            for issue in security_issues:
+                issues.append({
+                    "type": "security",
+                    "file": file_path,
+                    "line": issue["line"],
+                    "message": issue["message"],
+                    "severity": "high"
+                })
+                
+            # Check for hardcoded secrets
+            if re.search(r'(password|secret|key|token).*=.*[\'"][^\'"]+[\'"]', content, re.I):
+                issues.append({
+                    "type": "security",
+                    "file": file_path,
+                    "message": "Possible hardcoded secret detected",
+                    "severity": "critical"
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"Security check failed for {file_path}: {str(e)}")
+            
+        return issues
+        
+    async def _check_performance(self, file_path: str, content: str) -> List[Dict[str, Any]]:
+        """Analyze code for performance issues."""
+        issues = []
+        
+        try:
+            # Run comprehensive performance analysis
+            perf_results = await self.code_validator.analyze_performance(content)
+            
+            # Add complexity issues
+            for metric in perf_results.get("complexity_metrics", {}).get("time_complexity", []):
+                if "O(n^2)" in metric["complexity"] or "O(n^3)" in metric["complexity"]:
+                    issues.append({
+                        "type": "performance",
+                        "file": file_path,
+                        "message": f"High time complexity in {metric['node']}: {metric['complexity']}",
+                        "severity": "high"
+                    })
+                    
+            # Add memory issues
+            for alloc in perf_results.get("memory_usage", {}).get("large_allocations", []):
+                issues.append({
+                    "type": "performance",
+                    "file": file_path,
+                    "message": f"Large memory allocation: {alloc['suggestion']}",
+                    "severity": "medium"
+                })
+                
+            # Add bottleneck warnings
+            for bottleneck in perf_results.get("bottlenecks", []):
+                issues.append({
+                    "type": "performance",
+                    "file": file_path,
+                    "message": f"{bottleneck['description']}: {bottleneck['suggestion']}",
+                    "severity": bottleneck["severity"]
+                })
+                
+            # Add optimization suggestions
+            for suggestion in perf_results.get("optimization_suggestions", []):
+                issues.append({
+                    "type": "performance",
+                    "file": file_path,
+                    "message": f"{suggestion['description']} in {suggestion['target']}",
+                    "severity": "low",
+                    "example": suggestion.get("example", "")
+                })
+                
+        except Exception as e:
+            self.logger.warning(f"Performance check failed for {file_path}: {str(e)}")
+            
+        return issues
+        
+    async def _check_documentation(self, file_path: str, content: str) -> List[Dict[str, Any]]:
+        """Check for proper documentation."""
+        issues = []
+        
+        try:
+            # Check for module docstring
+            if not re.search(r'""".*?"""', content, re.DOTALL):
+                issues.append({
+                    "type": "documentation",
+                    "file": file_path,
+                    "message": "Missing module docstring",
+                    "severity": "low"
+                })
+                
+            # Check function docstrings
+            functions = re.finditer(r'def\s+(\w+)\s*\([^)]*\):', content)
+            for func in functions:
+                func_name = func.group(1)
+                if not re.search(rf'def\s+{func_name}\s*\([^)]*\):\s*"""', content):
+                    issues.append({
+                        "type": "documentation",
+                        "file": file_path,
+                        "message": f"Missing docstring for function {func_name}",
+                        "severity": "low"
+                    })
+                    
+        except Exception as e:
+            self.logger.warning(f"Documentation check failed for {file_path}: {str(e)}")
+            
+        return issues
+        
+    async def _generate_suggestions(self, file_path: str, content: str) -> List[Dict[str, Any]]:
+        """Generate improvement suggestions for the code."""
+        suggestions = []
+        
+        try:
+            # Analyze code patterns
+            patterns = await self.code_validator.analyze_patterns(content)
+            
+            # Generate suggestions based on patterns
+            for pattern in patterns:
+                if pattern["type"] == "refactoring":
+                    suggestions.append({
+                        "type": "suggestion",
+                        "file": file_path,
+                        "message": f"Consider refactoring: {pattern['message']}",
+                        "example": pattern.get("example", "")
+                    })
+                    
+        except Exception as e:
+            self.logger.warning(f"Failed to generate suggestions for {file_path}: {str(e)}")
+            
+        return suggestions
+        
+    def _format_review_message(
+        self,
+        comments: List[Dict[str, Any]],
+        suggestions: List[Dict[str, Any]],
+        critical_issues: List[Dict[str, Any]],
+        approved: bool
+    ) -> str:
+        """Format the review message with all findings."""
+        message_parts = []
+        
+        if approved:
+            message_parts.append("## ✅ Review Passed\n")
+        else:
+            message_parts.append("## ❌ Changes Requested\n")
+        
+        if critical_issues:
+            message_parts.append("\n### 🚨 Critical Issues\n")
+            for issue in critical_issues:
+                message_parts.append(f"- [{issue['file']}] {issue['message']}")
+        
+        if comments:
+            message_parts.append("\n### 💭 Review Comments\n")
+            for comment in comments:
+                severity_icon = {
+                    "high": "🔴",
+                    "medium": "🟡",
+                    "low": "🟢"
+                }.get(comment["severity"], "ℹ️")
+                message_parts.append(f"- {severity_icon} [{comment['file']}] {comment['message']}")
+        
+        if suggestions:
+            message_parts.append("\n### 💡 Suggestions\n")
+            for suggestion in suggestions:
+                message_parts.append(f"- {suggestion['message']}")
+                if suggestion.get("example"):
+                    message_parts.append(f"  ```python\n  {suggestion['example']}\n  ```")
+        
+        return "\n".join(message_parts)
+        
     async def handle_system_message(self, message: Dict[str, Any]) -> None:
         """Handle system messages.
         

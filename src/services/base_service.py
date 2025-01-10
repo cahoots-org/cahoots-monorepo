@@ -1,5 +1,6 @@
 import asyncio
 import httpx
+import random
 from typing import Any, Dict, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel, ConfigDict
@@ -77,6 +78,7 @@ class BaseService:
         self.logger = Logger(f"Service-{config.name}")
         self.circuit_breaker = CircuitBreakerState()
         self._client: Optional[httpx.AsyncClient] = None
+        self.logger.info(f"Initializing BaseService with config: {config}")
 
     async def get_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client"""
@@ -85,6 +87,7 @@ class BaseService:
                 timeout=self.config.timeout,
                 verify=True  # Enable SSL verification
             )
+        self.logger.info("Creating or retrieving HTTP client")
         return self._client
 
     async def close(self):
@@ -92,6 +95,25 @@ class BaseService:
         if self._client:
             await self._client.aclose()
             self._client = None
+
+    def _calculate_retry_delay(self, retry_count: int) -> float:
+        """Calculate retry delay with exponential backoff and jitter.
+        
+        Args:
+            retry_count: Current retry attempt number
+            
+        Returns:
+            float: Delay in seconds
+        """
+        # Base delay with exponential backoff
+        base_delay = self.config.retry_delay * (2 ** retry_count)
+        
+        # Add jitter (±25% of base delay)
+        jitter = base_delay * 0.25
+        actual_delay = base_delay + random.uniform(-jitter, jitter)
+        
+        # Cap at 30 seconds
+        return min(actual_delay, 30.0)
 
     @track_time(SERVICE_REQUEST_TIME, {'service': 'config.name', 'method': 'method'})
     async def _make_request(
@@ -115,10 +137,14 @@ class BaseService:
         retry_count = 0
         last_error = None
 
+        self.logger.info(f"Entering _make_request with method: {method}, endpoint: {endpoint}, headers: {headers}")
+
         while retry_count <= self.config.retry_attempts:
             try:
                 if retry_count > 0:
-                    await asyncio.sleep(self.config.retry_delay * (2 ** (retry_count - 1)))
+                    delay = self._calculate_retry_delay(retry_count - 1)
+                    self.logger.info(f"Retrying request after {delay:.2f}s delay (attempt {retry_count})")
+                    await asyncio.sleep(delay)
 
                 SERVICE_REQUEST_COUNTER.labels(
                     service=self.config.name,

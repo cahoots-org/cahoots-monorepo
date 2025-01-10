@@ -1,211 +1,112 @@
-# Kubernetes Configuration
+# Kubernetes Deployment Guide
 
-This directory contains the Kubernetes configuration for the AI Dev Team project. The setup uses Kustomize for environment-specific configuration management.
+This directory contains the Kubernetes configuration for deploying the AI Development Team microservices.
 
-## Directory Structure
+## Structure
 
 ```
 k8s/
-├── base/                   # Base configuration
-│   ├── config.yaml        # ConfigMap with default settings
-│   ├── secrets.yaml       # Secret templates
-│   ├── workload.yaml      # Deployment and Service
-│   ├── ingress.yaml       # Ingress configuration
-│   └── kustomization.yaml # Base kustomization
-└── overlays/              # Environment-specific overlays
-    ├── production/
-    │   └── kustomization.yaml  # Production settings
-    └── development/
-        └── kustomization.yaml  # Development settings
+├── base/                   # Base Kubernetes configuration
+│   ├── configmap.yaml     # Common environment variables
+│   ├── deployments.yaml   # Service deployments
+│   ├── kustomization.yaml # Base kustomization
+│   ├── redis.yaml         # Redis deployment
+│   ├── scripts/           # Utility scripts
+│   ├── secret.yaml        # Secret configuration
+│   └── services.yaml      # Service definitions
+└── overlays/              # Environment-specific configurations
+    └── development/       # Development environment
+        ├── kustomization.yaml
+        └── patches/       # Environment-specific patches
+            └── configmap.yaml
+
 ```
 
-## Configuration Management
+## Prerequisites
 
-The configuration is split into:
-- Base configuration (common across all environments)
-- Environment-specific overlays (development, production)
-- Secrets management
+1. Kubernetes cluster (local or remote)
+2. kubectl installed and configured
+3. Docker installed
+4. Environment variables set:
+   - `GITHUB_API_KEY`: GitHub API token
+   - `TOGETHER_API_KEY`: Together AI API key
 
-### Base Configuration
+## Local Development
 
-The base configuration defines:
-- Core deployment settings
-- Service configuration
-- Ingress rules
-- Default resource limits
-- Common labels and annotations
+1. Create a `.env` file in the project root:
+   ```
+   GITHUB_API_KEY=your_github_token
+   TOGETHER_API_KEY=your_together_token
+   ```
 
-### Environment Overlays
-
-Environment-specific settings are managed through Kustomize overlays:
-
-**Development:**
-- Single replica
-- Lower resource limits
-- Debug mode enabled
-- Development namespace
-
-**Production:**
-- Multiple replicas
-- Higher resource limits
-- Production-grade settings
-- Production namespace
-
-## Deployment
-
-### Prerequisites
-
-1. Kubernetes cluster access
-2. `kubectl` installed and configured
-3. Required secrets:
-   - `REDIS_PASSWORD`
-   - `JWT_SECRET_KEY`
-   - `GITHUB_API_KEY`
-   - `TRELLO_API_KEY`
-   - `TRELLO_API_SECRET`
-   - TLS certificates
-
-### Setting up Secrets
-
-1. Create a secrets file from the template:
+2. Run the deployment script:
    ```bash
-   cp k8s/base/secrets.yaml k8s/base/secrets.local.yaml
+   ./scripts/run_local.sh
    ```
 
-2. Replace the placeholders with actual values:
-   ```yaml
-   redis:
-     password: "your-redis-password"
-   auth:
-     secret_key: "your-jwt-secret"
-   external:
-     github_api_key: "your-github-key"
-     trello_api_key: "your-trello-key"
-     trello_api_secret: "your-trello-secret"
-   ```
+   This will:
+   - Build Docker images for all services
+   - Apply Kubernetes configurations
+   - Deploy all services
+   - Set up Redis
+   - Configure health checks
 
-3. Create TLS secrets:
-   ```bash
-   kubectl create secret tls ai-dev-team-tls \
-     --cert=path/to/tls.crt \
-     --key=path/to/tls.key \
-     -n ai-dev-team-prod
-   ```
-
-### Deployment Commands
-
-**Development:**
-```bash
-# Create namespace
-kubectl create namespace ai-dev-team-dev
-
-# Apply configuration
-kubectl apply -k k8s/overlays/development
-```
-
-**Production:**
-```bash
-# Create namespace
-kubectl create namespace ai-dev-team-prod
-
-# Apply configuration
-kubectl apply -k k8s/overlays/production
-```
-
-### Verification
-
-Check deployment status:
-```bash
-# List all resources
-kubectl get all -n ai-dev-team-dev  # or ai-dev-team-prod
-
-# Check pod logs
-kubectl logs -f deployment/ai-dev-team -n ai-dev-team-dev
-
-# Check pod health
-kubectl describe pod -l app=ai-dev-team -n ai-dev-team-dev
-```
+3. Access the services:
+   - Main API: http://localhost:80
+   - Individual services: http://localhost:8000 (through port-forwarding)
 
 ## Monitoring
 
-The deployment includes:
-- Prometheus metrics endpoint at `/metrics`
-- Health checks at `/health`
-- Resource monitoring through Kubernetes
+1. View service logs:
+   ```bash
+   kubectl logs -f deployment/ai-dev-team-master -n ai-dev-team
+   ```
 
-## Resource Management
+2. Check pod status:
+   ```bash
+   kubectl get pods -n ai-dev-team
+   ```
 
-### Development Resources
-- CPU Request: 250m
-- Memory Request: 256Mi
-- CPU Limit: 1000m
-- Memory Limit: 1Gi
+3. Access Kubernetes dashboard:
+   ```bash
+   kubectl proxy
+   ```
 
-### Production Resources
-- CPU Request: 1000m
-- Memory Request: 1Gi
-- CPU Limit: 4000m
-- Memory Limit: 4Gi
+## Configuration
 
-## Security
+1. Base Configuration (`base/`):
+   - Common settings for all environments
+   - Service definitions
+   - Resource limits
+   - Health checks
 
-The configuration includes:
-- TLS encryption
-- Secret management
-- Resource isolation
-- Network policies
-- ReadOnly filesystem mounts
+2. Development Configuration (`overlays/development/`):
+   - Development-specific settings
+   - Environment variables
+   - Service overrides
 
 ## Troubleshooting
 
-Common issues and solutions:
-
-1. **Pod won't start:**
+1. If pods are in `CrashLoopBackOff`:
    ```bash
-   kubectl describe pod <pod-name> -n ai-dev-team-dev
+   kubectl describe pod <pod-name> -n ai-dev-team
+   kubectl logs <pod-name> -n ai-dev-team
    ```
 
-2. **Configuration issues:**
+2. Check ConfigMaps and Secrets:
    ```bash
-   kubectl get configmap ai-dev-team-config -n ai-dev-team-dev -o yaml
+   kubectl get configmap -n ai-dev-team
+   kubectl get secret -n ai-dev-team
    ```
 
-3. **Network issues:**
+3. Verify environment variables:
    ```bash
-   kubectl get ingress -n ai-dev-team-dev
-   kubectl describe ingress ai-dev-team -n ai-dev-team-dev
+   kubectl exec <pod-name> -n ai-dev-team -- env
    ```
 
-4. **Resource constraints:**
+4. Reset deployment:
    ```bash
-   kubectl top pod -n ai-dev-team-dev
-   ```
-
-## Maintenance
-
-### Updating Configuration
-
-1. Modify the appropriate files in `base/` or `overlays/`
-2. Test changes in development:
-   ```bash
-   kubectl diff -k k8s/overlays/development
-   ```
-3. Apply changes:
-   ```bash
-   kubectl apply -k k8s/overlays/development
-   ```
-
-### Rolling Updates
-
-The deployment is configured for zero-downtime updates:
-```bash
-kubectl set image deployment/ai-dev-team \
-  ai-dev-team=ai-dev-team:new-tag -n ai-dev-team-prod
-```
-
-### Rollbacks
-
-If needed, rollback to a previous version:
-```bash
-kubectl rollout undo deployment/ai-dev-team -n ai-dev-team-prod
-``` 
+   kubectl delete deployment --all -n ai-dev-team
+   kubectl delete pod --all -n ai-dev-team
+   ./scripts/run_local.sh
+   ``` 

@@ -25,44 +25,29 @@ class ProjectMessage(TypedDict):
     requirements: List[str]
 
 class ProjectManager(BaseAgent):
-    def __init__(
-        self, 
-        model_name: str = "codellama/CodeLlama-7b-instruct-hf",
-        trello_key: Optional[str] = None,
-        trello_token: Optional[str] = None,
-        event_system: Optional[EventSystem] = None, 
-        start_listening: bool = True
-    ):
+    """Project Manager agent responsible for coordinating development activities."""
+
+    def __init__(self,
+                 event_system: Optional[EventSystem] = None,
+                 start_listening: bool = True,
+                 github_service: Optional[GitHubService] = None,
+                 github_config: Optional[Any] = None):
         """Initialize the project manager agent.
-        
+
         Args:
-            model_name: Name of the model to use
-            trello_key: Optional Trello API key
-            trello_token: Optional Trello API token
             event_system: Optional event system instance. If not provided, will get from singleton.
             start_listening: Whether to start listening for events immediately
+            github_service: Optional GitHub service instance for testing
+            github_config: Optional GitHub config for testing
         """
-        try:
-            # Initialize base class first to set up task manager and event system
-            super().__init__(model_name=model_name, 
-                           start_listening=start_listening, 
-                           event_system=event_system)
-            
-            # Initialize services without requiring API keys yet
-            self.logger.debug("Initializing GitHub service")
-            self.github = GitHubService()
-            self.logger.debug("GitHub service initialized")
-            
-            self.logger.debug("Initializing task management service")
-            self.task_management = TrelloTaskManagementService()
-            self.logger.debug("Task management service initialized")
-            
-            self.logger.info("Project Manager initialized successfully")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize Project Manager: {str(e)}")
-            self.logger.error("Stack trace:", exc_info=True)
-            raise
-            
+        # Initialize base class first to set up task manager and event system
+        super().__init__(model_name="gpt-4-1106-preview", start_listening=start_listening, event_system=event_system)
+
+        # Set up project manager-specific attributes
+        self.github = github_service or GitHubService(github_config)
+        self.logger = BaseLogger(self.__class__.__name__)
+        self.logger.info("Project Manager initialized successfully")
+
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
         try:
@@ -78,6 +63,39 @@ class ProjectManager(BaseAgent):
         except Exception as e:
             self.logger.error(f"Failed to setup event system: {str(e)}")
             self.logger.error("Stack trace:", exc_info=True)
+            raise
+            
+    async def handle_system_message(self, message: SystemMessage) -> None:
+        """Handle system messages."""
+        try:
+            if message.command == "project_created":
+                # Create board and list for new project
+                board = await self.task_management.create_board(
+                    name=message.payload["name"],
+                    description=message.payload["description"]
+                )
+                self._board_id = board["id"]
+                
+                list_obj = await self.task_management.create_list(
+                    board_id=self._board_id,
+                    name="Backlog"
+                )
+                self._list_id = list_obj["id"]
+                
+            elif message.command == "story_created":
+                # Create card for new story
+                if not self._list_id:
+                    raise RuntimeError("No list ID available")
+                    
+                await self.task_management.create_card(
+                    list_id=self._list_id,
+                    name=message.payload["title"],
+                    description=message.payload["description"],
+                    position=message.payload["priority"]
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Error handling system message: {str(e)}")
             raise
         
     async def _handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
@@ -269,35 +287,40 @@ class ProjectManager(BaseAgent):
             }
         )
     
-    async def handle_system_message(self, message: SystemMessage) -> None:
-        """Handle system messages."""
+    async def handle_story_assigned(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle story assignment event.
+        
+        Args:
+            data: Story assignment data
+            
+        Returns:
+            Dict[str, Any]: Response indicating success or failure
+        """
         try:
-            if message.command == "project_created":
-                # Support both name and title fields for project name
-                project_name = message.payload.get("name") or message.payload.get("title")
-                if not project_name:
-                    raise ValueError("Project name not provided in payload")
-                
-                board = await self.task_management.create_board(
-                    name=project_name,
-                    description=message.payload["description"]
-                )
-                await self.task_management.create_list(
-                    board_id=board["id"],
-                    name="Backlog"
-                )
-            elif message.command == "story_created":
-                await self.task_management.create_card(
-                    list_id="list123",
-                    name=message.payload["title"],
-                    description=message.payload["description"],
-                    position=message.payload.get("priority", 1)
-                )
-            elif message.command == "invalid_command":
-                self.logger.warning("Received unknown system command: invalid_command")
+            story_id = data["story_id"]
+            title = data["title"]
+            description = data["description"]
+            assigned_to = data["assigned_to"]
+            
+            self.logger.info(f"Story {story_id} assigned to {assigned_to}")
+            
+            # Update story status in task management system
+            await self.task_management.create_card(
+                title,
+                description,
+                story_id,
+                "In Progress"
+            )
+            
+            return create_success_response()
+        except KeyError as e:
+            error_msg = f"Missing required field: {str(e)}"
+            self.logger.error(error_msg)
+            return create_error_response(error_msg)
         except Exception as e:
-            self.logger.error(f"Error handling system message: {str(e)}")
-            raise
+            error_msg = f"Error handling story assignment: {str(e)}"
+            self.logger.error(error_msg)
+            return create_error_response(error_msg) 
     
     async def create_roadmap(self, project_name: str, description: str, requirements: List[str]) -> Dict[str, Any]:
         """Create a project roadmap.
@@ -349,14 +372,14 @@ class ProjectManager(BaseAgent):
                 for story in milestone["stories"]:
                     await self.task_management.create_card(
                         list_id=backlog["id"],
-                        title=story["title"],
+                        name=story["title"],
                         description=story["description"]
                     )
             
             for task in roadmap["tasks"]:
                 await self.task_management.create_card(
                     list_id=backlog["id"],
-                    title=task["title"],
+                    name=task["title"],
                     description=task["description"]
                 )
             
@@ -395,38 +418,3 @@ class ProjectManager(BaseAgent):
             )
             self.logger.error(f"Failed to create roadmap for {project_name}: {str(e)}")
             raise 
-    
-    async def handle_story_assigned(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle story assignment event.
-        
-        Args:
-            data: Story assignment data
-            
-        Returns:
-            Dict[str, Any]: Response indicating success or failure
-        """
-        try:
-            story_id = data["story_id"]
-            title = data["title"]
-            description = data["description"]
-            assigned_to = data["assigned_to"]
-            
-            self.logger.info(f"Story {story_id} assigned to {assigned_to}")
-            
-            # Update story status in task management system
-            await self.task_management.create_card(
-                title,
-                description,
-                story_id,
-                "In Progress"
-            )
-            
-            return create_success_response()
-        except KeyError as e:
-            error_msg = f"Missing required field: {str(e)}"
-            self.logger.error(error_msg)
-            return create_error_response(error_msg)
-        except Exception as e:
-            error_msg = f"Error handling story assignment: {str(e)}"
-            self.logger.error(error_msg)
-            return create_error_response(error_msg) 

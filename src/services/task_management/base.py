@@ -6,21 +6,6 @@ class TaskManagementService(ABC):
     """Abstract base class for task management services."""
     
     @abstractmethod
-    async def __aenter__(self):
-        """Async context manager entry."""
-        pass
-        
-    @abstractmethod
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        pass
-        
-    @abstractmethod
-    async def close(self):
-        """Close any open connections."""
-        pass
-        
-    @abstractmethod
     async def create_board(self, name: str, description: str) -> str:
         """Create a new board.
         

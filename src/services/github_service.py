@@ -8,15 +8,23 @@ from ..utils.config import Config
 from ..utils.logger import Logger
 import time
 from github.Repository import Repository
+import logging
+from github.GithubException import UnknownObjectException
 
 class GitHubService:
-    def __init__(self):
-        self.config = Config()
-        self.logger = Logger("GitHubService")
-        if "github" not in self.config.services:
-            raise RuntimeError("GitHub service configuration is required")
-        self.github = Github(self.config.services["github"].api_key)
-        self.workspace_dir = os.getenv("WORKSPACE_DIR", "/workspace")
+    """Service for interacting with GitHub."""
+    
+    def __init__(self, config):
+        """Initialize the GitHub service.
+        
+        Args:
+            config: Configuration object containing GitHub settings
+        """
+        self.config = config
+        self.github = Github(config.github_api_key)
+        self.logger = logging.getLogger(__name__)
+        self.workspace_dir = config.workspace_dir
+        self.repo_name = config.repo_name
         
     def check_connection(self):
         """Test the GitHub connection"""
@@ -158,6 +166,133 @@ This PR was automatically created by the AI development team.
             return int(pr_url.split('/')[-1])
         except (ValueError, IndexError):
             raise ValueError(f"Invalid PR URL: {pr_url}")
+
+    async def get_pull_request(self, pr_number: int) -> Dict[str, Any]:
+        """Get pull request details.
+        
+        Args:
+            pr_number: Pull request number
+            
+        Returns:
+            Dict[str, Any]: Pull request details including:
+                - title: PR title
+                - body: PR description
+                - head: Head branch
+                - base: Base branch
+                - changed_files: List of changed file paths
+        """
+        try:
+            self.logger.info(f"Getting PR #{pr_number} details")
+            repo = self.github.get_repo(f"{self.github.get_user().login}/{self.repo_name}")
+            pr = repo.get_pull(pr_number)
+            
+            # Get list of changed files
+            changed_files = [f.filename for f in pr.get_files()]
+            
+            return {
+                "title": pr.title,
+                "body": pr.body,
+                "head": pr.head.ref,
+                "base": pr.base.ref,
+                "changed_files": changed_files
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get PR #{pr_number} details: {str(e)}")
+            raise
+
+    async def get_file_content(self, file_path: str, ref: str) -> Optional[str]:
+        """Get file content from a specific branch.
+        
+        Args:
+            file_path: Path to the file
+            ref: Branch or commit reference
+            
+        Returns:
+            Optional[str]: File content or None if file was deleted
+        """
+        try:
+            self.logger.info(f"Getting content of {file_path} from {ref}")
+            repo = self.github.get_repo(f"{self.github.get_user().login}/{self.repo_name}")
+            
+            try:
+                file = repo.get_contents(file_path, ref=ref)
+                if isinstance(file, list):
+                    raise ValueError(f"{file_path} is a directory")
+                return base64.b64decode(file.content).decode('utf-8')
+            except UnknownObjectException:
+                # File was deleted in this PR
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Failed to get file content: {str(e)}")
+            raise
+
+    async def post_review_comments(
+        self,
+        pr_number: int,
+        comments: List[Dict[str, Any]],
+        approved: bool,
+        review_message: str
+    ) -> None:
+        """Post a review with comments on a pull request.
+        
+        Args:
+            pr_number: Pull request number
+            comments: List of review comments
+            approved: Whether to approve the PR
+            review_message: Overall review message
+        """
+        try:
+            self.logger.info(f"Posting review on PR #{pr_number}")
+            repo = self.github.get_repo(f"{self.github.get_user().login}/{self.repo_name}")
+            pr = repo.get_pull(pr_number)
+            
+            # Create review comments
+            review_comments = []
+            for comment in comments:
+                if "line" in comment:
+                    review_comments.append({
+                        "path": comment["file"],
+                        "position": comment["line"],
+                        "body": f"{comment['message']}"
+                    })
+            
+            # Submit review
+            event = "APPROVE" if approved else "REQUEST_CHANGES"
+            pr.create_review(
+                body=review_message,
+                event=event,
+                comments=review_comments
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to post review comments: {str(e)}")
+            raise
+
+    async def file_exists(self, file_path: str, ref: str = "main") -> bool:
+        """Check if a file exists in the repository.
+        
+        Args:
+            file_path: Path to the file
+            ref: Branch or commit reference (default: main)
+            
+        Returns:
+            bool: True if file exists, False otherwise
+        """
+        try:
+            self.logger.info(f"Checking if {file_path} exists in {ref}")
+            repo = self.github.get_repo(f"{self.github.get_user().login}/{self.repo_name}")
+            
+            try:
+                repo.get_contents(file_path, ref=ref)
+                return True
+            except UnknownObjectException:
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Failed to check file existence: {str(e)}")
+            return False
 
     def clone_repository(self, repo_url: str) -> str:
         """Clone a repository with proper authentication"""
