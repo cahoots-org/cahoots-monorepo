@@ -207,8 +207,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 ## License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
-
+This project is licensed under the MIT License.
 ## Stripe Integration
 
 ### Local Development Setup
