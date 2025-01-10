@@ -343,4 +343,158 @@ class TestProjectManager:
         prompt = mock_model.generate_response.call_args[0][0]
         assert TEST_PROJECT_NAME in prompt
         assert TEST_PROJECT_DESC in prompt
-        assert all(req in prompt for req in requirements) 
+        assert all(req in prompt for req in requirements)
+    
+    @pytest.mark.asyncio
+    async def test_handle_pr_created(
+        self,
+        project_manager: ProjectManager,
+        mock_task_management: AsyncMock,
+        mock_base_logger: Mock
+    ) -> None:
+        """Test handling PR created event."""
+        # Setup
+        await project_manager.setup_events()
+        pr_created_message = {
+            "type": "pr_created",
+            "story_id": TEST_STORY_ID,
+            "pr_url": "https://github.com/org/repo/pull/1"
+        }
+        
+        # Execute
+        response = await project_manager.handle_pr_created(pr_created_message)
+        
+        # Verify card creation
+        mock_task_management.create_card.assert_called_once_with(
+            "PR Created",
+            "PR: https://github.com/org/repo/pull/1",
+            TEST_STORY_ID,
+            "Review"
+        )
+        
+        # Verify response
+        assert response["status"] == "success"
+    
+    @pytest.mark.asyncio
+    async def test_handle_pr_merged(
+        self,
+        project_manager: ProjectManager,
+        mock_task_management: AsyncMock,
+        mock_base_logger: Mock
+    ) -> None:
+        """Test handling PR merged event."""
+        # Setup
+        await project_manager.setup_events()
+        pr_merged_message = {
+            "type": "pr_merged",
+            "story_id": TEST_STORY_ID
+        }
+        
+        # Execute
+        response = await project_manager.handle_pr_merged(pr_merged_message)
+        
+        # Verify card creation
+        mock_task_management.create_card.assert_called_once_with(
+            "Story completed",
+            "PR has been merged",
+            TEST_STORY_ID,
+            "Done"
+        )
+        
+        # Verify response
+        assert response["status"] == "success"
+    
+    @pytest.mark.asyncio
+    async def test_handle_task_completed(
+        self,
+        project_manager: ProjectManager,
+        mock_task_management: AsyncMock,
+        mock_base_logger: Mock
+    ) -> None:
+        """Test handling task completed event."""
+        # Setup
+        await project_manager.setup_events()
+        task_completed_message = {
+            "type": "task_completed",
+            "story_id": TEST_STORY_ID,
+            "completed_count": 3,
+            "total_count": 5
+        }
+        
+        # Execute
+        response = await project_manager.handle_task_completed(task_completed_message)
+        
+        # Verify card creation
+        mock_task_management.create_card.assert_called_once_with(
+            "Task Progress",
+            "Tasks completed: 3/5",
+            TEST_STORY_ID,
+            "In Progress"
+        )
+        
+        # Verify response
+        assert response["status"] == "success"
+    
+    @pytest.mark.asyncio
+    async def test_handle_get_story(
+        self,
+        project_manager: ProjectManager,
+        mock_task_management: AsyncMock,
+        mock_base_logger: Mock
+    ) -> None:
+        """Test handling get story event."""
+        # Setup
+        await project_manager.setup_events()
+        get_story_message = {
+            "type": "get_story",
+            "story_id": TEST_STORY_ID
+        }
+        mock_task_management.get_card = AsyncMock(return_value=Story(
+            id=TEST_STORY_ID,
+            title="New Story",
+            description="A new story",
+            priority=1,
+            status="open"
+        ))
+        
+        # Execute
+        response = await project_manager.handle_get_story(get_story_message)
+        
+        # Verify card retrieval
+        mock_task_management.get_card.assert_called_once_with(TEST_STORY_ID)
+        
+        # Verify response
+        assert response["status"] == "success"
+        assert response["story"]["id"] == TEST_STORY_ID
+    
+    @pytest.mark.asyncio
+    async def test_handle_update_story(
+        self,
+        project_manager: ProjectManager,
+        mock_task_management: AsyncMock,
+        mock_base_logger: Mock
+    ) -> None:
+        """Test handling update story event."""
+        # Setup
+        await project_manager.setup_events()
+        update_story_message = {
+            "type": "update_story",
+            "story_id": TEST_STORY_ID,
+            "title": "Updated Story",
+            "description": "Updated description",
+            "status": "In Progress"
+        }
+        
+        # Execute
+        response = await project_manager.handle_update_story(update_story_message)
+        
+        # Verify card update
+        mock_task_management.create_card.assert_called_once_with(
+            "Updated Story",
+            "Updated description",
+            TEST_STORY_ID,
+            "In Progress"
+        )
+        
+        # Verify response
+        assert response["status"] == "success"
