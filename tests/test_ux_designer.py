@@ -121,7 +121,7 @@ async def test_handle_story_assigned(
     def mock_create_design_specs(*args, **kwargs):
         return mock_design_specs
     
-    def mock_create_mockups(*args, **kwargs):
+    async def mock_create_mockups(*args, **kwargs):
         return mock_mockups
     
     ux_designer.create_design_specs = mock_create_design_specs
