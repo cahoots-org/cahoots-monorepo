@@ -79,7 +79,7 @@ async def async_client(mock_deps, mock_settings, mock_db):
         get_db: lambda: mock_db
     }
     
-    async with AsyncClient(app=app, base_url="http://testserver") as client:
+    async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
 
 @pytest.mark.asyncio
