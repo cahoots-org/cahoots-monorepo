@@ -341,3 +341,19 @@ stripe trigger payment_intent.payment_failed
    - Application logs
    - Stripe Dashboard webhook logs
    - Database transaction logs
+
+## System Requirements
+
+### Redis Configuration
+For Redis to function properly, memory overcommit must be enabled. Add the following to `/etc/sysctl.conf`:
+
+```bash
+vm.overcommit_memory = 1
+```
+
+Then apply the changes:
+```bash
+sudo sysctl -p
+```
+
+This configuration is required to prevent background save or replication failures in Redis.

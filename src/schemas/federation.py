@@ -1,7 +1,7 @@
 """Federation schemas."""
 from typing import Dict, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class FederatedIdentityBase(BaseModel):
     """Base federated identity schema."""
@@ -145,4 +145,36 @@ class AttributeMappingResponse(AttributeMappingBase):
 
     class Config:
         """Pydantic config."""
-        orm_mode = True 
+        orm_mode = True
+
+class FederationConfig(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "federation_id": "fed123",
+                "name": "Test Federation",
+                "description": "A test federation"
+            }
+        }
+    )
+
+class FederationCreate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Test Federation",
+                "description": "A test federation"
+            }
+        }
+    )
+
+class FederationUpdate(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "Updated Federation",
+                "description": "An updated federation"
+            }
+        }
+    ) 

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 class UserRole(BaseModel):
     """User role within an organization."""
@@ -32,18 +32,13 @@ class User(BaseModel):
         }
     )
     
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
-                "id": "usr_12345",
-                "email": "john.doe@example.com",
-                "full_name": "John Doe",
-                "organizations": [
-                    {
-                        "organization_id": "org_12345",
-                        "role": "admin",
-                        "permissions": ["manage_users", "manage_billing", "manage_projects"]
-                    }
-                ]
+                "id": "user123",
+                "username": "testuser",
+                "email": "test@example.com"
             }
-        } 
+        }
+    ) 
