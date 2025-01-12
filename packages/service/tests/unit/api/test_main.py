@@ -9,7 +9,6 @@ from httpx import AsyncClient
 from cahoots_service.api.health import router as health_router
 from cahoots_service.api.projects import router as projects_router
 from cahoots_service.api.metrics import router as metrics_router
-from cahoots_service.core.dependencies import BaseDeps, get_db
 from cahoots_service.api.auth import verify_api_key
 from cahoots_service.utils.config import get_settings
 from cahoots_service.services.project_service import ProjectService
@@ -25,23 +24,6 @@ def mock_settings():
     settings.STRIPE_API_KEY = "test_stripe_key"
     settings.K8S_NAMESPACE = "test"
     return settings
-
-@pytest.fixture
-async def mock_db():
-    """Mock database session."""
-    session = AsyncMock()
-    yield session
-    await session.close()
-
-@pytest.fixture
-def mock_deps(mock_settings, mock_db):
-    """Mock dependencies with minimal setup."""
-    mock = AsyncMock()
-    mock.settings = mock_settings
-    mock.db = mock_db
-    mock.redis = AsyncMock()
-    mock.event_system = AsyncMock()
-    return mock
 
 @pytest.fixture
 def api_key_header():
@@ -73,14 +55,11 @@ async def async_client(mock_deps, mock_settings, mock_db):
     
     # Override dependencies
     app.dependency_overrides = {
-        BaseDeps: lambda: mock_deps,
         verify_api_key: lambda: "test_org_id",  # Simplified API key verification
         get_settings: lambda: mock_settings,
-        get_db: lambda: mock_db
     }
     
-    from httpx import ASGITransport
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+    async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
 
 @pytest.mark.asyncio
