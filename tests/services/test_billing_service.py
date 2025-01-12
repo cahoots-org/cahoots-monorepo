@@ -8,25 +8,23 @@ from src.services.billing import BillingService
 from src.database.models import Organization
 from src.models.billing import SubscriptionTier, Invoice, UsageRecord
 from src.utils.stripe_client import StripeClient
+from src.core.dependencies import ServiceDeps
 
 @pytest.fixture
-def mock_db():
-    """Create mock database session."""
-    db = AsyncMock(spec=AsyncSession)
-    db.commit = AsyncMock()
-    db.rollback = AsyncMock()
-    db.close = AsyncMock()
-    return db
+def mock_deps():
+    """Create mock dependencies."""
+    deps = MagicMock(spec=ServiceDeps)
+    deps.db = AsyncMock(spec=AsyncSession)
+    deps.db.commit = AsyncMock()
+    deps.db.rollback = AsyncMock()
+    deps.db.close = AsyncMock()
+    deps.stripe = AsyncMock(spec=StripeClient)
+    return deps
 
 @pytest.fixture
-def mock_stripe():
-    """Create mock Stripe client."""
-    return AsyncMock(spec=StripeClient)
-
-@pytest.fixture
-def billing_service(mock_db, mock_stripe):
+def billing_service(mock_deps):
     """Create billing service instance."""
-    return BillingService(mock_db, mock_stripe)
+    return BillingService(deps=mock_deps)
 
 @pytest.fixture
 def sample_organization():
@@ -64,12 +62,11 @@ async def test_create_subscription_success(
     billing_service,
     sample_organization,
     sample_subscription_tier,
-    mock_db,
-    mock_stripe
+    mock_deps
 ):
     """Test successful subscription creation."""
     # Configure mocks
-    mock_stripe.create_subscription.return_value = {
+    mock_deps.stripe.create_subscription.return_value = {
         "id": "sub_test",
         "status": "active",
         "current_period_end": 1735689600,  # 2025-01-01
@@ -78,7 +75,7 @@ async def test_create_subscription_success(
         }
     }
     
-    mock_db.get.return_value = AsyncMock(
+    mock_deps.db.get.return_value = AsyncMock(
         id=sample_organization.id,
         subscription_tier="free",
         subscription_status="inactive"
@@ -93,14 +90,14 @@ async def test_create_subscription_success(
     )
     
     # Verify Stripe API was called
-    mock_stripe.create_subscription.assert_called_once_with(
+    mock_deps.stripe.create_subscription.assert_called_once_with(
         customer_id=sample_organization.customer_id,
         payment_method_id="pm_test",
         price_id=sample_subscription_tier.price_monthly
     )
     
     # Verify database was updated
-    mock_db.commit.assert_called_once()
+    mock_deps.db.commit.assert_called_once()
     
     # Verify response
     assert result["subscription_id"] == "sub_test"
@@ -111,11 +108,11 @@ async def test_create_subscription_success(
 async def test_add_payment_method_success(
     billing_service,
     sample_organization,
-    mock_stripe
+    mock_deps
 ):
     """Test successful payment method addition."""
     # Configure mock
-    mock_stripe.add_payment_method.return_value = {
+    mock_deps.stripe.add_payment_method.return_value = {
         "id": "pm_test",
         "type": "card",
         "card": {
@@ -132,7 +129,7 @@ async def test_add_payment_method_success(
     )
     
     # Verify Stripe API was called
-    mock_stripe.add_payment_method.assert_called_once_with(
+    mock_deps.stripe.add_payment_method.assert_called_once_with(
         customer_id=sample_organization.customer_id,
         payment_method_token="tok_test",
         set_default=True
@@ -147,7 +144,7 @@ async def test_add_payment_method_success(
 async def test_list_invoices_success(
     billing_service,
     sample_organization,
-    mock_db
+    mock_deps
 ):
     """Test successful invoice listing."""
     # Create mock invoice data
@@ -155,22 +152,20 @@ async def test_list_invoices_success(
         MagicMock(
             id="inv_test1",
             organization_id=sample_organization.id,
-            amount=29.99,
+            customer_id="cus_test1",
+            subscription_id="sub_test1",
+            amount_due=2999,
             status="paid",
-            due_date=datetime.utcnow(),
-            paid_date=datetime.utcnow(),
-            line_items=[{"description": "Pro Plan"}],
-            created_at=datetime.utcnow()
+            created=datetime.utcnow()
         ),
         MagicMock(
             id="inv_test2",
             organization_id=sample_organization.id,
-            amount=29.99,
+            customer_id="cus_test2",
+            subscription_id="sub_test2",
+            amount_due=2999,
             status="pending",
-            due_date=datetime.utcnow() + timedelta(days=30),
-            paid_date=None,
-            line_items=[{"description": "Pro Plan"}],
-            created_at=datetime.utcnow()
+            created=datetime.utcnow()
         )
     ]
     
@@ -179,7 +174,7 @@ async def test_list_invoices_success(
     mock_scalar = AsyncMock()
     mock_scalar.all = AsyncMock(return_value=mock_invoices)
     mock_result.scalars = AsyncMock(return_value=mock_scalar)
-    mock_db.execute.return_value = mock_result
+    mock_deps.db.execute.return_value = mock_result
 
     # List invoices
     invoices = await billing_service.list_invoices(
@@ -198,7 +193,7 @@ async def test_list_invoices_success(
 async def test_get_usage_success(
     billing_service,
     sample_organization,
-    mock_db
+    mock_deps
 ):
     """Test successful usage retrieval."""
     # Configure test data
@@ -228,7 +223,7 @@ async def test_get_usage_success(
     mock_scalar = AsyncMock()
     mock_scalar.all = AsyncMock(return_value=mock_records)
     mock_result.scalars = AsyncMock(return_value=mock_scalar)
-    mock_db.execute.return_value = mock_result
+    mock_deps.db.execute.return_value = mock_result
 
     # Get usage records
     records = await billing_service.get_usage(

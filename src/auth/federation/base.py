@@ -147,7 +147,8 @@ class TrustChain:
         """
         if provider_id not in self._trust_relationships:
             self._trust_relationships[provider_id] = []
-        self._trust_relationships[provider_id].append(trusted_provider_id)
+        if trusted_provider_id not in self._trust_relationships[provider_id]:
+            self._trust_relationships[provider_id].append(trusted_provider_id)
     
     def remove_trust(self, provider_id: str, trusted_provider_id: str) -> None:
         """Remove trust relationship.
@@ -170,7 +171,8 @@ class TrustChain:
         Returns:
             bool: Whether trust chain is valid
         """
-        if depth > self.max_depth:
+        # Check depth before doing anything else
+        if depth >= self.max_depth:
             return False
             
         if source_id not in self._trust_relationships:

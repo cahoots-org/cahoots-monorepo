@@ -157,5 +157,4 @@ sequenceDiagram
     Context Manager->>Tester: Share Testing Context
     Tester->>Context Manager: Update Test Results Context
     Context Manager->>Context Manager: Analyze & Improve Prompts
-    Context Manager->>Master Service: Updated Project Context
 ``` 

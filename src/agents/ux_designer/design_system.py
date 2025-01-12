@@ -490,88 +490,96 @@ class DesignSystem:
                     normalized_prop = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', prop).lower()
                     
                     if isinstance(transition, str):
-                        if transition == "fast":
-                            normalized_transitions[normalized_prop] = {
-                                "duration": "150ms",
-                                "timing-function": "ease"
-                            }
-                        elif transition == "slow":
-                            normalized_transitions[normalized_prop] = {
-                                "duration": "300ms",
-                                "timing-function": "ease"
-                            }
-                        elif transition == "0s" or transition == "0ms":
+                        # Parse transition value
+                        parts = transition.strip().split()
+                        duration = parts[0] if parts else "0ms"
+                        
+                        # Handle duration
+                        if duration == "0s" or duration == "0ms":
                             normalized_transitions[normalized_prop] = {
                                 "duration": "0ms",
-                                "timing-function": "ease"
+                                "timing-function": "none",
+                                "delay": "0ms"
                             }
                         else:
-                            # Handle negative durations
-                            is_negative = transition.startswith('-')
-                            if is_negative:
-                                normalized_transitions[normalized_prop] = {
-                                    "duration": "0ms",
-                                    "timing-function": "ease"
-                                }
-                                continue
-                                
-                            # Convert to milliseconds if in seconds
-                            duration_ms = 0
-                            if transition.endswith('s'):
-                                try:
-                                    seconds = float(transition[:-1])
-                                    duration_ms = int(seconds * 1000)
-                                except ValueError:
-                                    duration_ms = 200  # Default duration
-                            elif transition.endswith('ms'):
-                                try:
-                                    duration_ms = int(transition[:-2])
-                                except ValueError:
-                                    duration_ms = 200  # Default duration
-                            else:
-                                duration_ms = 200  # Default duration
-                                
-                            # Clamp duration between 0 and 1000ms
-                            duration_ms = max(0, min(1000, duration_ms))
-                            normalized_transitions[normalized_prop] = {
-                                "duration": f"{duration_ms}ms",
-                                "timing-function": "ease"
-                            }
-                    else:
-                        duration = transition.get("duration", "200ms")
-                        # Handle negative durations in dictionary format
-                        if isinstance(duration, str) and duration.startswith('-'):
-                            normalized_transitions[normalized_prop] = {
-                                "duration": "0ms",
-                                "timing-function": transition.get("timing-function", "ease")
-                            }
-                            continue
-                            
-                        # Convert duration to milliseconds and clamp
-                        duration_ms = 200  # Default duration
-                        if isinstance(duration, str):
-                            if duration.endswith('s'):
-                                try:
-                                    seconds = float(duration[:-1])
-                                    duration_ms = int(seconds * 1000)
-                                except ValueError:
-                                    pass
-                            elif duration.endswith('ms'):
-                                try:
-                                    duration_ms = int(duration[:-2])
-                                except ValueError:
-                                    pass
+                            try:
+                                # Extract numeric value and unit
+                                match = re.match(r'^(-?\d*\.?\d+)(ms|s)$', duration)
+                                if match:
+                                    value = float(match.group(1))
+                                    unit = match.group(2)
                                     
-                        # Clamp duration between 0 and 1000ms
-                        duration_ms = max(0, min(1000, duration_ms))
-                        normalized_transitions[normalized_prop] = {
-                            "duration": f"{duration_ms}ms",
-                            "timing-function": transition.get("timing-function", "ease")
-                        }
+                                    # Convert negative to 0
+                                    if value < 0:
+                                        value = 0
+                                    
+                                    # Convert seconds to milliseconds
+                                    if unit == 's':
+                                        value = value * 1000
+                                    
+                                    # Cap at 5000ms
+                                    value = min(value, 5000)
+                                    
+                                    # Parse timing function and delay
+                                    timing_function = "ease"
+                                    delay = "0ms"
+                                    
+                                    if len(parts) > 1:
+                                        timing_function = parts[1]
+                                        if len(parts) > 2:
+                                            delay = parts[2]
+                                            # Convert delay to ms if needed
+                                            delay_match = re.match(r'^(-?\d*\.?\d+)(ms|s)$', delay)
+                                            if delay_match:
+                                                delay_value = float(delay_match.group(1))
+                                                delay_unit = delay_match.group(2)
+                                                if delay_unit == 's':
+                                                    delay_value = delay_value * 1000
+                                                delay = f"{int(delay_value)}ms"
+                                        
+                                    normalized_transitions[normalized_prop] = {
+                                        "duration": f"{int(value)}ms",
+                                        "timing-function": timing_function,
+                                        "delay": delay
+                                    }
+                                else:
+                                    # Invalid format, use default
+                                    normalized_transitions[normalized_prop] = {
+                                        "duration": "150ms",
+                                        "timing-function": "ease",
+                                        "delay": "0ms"
+                                    }
+                            except (ValueError, IndexError):
+                                # Invalid value, use default
+                                normalized_transitions[normalized_prop] = {
+                                    "duration": "150ms",
+                                    "timing-function": "ease",
+                                    "delay": "0ms"
+                                }
+                    elif isinstance(transition, dict):
+                        # Convert camelCase to kebab-case for the property name
+                        normalized_prop = re.sub(r'([a-z0-9])([A-Z])', r'\1-\2', prop).lower()
                         
+                        duration = transition.get("duration", "150ms")
+                        timing_function = transition.get("timing-function", "ease")
+                        
+                        # Convert duration to ms if needed
+                        duration_match = re.match(r'^(-?\d*\.?\d+)(ms|s)$', duration)
+                        if duration_match:
+                            duration_value = float(duration_match.group(1))
+                            duration_unit = duration_match.group(2)
+                            if duration_unit == 's':
+                                duration_value = duration_value * 1000
+                            duration = f"{int(duration_value)}ms"
+                        
+                        normalized_transitions[normalized_prop] = {
+                            "duration": duration,
+                            "timing-function": timing_function,
+                            "delay": "0ms"
+                        }
+                
                 normalized[name] = {
                     "name": name,
-                    "priority": state.get("priority", 1),
                     "styles": styles,
                     "transitions": normalized_transitions,
                     "accessibility": state.get("accessibility", {})

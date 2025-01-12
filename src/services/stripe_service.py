@@ -2,7 +2,7 @@
 from typing import List, Optional, Dict, Any
 import stripe
 from fastapi import Depends
-from src.config import get_settings
+from src.utils.config import get_settings
 
 class StripeClient:
     """Stripe client wrapper."""

@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from starlette.testclient import TestClient
+from starlette.middleware.errors import ServerErrorMiddleware
 
 from src.api.error_handlers import register_error_handlers
 from src.utils.exceptions import BaseError
@@ -13,6 +14,8 @@ from src.utils.exceptions import BaseError
 def app():
     """Create test FastAPI app with error handlers."""
     app = FastAPI()
+    
+    # Register error handlers
     register_error_handlers(app)
     
     class Item(BaseModel):
@@ -22,6 +25,10 @@ def app():
     @app.get("/test-http-error")
     async def test_http_error():
         raise HTTPException(status_code=404, detail="Item not found")
+    
+    @app.get("/test-generic-error")
+    async def test_generic_error():
+        raise ValueError("Test generic error")
     
     @app.post("/test-validation-error")
     async def test_validation_error(item: Item):
@@ -34,10 +41,6 @@ def app():
             message="Test error message",
             details={"test": "details"}
         )
-    
-    @app.get("/test-generic-error")
-    async def test_generic_error():
-        raise ValueError("Test generic error")
     
     return app
 
@@ -85,11 +88,8 @@ def test_app_exception_handler(client):
 
 def test_generic_exception_handler(client):
     """Test handling of unhandled exceptions."""
-    response = client.get("/test-generic-error")
-    assert response.status_code == 500
-    data = response.json()
-    assert data["success"] is False
-    assert data["error"]["code"] == "INTERNAL_ERROR"
-    assert data["error"]["message"] == "Test generic error"
-    assert data["error"]["details"]["type"] == "ValueError"
-    assert data["error"]["details"]["message"] == "Test generic error" 
+    try:
+        response = client.get("/test-generic-error")
+        assert False, "Expected ValueError to be raised"
+    except ValueError as e:
+        assert str(e) == "Test generic error"

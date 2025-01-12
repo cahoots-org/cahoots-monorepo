@@ -15,6 +15,7 @@ class IdentityProvider(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     description = Column(String)
+    type = Column(String, nullable=False)  # saml, oidc, etc.
     entity_id = Column(String, unique=True, nullable=False)
     provider_metadata = Column(JSON, nullable=False)
     is_active = Column(Boolean, default=True)

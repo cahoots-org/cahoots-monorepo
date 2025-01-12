@@ -1,22 +1,17 @@
 """Database session management."""
 from typing import AsyncGenerator
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine
-)
-from src.config import get_settings
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
 
-# Create async engine
+from src.utils.config import get_settings
+
 engine = create_async_engine(
-    get_settings().database_url,
-    echo=False,
-    future=True,
-    pool_pre_ping=True
+    get_settings().DATABASE_URL,
+    pool_pre_ping=True,
+    echo=False
 )
 
-# Create async session factory
-async_session_factory = async_sessionmaker(
+SessionLocal = sessionmaker(
     engine,
     class_=AsyncSession,
     expire_on_commit=False,
@@ -30,8 +25,5 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
     Yields:
         Database session
     """
-    async with async_session_factory() as session:
-        try:
-            yield session
-        finally:
-            await session.close() 
+    async with SessionLocal() as session:
+        yield session 

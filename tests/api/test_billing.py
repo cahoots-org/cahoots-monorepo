@@ -33,9 +33,11 @@ from src.schemas.billing import (
 @pytest.fixture
 def mock_deps():
     """Create mock dependencies."""
+    stripe_mock = MagicMock()
+    stripe_mock.error = stripe.error
     return {
         "db": AsyncMock(spec=AsyncSession),
-        "stripe": MagicMock(),
+        "stripe": stripe_mock,
         "event_system": AsyncMock()
     }
 
@@ -49,7 +51,7 @@ async def test_get_subscription(mock_deps):
         status="active",
         current_period_end="2024-01-01T00:00:00Z"
     )
-    mock_deps["stripe"].get_subscription = AsyncMock(return_value=expected_subscription)
+    mock_deps["stripe"].get_subscription = AsyncMock(return_value=expected_subscription.model_dump())
 
     result = await get_subscription(
         subscription_id="sub_test",
@@ -67,7 +69,7 @@ async def test_create_subscription(mock_deps):
         status="active",
         current_period_end="2024-01-01T00:00:00Z"
     )
-    mock_deps["stripe"].create_subscription = AsyncMock(return_value=expected_subscription)
+    mock_deps["stripe"].create_subscription = AsyncMock(return_value=expected_subscription.model_dump())
 
     data = SubscriptionCreate(
         customer_id="cus_test",
@@ -87,7 +89,7 @@ async def test_update_subscription(mock_deps):
         status="active",
         current_period_end="2024-01-01T00:00:00Z"
     )
-    mock_deps["stripe"].update_subscription = AsyncMock(return_value=expected_subscription)
+    mock_deps["stripe"].update_subscription = AsyncMock(return_value=expected_subscription.model_dump())
 
     data = SubscriptionUpdate(price_id="plan_test_new")
     result = await update_subscription(
@@ -107,7 +109,7 @@ async def test_cancel_subscription(mock_deps):
         status="canceled",
         current_period_end="2024-01-01T00:00:00Z"
     )
-    mock_deps["stripe"].cancel_subscription = AsyncMock(return_value=expected_subscription)
+    mock_deps["stripe"].cancel_subscription = AsyncMock(return_value=expected_subscription.model_dump())
 
     result = await cancel_subscription(
         subscription_id="sub_test",
@@ -131,7 +133,7 @@ async def test_get_payment_methods(mock_deps):
             }
         )
     ]
-    mock_deps["stripe"].list_payment_methods = AsyncMock(return_value=expected_methods)
+    mock_deps["stripe"].list_payment_methods = AsyncMock(return_value=[m.model_dump() for m in expected_methods])
 
     result = await get_payment_methods(
         customer_id="cus_test",
@@ -154,7 +156,7 @@ async def test_add_payment_method(mock_deps):
             "exp_year": 2024
         }
     )
-    mock_deps["stripe"].attach_payment_method = AsyncMock(return_value=expected_method)
+    mock_deps["stripe"].attach_payment_method = AsyncMock(return_value=expected_method.model_dump())
 
     data = PaymentMethodCreate(
         payment_method_id="pm_test",
@@ -188,7 +190,7 @@ async def test_get_invoices(mock_deps):
             created="2024-01-01T00:00:00Z"
         )
     ]
-    mock_deps["stripe"].list_invoices = AsyncMock(return_value=expected_invoices)
+    mock_deps["stripe"].list_invoices = AsyncMock(return_value=[i.model_dump() for i in expected_invoices])
 
     result = await get_invoices(
         customer_id="cus_test",
@@ -209,7 +211,7 @@ async def test_get_invoice(mock_deps):
         status="paid",
         created="2024-01-01T00:00:00Z"
     )
-    mock_deps["stripe"].get_invoice = AsyncMock(return_value=expected_invoice)
+    mock_deps["stripe"].get_invoice = AsyncMock(return_value=expected_invoice.model_dump())
 
     result = await get_invoice(
         invoice_id="inv_test",
@@ -229,7 +231,7 @@ async def test_pay_invoice(mock_deps):
         status="paid",
         created="2024-01-01T00:00:00Z"
     )
-    mock_deps["stripe"].pay_invoice = AsyncMock(return_value=expected_invoice)
+    mock_deps["stripe"].pay_invoice = AsyncMock(return_value=expected_invoice.model_dump())
 
     result = await pay_invoice(
         invoice_id="inv_test",
@@ -248,7 +250,7 @@ async def test_get_usage(mock_deps):
         period_start="2024-01-01T00:00:00Z",
         period_end="2024-02-01T00:00:00Z"
     )
-    mock_deps["stripe"].get_subscription_usage = AsyncMock(return_value=expected_usage)
+    mock_deps["stripe"].get_subscription_usage = AsyncMock(return_value=expected_usage.model_dump())
 
     result = await get_usage(
         subscription_id="sub_test",
@@ -263,7 +265,7 @@ async def test_get_billing_portal(mock_deps):
     expected_portal = BillingPortalResponse(
         url="https://billing.stripe.com/portal/test"
     )
-    mock_deps["stripe"].create_billing_portal = AsyncMock(return_value=expected_portal)
+    mock_deps["stripe"].create_billing_portal = AsyncMock(return_value=expected_portal.model_dump())
 
     result = await get_billing_portal(
         customer_id="cus_test",
@@ -276,7 +278,8 @@ async def test_get_billing_portal(mock_deps):
 @pytest.mark.asyncio
 async def test_subscription_error_handling(mock_deps):
     """Test error handling for subscription operations."""
-    mock_deps["stripe"].get_subscription = AsyncMock(side_effect=stripe.error.StripeError("Subscription not found"))
+    error = stripe.error.StripeError("Subscription not found")
+    mock_deps["stripe"].get_subscription = AsyncMock(side_effect=error)
     
     with pytest.raises(stripe.error.StripeError) as exc_info:
         await get_subscription("non_existent", **mock_deps)
@@ -285,11 +288,15 @@ async def test_subscription_error_handling(mock_deps):
 @pytest.mark.asyncio
 async def test_invoice_payment_failure(mock_deps):
     """Test handling failed invoice payment."""
-    mock_deps["stripe"].pay_invoice = AsyncMock(side_effect=stripe.error.CardError(
-        "Your card was declined",
-        "card_declined",
-        "error_code"
-    ))
+    error = stripe.error.CardError(
+        message="Your card was declined",
+        param=None,
+        code="card_declined",
+        http_status=402,
+        json_body=None,
+        headers=None
+    )
+    mock_deps["stripe"].pay_invoice = AsyncMock(side_effect=error)
     
     with pytest.raises(stripe.error.CardError) as exc_info:
         await pay_invoice("inv_test", **mock_deps)

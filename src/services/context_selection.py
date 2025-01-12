@@ -4,13 +4,18 @@ from typing import Dict, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
-
+from src.core.dependencies import BaseDeps
 from src.services.context_service import ContextEventService
 
 class ContextSelectionService:
-    def __init__(self, db: Session, context_service: Optional[ContextEventService] = None):
-        self.db = db
-        self.context_service = context_service or ContextEventService(db)
+    def __init__(self, deps: BaseDeps):
+        """Initialize context selection service.
+        
+        Args:
+            deps: Base dependencies including database and context service
+        """
+        self.db = deps.db
+        self.context_service = deps.context_service
         
     async def get_llm_context(
         self,

@@ -7,7 +7,7 @@ This module contains tests for the BaseService class and related components:
 """
 from datetime import datetime, timedelta
 from typing import AsyncGenerator, Dict, Any, Optional
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -19,6 +19,7 @@ from src.services.base_service import (
     ServiceResponse,
     ServiceConfig
 )
+from src.core.dependencies import ServiceDeps
 
 # Test constants
 TEST_SERVICE_NAME = "test-service"
@@ -34,12 +35,18 @@ TEST_RESPONSE_DATA = {"key": "value"}
 TEST_ERROR_MESSAGE = "Test error"
 
 @pytest.fixture
+def mock_deps():
+    """Create mock dependencies."""
+    deps = MagicMock(spec=ServiceDeps)
+    deps.settings = MagicMock()
+    deps.db = AsyncMock()
+    deps.redis = AsyncMock()
+    deps.event_system = AsyncMock()
+    return deps
+
+@pytest.fixture
 def service_config() -> ServiceConfig:
-    """Create a service configuration for testing.
-    
-    Returns:
-        ServiceConfig: Test configuration with standard settings.
-    """
+    """Create a service configuration for testing."""
     return ServiceConfig(
         name=TEST_SERVICE_NAME,
         url=TEST_SERVICE_URL,
@@ -49,16 +56,9 @@ def service_config() -> ServiceConfig:
     )
 
 @pytest.fixture
-def base_service(service_config: ServiceConfig) -> BaseService:
-    """Create a base service instance for testing.
-    
-    Args:
-        service_config: Test service configuration.
-    
-    Returns:
-        BaseService: Configured service instance.
-    """
-    return BaseService(service_config)
+def base_service(service_config: ServiceConfig, mock_deps: ServiceDeps) -> BaseService:
+    """Create a base service instance for testing."""
+    return BaseService(service_config, deps=mock_deps)
 
 @pytest.fixture
 def mock_response() -> Mock:
@@ -195,12 +195,13 @@ class TestBaseService:
     """Tests for the BaseService class."""
     
     @pytest.mark.asyncio
-    async def test_initialization(self, base_service: BaseService) -> None:
+    async def test_initialization(self, base_service: BaseService, mock_deps: ServiceDeps) -> None:
         """Test service initialization with configuration."""
         assert base_service.config.name == TEST_SERVICE_NAME
         assert base_service.logger is not None
         assert isinstance(base_service.circuit_breaker, CircuitBreakerState)
         assert base_service._client is None
+        assert base_service.deps is mock_deps
     
     @pytest.mark.asyncio
     async def test_client_creation_and_reuse(self, base_service: BaseService) -> None:
@@ -228,7 +229,8 @@ class TestBaseService:
     async def test_successful_request(
         self,
         base_service: BaseService,
-        mock_response: Mock
+        mock_response: Mock,
+        mock_deps: ServiceDeps
     ) -> None:
         """Test successful HTTP request handling."""
         with patch("httpx.AsyncClient.request", AsyncMock(return_value=mock_response)):
@@ -237,12 +239,14 @@ class TestBaseService:
             assert response.success
             assert response.data == TEST_RESPONSE_DATA
             assert response.status_code == 200
+            mock_deps.event_system.emit.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_request_retry_logic(
         self,
         base_service: BaseService,
-        mock_response: Mock
+        mock_response: Mock,
+        mock_deps: ServiceDeps
     ) -> None:
         """Test request retry behavior with exponential backoff."""
         error_response = Mock(spec=httpx.Response)
@@ -267,6 +271,7 @@ class TestBaseService:
             assert response.success
             assert response.data == TEST_RESPONSE_DATA
             assert mock_request.call_count == 3
+            mock_deps.event_system.emit.assert_called()
             
             # Verify exponential backoff pattern
             assert len(sleep_times) == 2  # Two retries
@@ -274,7 +279,7 @@ class TestBaseService:
             assert 1.5 <= sleep_times[1] <= 2.5    # Second retry: ~2s ±25%
     
     @pytest.mark.asyncio
-    async def test_circuit_breaker_open(self, base_service: BaseService) -> None:
+    async def test_circuit_breaker_open(self, base_service: BaseService, mock_deps: ServiceDeps) -> None:
         """Test request handling when circuit breaker is open."""
         # Open the circuit breaker
         base_service.circuit_breaker.failure_count = 5
@@ -286,12 +291,14 @@ class TestBaseService:
         assert not response.success
         assert response.status_code == 503
         assert "Circuit breaker is open" in response.error
+        mock_deps.event_system.emit.assert_called()
     
     @pytest.mark.asyncio
     async def test_circuit_breaker_half_open(
         self,
         base_service: BaseService,
-        mock_response: Mock
+        mock_response: Mock,
+        mock_deps: ServiceDeps
     ) -> None:
         """Test circuit breaker half-open state and recovery."""
         # Set circuit breaker to open state but with old failure time
@@ -305,6 +312,7 @@ class TestBaseService:
             assert response.success
             assert not base_service.circuit_breaker.is_open
             assert base_service.circuit_breaker.failure_count == 0
+            mock_deps.event_system.emit.assert_called()
     
     @pytest.mark.asyncio
     async def test_max_retries_exceeded(self, base_service: BaseService) -> None:

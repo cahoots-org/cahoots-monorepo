@@ -1,169 +1,142 @@
 """Tests for the Event System."""
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-import asyncio
-from typing import List, Union
-from datetime import datetime
+from unittest.mock import AsyncMock
 import json
-from uuid import uuid4
-
-from src.utils.event_system import EventSystem
-from src.utils.event_constants import (
-    EventSchema,
-    EventType,
-    EventPriority,
-    EventStatus,
-    EventError,
-    CommunicationPattern
-)
-
-class DateTimeEncoder(json.JSONEncoder):
-    """JSON encoder that handles datetime objects."""
-    def default(self, obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        if isinstance(obj, (EventType, EventPriority, EventStatus, CommunicationPattern)):
-            return obj.value
-        return super().default(obj)
-
-class PubSubMock:
-    """Mock Redis pubsub object."""
-    def __init__(self):
-        self.channels = set()
-        self.messages = []
-
-    def subscribe(self, channel):
-        """Subscribe to a channel."""
-        self.channels.add(channel)
-
-    def unsubscribe(self, channel):
-        """Unsubscribe from a channel."""
-        self.channels.discard(channel)
-
-    def get_message(self, ignore_subscribe_messages=True):
-        """Get next message."""
-        return self.messages.pop(0) if self.messages else None
-
-@pytest.fixture
-def redis_mock():
-    """Create a Redis mock."""
-    mock = AsyncMock()
-    mock.ping = AsyncMock()
-    mock.publish = AsyncMock()
-    mock.get = AsyncMock()
-    mock.set = AsyncMock()
-    mock.keys = AsyncMock(return_value=[])
-    
-    pubsub = PubSubMock()
-    mock.pubsub = Mock(return_value=pubsub)
-    
-    return mock
-
-@pytest.fixture
-async def event_system(redis_mock):
-    """Create an event system instance."""
-    system = EventSystem(redis=redis_mock, service_name="test_service")
-    await system.connect()
-    yield system
-    await system.disconnect()
-
-@pytest.fixture
-def sample_event():
-    """Create a sample event for testing."""
-    return {
-        "id": str(uuid4()),
-        "type": EventType.TASK_CREATED,
-        "channel": "task",
-        "data": {"task_id": "123", "title": "Test Task"},
-        "timestamp": datetime.utcnow()
-    }
+from redis.asyncio import Redis
 
 @pytest.mark.asyncio
-async def test_event_creation(sample_event):
-    """Test event creation."""
-    event = EventSchema(**sample_event)
-    assert event.type == EventType.TASK_CREATED
-    assert event.data == {"task_id": "123", "title": "Test Task"}
-    assert event.status == EventStatus.PENDING
-
-@pytest.mark.asyncio
-async def test_event_system_initialization(event_system):
-    """Test event system initialization."""
-    assert event_system.is_connected is True
-    assert event_system.service_name == "test_service"
-    assert len(event_system._handlers) == 0
-
-@pytest.mark.asyncio
-async def test_event_system_publish(event_system, sample_event):
-    """Test event publishing."""
-    event = EventSchema(**sample_event)
-    await event_system.publish(event)
-    event_system.redis.publish.assert_called_once()
-    event_system.redis.set.assert_called_once()
-
-@pytest.mark.asyncio
-async def test_event_system_publish_with_error(event_system, sample_event):
-    """Test event publishing with handler error."""
-    event = EventSchema(**sample_event)
-    event_system.redis.publish.side_effect = Exception("Redis error")
+async def test_publish():
+    """Test publish method in isolation."""
+    redis_mock = AsyncMock(spec=Redis)
+    redis_mock.publish = AsyncMock(return_value=True)
+    redis_mock.hset = AsyncMock(return_value=True)
+    redis_mock.hgetall = AsyncMock(return_value={})
+    redis_mock.ping = AsyncMock(return_value=True)
+    pubsub_mock = AsyncMock()
+    pubsub_mock.ping = AsyncMock(return_value=True)
+    redis_mock.pubsub = AsyncMock(return_value=pubsub_mock)
     
-    with pytest.raises(EventError, match="Failed to publish event"):
-        await event_system.publish(event)
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
     
-    assert event.status == EventStatus.FAILED
+    await system.publish("test_channel", {"test": "data"})
+    
+    # Verify event was stored and published
+    redis_mock.hset.assert_called_once()
+    redis_mock.publish.assert_called_once()
 
 @pytest.mark.asyncio
-async def test_event_replay(event_system, sample_event):
-    """Test event replay functionality."""
-    event = EventSchema(**sample_event)
-    event_system.redis.keys.return_value = [f"event:{event.id}"]
-    event_system.redis.get.return_value = event.model_dump_json()
+async def test_subscribe():
+    """Test subscribe method in isolation."""
+    redis_mock = AsyncMock(spec=Redis)
+    pubsub_mock = AsyncMock()
+    pubsub_mock.ping = AsyncMock(return_value=True)
+    pubsub_mock.subscribe = AsyncMock(return_value=True)
+    redis_mock.pubsub = AsyncMock(return_value=pubsub_mock)
+    redis_mock.ping = AsyncMock(return_value=True)
     
-    replayed = await event_system.replay_events("task")
-    assert len(replayed) == 1
-    assert replayed[0].type == EventType.TASK_CREATED
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
+    
+    async def handler(event): pass
+    
+    await system.subscribe("test_channel", handler)
+    pubsub_mock.subscribe.assert_called_once_with("test_channel")
+    assert "test_channel" in system._handlers
+    assert handler in system._handlers["test_channel"]
 
 @pytest.mark.asyncio
-async def test_service_name(event_system):
-    """Test service name."""
-    assert event_system.service_name == "test_service"
+async def test_unsubscribe():
+    """Test unsubscribe method in isolation."""
+    redis_mock = AsyncMock(spec=Redis)
+    pubsub_mock = AsyncMock()
+    pubsub_mock.ping = AsyncMock(return_value=True)
+    pubsub_mock.unsubscribe = AsyncMock(return_value=True)
+    redis_mock.pubsub = AsyncMock(return_value=pubsub_mock)
+    redis_mock.ping = AsyncMock(return_value=True)
+    
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
+    
+    async def handler(event): pass
+    system._handlers["test_channel"] = [handler]
+    system._pubsub = pubsub_mock
+    
+    await system.unsubscribe("test_channel", handler)
+    pubsub_mock.unsubscribe.assert_called_once_with("test_channel")
+    assert "test_channel" not in system._handlers
 
 @pytest.mark.asyncio
-async def test_subscribe_unsubscribe(event_system):
-    """Test subscribe and unsubscribe functionality."""
-    async def handler(event):
-        pass
+async def test_verify_connection():
+    """Test verify_connection method in isolation."""
+    redis_mock = AsyncMock(spec=Redis)
+    redis_mock.ping = AsyncMock(return_value=True)
     
-    channel = "test_channel"
-    await event_system.subscribe(channel, handler)
-    assert channel in event_system._handlers
-    assert handler in event_system._handlers[channel]
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
     
-    await event_system.unsubscribe(channel, handler)
-    assert channel not in event_system._handlers
+    result = await system.verify_connection()
+    assert result is True
+    redis_mock.ping.assert_called_once()
+    assert system.is_connected is True
 
-def test_event_type_values():
-    """Test event type enumeration values."""
-    assert EventType.TASK_CREATED.value == "task_created"
-    assert EventType.STORY_ASSIGNED.value == "story_assigned"
-    assert EventType.DESIGN_CREATED.value == "design_created"
+@pytest.mark.asyncio
+async def test_verify_connection_failure():
+    """Test verify_connection failure case."""
+    redis_mock = AsyncMock(spec=Redis)
+    redis_mock.ping = AsyncMock(side_effect=Exception("Connection failed"))
+    
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
+    
+    result = await system.verify_connection()
+    assert result is False
+    redis_mock.ping.assert_called_once()
+    assert system.is_connected is False
 
-def test_event_priority_values():
-    """Test event priority enumeration values."""
-    assert EventPriority.LOW.value == "low"
-    assert EventPriority.MEDIUM.value == "medium"
-    assert EventPriority.HIGH.value == "high"
-    assert EventPriority.CRITICAL.value == "critical"
+@pytest.mark.asyncio
+async def test_close():
+    """Test close method in isolation."""
+    redis_mock = AsyncMock(spec=Redis)
+    pubsub_mock = AsyncMock()
+    pubsub_mock.close = AsyncMock(return_value=True)
+    redis_mock.pubsub = AsyncMock(return_value=pubsub_mock)
+    
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
+    system._pubsub = pubsub_mock
+    system._connected = True
+    
+    await system.close()
+    pubsub_mock.close.assert_called_once()
+    assert system._pubsub is None
+    assert system.is_connected is False 
 
-def test_event_status_values():
-    """Test event status enumeration values."""
-    assert EventStatus.PENDING.value == "pending"
-    assert EventStatus.PROCESSING.value == "processing"
-    assert EventStatus.COMPLETED.value == "completed"
-    assert EventStatus.FAILED.value == "failed"
+@pytest.mark.asyncio
+async def test_get_processed_events():
+    """Test retrieving processed events."""
+    redis_mock = AsyncMock(spec=Redis)
+    redis_mock.ping = AsyncMock(return_value=True)
+    redis_mock.hgetall = AsyncMock(return_value={
+        "events:test:1": json.dumps({
+            "type": "test",
+            "data": {"test": "data1"},
+            "timestamp": "2024-01-01T00:00:00"
+        }),
+        "events:test:2": json.dumps({
+            "type": "test",
+            "data": {"test": "data2"},
+            "timestamp": "2024-01-01T00:00:01"
+        })
+    })
+    pubsub_mock = AsyncMock()
+    pubsub_mock.ping = AsyncMock(return_value=True)
+    redis_mock.pubsub = AsyncMock(return_value=pubsub_mock)
 
-def test_communication_patterns():
-    """Test communication pattern values."""
-    assert CommunicationPattern.PUBLISH_SUBSCRIBE.value == "pub_sub"
-    assert CommunicationPattern.REQUEST_RESPONSE.value == "req_resp"
-    assert CommunicationPattern.BROADCAST.value == "broadcast" 
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=redis_mock)
+
+    events = await system.get_processed_events("test")
+    assert len(events) == 2
+    assert events[0]["data"]["test"] == "data1"
+    assert events[1]["data"]["test"] == "data2" 

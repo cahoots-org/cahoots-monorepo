@@ -77,14 +77,12 @@ class AgentFactory:
                 "ux_designer": lambda: UXDesigner(
                     event_system=self._event_system,
                     start_listening=False,
-                    github_service=self._github_service,
-                    github_config=self._github_config
+                    github_service=self._github_service
                 ),
                 "project_manager": lambda: ProjectManager(
                     event_system=self._event_system,
                     start_listening=False,
-                    github_service=self._github_service,
-                    github_config=self._github_config
+                    github_service=self._github_service
                 )
             }
 

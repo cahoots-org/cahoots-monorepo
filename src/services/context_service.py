@@ -1,3 +1,4 @@
+"""Context event service for managing project context."""
 from datetime import datetime
 from typing import Dict, List, Optional
 import json
@@ -10,23 +11,24 @@ from sqlalchemy.orm import Session
 from src.database.models import Project, ContextEvent
 from src.utils.redis_client import get_redis_client
 from src.utils.version_vector import VersionVector
-from src.utils.caching import CacheManager, cached
+from src.utils.caching import CacheManager
+from src.core.dependencies import BaseDeps
 
 class ContextEventService:
-    def __init__(self, db: Session, redis: Optional[Redis] = None):
-        self.db = db
-        self.redis = redis or get_redis_client()
+    def __init__(self, deps: BaseDeps):
+        self.db = deps.db
+        self.redis = deps.redis
         self.cache_manager = CacheManager(self.redis)
         
-    @cached(ttl=3600, key_prefix="context")
     async def get_context(self, project_id: UUID) -> Dict:
         """
         Get the current context for a project, using cache when possible.
         """
-        # Verify project exists
-        project = self.db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+        # Try to get from cache first
+        cache_key = f"context:get_context:{project_id}"
+        cached_context = await self.cache_manager.get(cache_key)
+        if cached_context is not None:
+            return cached_context
 
         # Build context from event store
         events = self.db.query(ContextEvent)\
@@ -34,14 +36,29 @@ class ContextEventService:
             .order_by(ContextEvent.timestamp.asc())\
             .all()
             
+        if not events:
+            # Only verify project exists if no events found
+            project = self.db.query(Project).filter(Project.id == project_id).first()
+            if not project:
+                raise HTTPException(status_code=404, detail="Project not found")
+            return {}
+            
         context = self._build_context_from_events(events)
+        
+        # Cache the result
+        await self.cache_manager.set(cache_key, context)
         return context
 
-    @cached(ttl=3600, key_prefix="vector")
     async def get_version_vector(self, project_id: UUID) -> VersionVector:
         """
         Get the current version vector for a project.
         """
+        # Try to get from cache first
+        cache_key = f"vector:get_version_vector:{project_id}"
+        cached_vector = await self.cache_manager.get(cache_key, value_type=VersionVector)
+        if cached_vector is not None:
+            return cached_vector
+
         # Get latest event
         latest_event = self.db.query(ContextEvent)\
             .filter(ContextEvent.project_id == project_id)\
@@ -51,6 +68,8 @@ class ContextEventService:
         vector = VersionVector.new() if not latest_event else \
                  VersionVector.from_event(latest_event)
                  
+        # Cache the result
+        await self.cache_manager.set(cache_key, vector)
         return vector
 
     async def append_event(

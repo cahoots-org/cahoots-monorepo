@@ -1,134 +1,197 @@
-"""Tests for the main API endpoints."""
+"""Tests for main API endpoints."""
 import pytest
-from typing import Dict, Any
-from unittest.mock import Mock, AsyncMock, patch, ANY
-from fastapi import status, HTTPException
+from unittest.mock import AsyncMock, MagicMock
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from datetime import datetime
+from httpx import AsyncClient
 
-from src.api.main import app
-from src.utils.config import ServiceConfig, APIConfig
+from src.api.health import router as health_router
+from src.api.projects import router as projects_router
+from src.api.metrics import router as metrics_router
+from src.core.dependencies import BaseDeps, get_db
+from src.api.auth import verify_api_key
+from src.utils.config import get_settings
+from src.services.project_service import ProjectService
 
 @pytest.fixture
-def api_key_header() -> Dict[str, str]:
-    """Create API key header."""
+def mock_settings():
+    """Mock settings."""
+    settings = MagicMock()
+    settings.DATABASE_URL = "postgresql+asyncpg://test:test@localhost:5432/test"
+    settings.REDIS_URL = "redis://localhost:6379/0"
+    settings.MODEL_API_KEY = "test_model_key"
+    settings.GITHUB_API_KEY = "test_github_key"
+    settings.STRIPE_API_KEY = "test_stripe_key"
+    settings.K8S_NAMESPACE = "test"
+    return settings
+
+@pytest.fixture
+async def mock_db():
+    """Mock database session."""
+    session = AsyncMock()
+    yield session
+    await session.close()
+
+@pytest.fixture
+def mock_deps(mock_settings, mock_db):
+    """Mock dependencies with minimal setup."""
+    mock = AsyncMock()
+    mock.settings = mock_settings
+    mock.db = mock_db
+    mock.redis = AsyncMock()
+    mock.event_system = AsyncMock()
+    return mock
+
+@pytest.fixture
+def api_key_header():
+    """Mock API key header."""
     return {"X-API-Key": "test_api_key"}
 
 @pytest.fixture
-def sample_project() -> Dict:
-    """Create a sample project for testing."""
+def sample_project():
+    """Sample project data."""
     return {
-        "id": "test-project-1",
-        "name": "Test Project",
-        "description": "A test project",
-        "stories": [
-            {
-                "id": "story1",
-                "title": "Story 1",
-                "description": "First story",
-                "priority": 1,
-                "status": "open"
-            }
-        ],
-        "github_url": "https://github.com/org/repo"
-    }
-
-@pytest.mark.asyncio
-async def test_health_check(
-    test_client: TestClient,
-    mock_event_system: AsyncMock
-) -> None:
-    """Test the health check endpoint."""
-    # Configure mock
-    mock_event_system.is_connected = True
-    mock_event_system.connect = AsyncMock()
-    mock_event_system.verify_connection = AsyncMock(return_value=True)
-    mock_redis = AsyncMock()
-    mock_redis.ping = AsyncMock(return_value=True)
-    mock_event_system.redis = mock_redis
-    mock_event_system._connected = True
-
-    with patch("src.api.core.get_event_system", return_value=mock_event_system), \
-         patch("src.api.core._event_system", mock_event_system):  # Also patch the global instance
-        # Ensure event system is connected
-        await mock_event_system.connect()
-        
-        response = test_client.get("/health")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert isinstance(data["uptime_seconds"], int)
-        assert data["redis_connected"] is True
-        assert data["components"]["event_system"] == "healthy"
-        
-        # Check Redis service health
-        redis_health = data["services"]["redis"]
-        assert redis_health["status"] == "healthy"
-        assert isinstance(redis_health["latency_ms"], float)
-        assert redis_health["details"] == {}
-
-@pytest.mark.asyncio
-async def test_metrics_endpoint(test_client: TestClient) -> None:
-    """Test the metrics endpoint."""
-    response = test_client.get("/health/metrics")
-    assert response.status_code == 200
-    data = response.json()
-    assert "requests_total" in data
-    assert "errors_total" in data
-    assert "response_time_ms" in data
-    assert "active_connections" in data
-
-@pytest.mark.asyncio
-async def test_create_project_success(
-    test_client: TestClient,
-    api_key_header: Dict[str, str]
-) -> None:
-    """Test successful project creation."""
-    project_data = {
         "name": "Test Project",
         "description": "A test project"
     }
+
+@pytest.fixture
+def mock_project_service():
+    """Mock project service."""
+    mock = AsyncMock()
+    mock.create_project = AsyncMock()
+    return mock
+
+@pytest.fixture
+async def async_client(mock_deps, mock_settings, mock_db):
+    """Create async test client with minimal setup."""
+    app = FastAPI()
+    app.include_router(health_router, prefix="/health")
+    app.include_router(projects_router, prefix="/api/projects") 
+    app.include_router(metrics_router, prefix="/metrics")
     
-    with patch("src.api.auth.verify_api_key", return_value=True):
-        response = test_client.post("/api/projects", json=project_data, headers=api_key_header)
+    # Override dependencies
+    app.dependency_overrides = {
+        BaseDeps: lambda: mock_deps,
+        verify_api_key: lambda: "test_org_id",  # Simplified API key verification
+        get_settings: lambda: mock_settings,
+        get_db: lambda: mock_db
+    }
+    
+    async with AsyncClient(app=app, base_url="http://testserver") as client:
+        yield client
+
+@pytest.mark.asyncio
+async def test_health_check(async_client, mock_deps, api_key_header):
+    """Test health check returns 200 when all services are healthy."""
+    mock_deps.db.execute.return_value = True
+    mock_deps.event_system.verify_connection.return_value = True
+    mock_deps.redis.ping.return_value = True
+    
+    response = await async_client.get("/health", headers=api_key_header)
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
+
+@pytest.mark.asyncio
+async def test_health_check_db_failure(async_client, mock_deps, api_key_header):
+    """Test health check returns 503 when database is down."""
+    mock_deps.db.execute.side_effect = Exception("Database error")
+    
+    response = await async_client.get("/health", headers=api_key_header)
+    assert response.status_code == 503
+
+@pytest.mark.asyncio
+async def test_health_check_redis_failure(async_client, mock_deps, api_key_header):
+    """Test health check returns 503 when Redis is down."""
+    mock_deps.redis.ping.side_effect = Exception("Redis error")
+    
+    response = await async_client.get("/health", headers=api_key_header)
+    assert response.status_code == 503
+
+@pytest.mark.asyncio
+async def test_metrics_endpoint(async_client, api_key_header):
+    """Test metrics endpoint returns 200."""
+    response = await async_client.get("/metrics", headers=api_key_header)
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain; version=0.0.4; charset=utf-8"
+
+@pytest.mark.asyncio
+async def test_create_project_success(async_client, mock_deps, api_key_header, sample_project):
+    """Test successful project creation returns 201."""
+    # Mock project creation
+    mock_project = AsyncMock()
+    mock_project.id = "test_project_id"
+    mock_project.name = sample_project["name"]
+    mock_project.description = sample_project["description"]
+    mock_project.created_at = datetime.now()
+    mock_project.status = "active"
+    mock_project.organization_id = "test_org_id"
+
+    # Mock organization lookup and project uniqueness check
+    mock_org = AsyncMock()
+    mock_org.id = "test_org_id"
+    
+    async def mock_scalar_one_or_none():
+        mock_scalar_one_or_none.call_count += 1
+        return mock_org if mock_scalar_one_or_none.call_count == 1 else None
+    mock_scalar_one_or_none.call_count = 0
+    
+    mock_result = AsyncMock()
+    mock_result.scalar_one_or_none = mock_scalar_one_or_none
+    mock_deps.db.execute = AsyncMock(return_value=mock_result)
+
+    # Mock project service create method
+    mock_deps.db.add = AsyncMock()
+    mock_deps.db.commit = AsyncMock()
+    mock_deps.event_system.publish = AsyncMock()
+    
+    # Mock the create_project method to return our mock project
+    original_init = ProjectService.__init__
+    original_create = ProjectService.create_project
+    
+    async def mock_create(self, *args, **kwargs):
+        return mock_project
+        
+    def mock_init(self, *args, **kwargs):
+        self.deps = args[0]
+        
+    ProjectService.__init__ = mock_init
+    ProjectService.create_project = mock_create
+
+    try:
+        response = await async_client.post("/api/projects", headers=api_key_header, json=sample_project)
+        print(f"Response content: {response.content}")
+        print(f"Response json: {response.json()}")
         assert response.status_code == 201
-        data = response.json()
-        assert data["name"] == project_data["name"]
-        assert data["description"] == project_data["description"]
-        assert "id" in data
-        assert "created_at" in data
+        assert response.json()["name"] == sample_project["name"]
+        assert response.json()["description"] == sample_project["description"]
+        assert response.json()["status"] == "active"
+    finally:
+        # Restore original methods
+        ProjectService.__init__ = original_init
+        ProjectService.create_project = original_create
 
 @pytest.mark.asyncio
-async def test_create_project_invalid_data(
-    test_client: TestClient,
-    api_key_header: Dict[str, str]
-) -> None:
-    """Test project creation with invalid data."""
-    project_data = {
-        "name": "",  # Invalid - empty name
-        "description": "A test project"
-    }
+async def test_create_project_invalid_data(async_client, mock_deps, api_key_header):
+    """Test invalid project data returns 422."""
+    # Mock organization lookup
+    mock_org = AsyncMock()
+    mock_org.id = "test_org_id"
+    mock_deps.db.execute.return_value.scalar_one_or_none.return_value = mock_org
     
-    with patch("src.api.auth.verify_api_key", return_value=True):
-        response = test_client.post("/api/projects", json=project_data, headers=api_key_header)
-        assert response.status_code == 422
-        data = response.json()
-        assert "detail" in data
+    invalid_project = {"name": "", "description": ""}
+    response = await async_client.post("/api/projects", headers=api_key_header, json=invalid_project)
+    assert response.status_code == 422
 
 @pytest.mark.asyncio
-async def test_create_project_no_auth(test_client: TestClient) -> None:
-    """Test project creation without authentication."""
-    project_data = {
-        "name": "Test Project",
-        "description": "A test project"
-    }
+async def test_create_project_duplicate_name(async_client, mock_deps, api_key_header, sample_project):
+    """Test duplicate project name returns 400."""
+    # Mock organization lookup
+    mock_org = AsyncMock()
+    mock_org.id = "test_org_id"
+    mock_deps.db.execute.return_value.scalar_one_or_none.side_effect = [mock_org, mock_org]  # First for org lookup, then for project lookup
     
-    response = test_client.post("/api/projects", json=project_data)
-    assert response.status_code == 401
-
-@pytest.mark.asyncio
-async def test_request_tracking(test_client: TestClient) -> None:
-    """Test request tracking middleware."""
-    response = test_client.get("/health/metrics")
-    assert response.status_code == 200
-    assert "X-Request-ID" in response.headers 
+    response = await async_client.post("/api/projects", headers=api_key_header, json=sample_project)
+    assert response.status_code == 400
+    assert "already exists" in response.json()["detail"].lower() 

@@ -116,7 +116,14 @@ def test_determine_file_path_test(file_manager, sample_tasks):
 
 def test_determine_file_path_custom(file_manager, sample_tasks):
     """Test file path determination for custom tasks."""
-    path = file_manager.determine_file_path(sample_tasks[4])
+    custom_task = Task(
+        id="task-custom",
+        title="Custom Task Handler",
+        description="Handle custom tasks",
+        requires_ux=False,
+        metadata={}
+    )
+    path = file_manager.determine_file_path(custom_task)
     assert path == "src/core/custom_task_handler.py"
     
     # Test with special characters

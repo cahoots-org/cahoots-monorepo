@@ -28,25 +28,28 @@ class ProjectManager(BaseAgent):
     """Project Manager agent responsible for coordinating development activities."""
 
     def __init__(self,
+                 github_service: GitHubService,
                  event_system: Optional[EventSystem] = None,
-                 start_listening: bool = True,
-                 github_service: Optional[GitHubService] = None,
-                 github_config: Optional[Any] = None):
+                 start_listening: bool = True):
         """Initialize the project manager agent.
 
         Args:
+            github_service: GitHub service instance for repository management
             event_system: Optional event system instance. If not provided, will get from singleton.
             start_listening: Whether to start listening for events immediately
-            github_service: Optional GitHub service instance for testing
-            github_config: Optional GitHub config for testing
         """
         # Initialize base class first to set up task manager and event system
         super().__init__(model_name="gpt-4-1106-preview", start_listening=start_listening, event_system=event_system)
 
         # Set up project manager-specific attributes
-        self.github = github_service or GitHubService(github_config)
+        self._github = github_service
         self.logger = BaseLogger(self.__class__.__name__)
         self.logger.info("Project Manager initialized successfully")
+        
+    @property
+    def github_service(self) -> GitHubService:
+        """Get the GitHub service instance."""
+        return self._github
 
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
@@ -140,7 +143,7 @@ class ProjectManager(BaseAgent):
         
         try:
             # Create GitHub repository
-            repo_url = await self.github.create_repository(project_name, description)
+            repo_url = await self._github.create_repository(project_name, description)
             
             # Create board
             board_id = await self.task_management.create_board(project_name, description)

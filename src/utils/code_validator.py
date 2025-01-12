@@ -17,10 +17,19 @@ from .performance_analyzer import PerformanceAnalyzer
 class CodeValidator:
     """Validates code quality, security, and patterns."""
     
-    def __init__(self):
-        """Initialize the code validator."""
+    def __init__(self, coverage_cls=Coverage, unittest_module=unittest, tempfile_module=tempfile):
+        """Initialize the code validator.
+        
+        Args:
+            coverage_cls: Coverage class for test coverage analysis
+            unittest_module: unittest module for running tests
+            tempfile_module: tempfile module for temporary file operations
+        """
         self.logger = logging.getLogger(__name__)
         self.performance_analyzer = PerformanceAnalyzer()
+        self.coverage_cls = coverage_cls
+        self.unittest = unittest_module
+        self.tempfile = tempfile_module
         
     async def run_linter(self, content: str) -> List[Dict[str, Any]]:
         """Run linter on code content.
@@ -141,8 +150,8 @@ class CodeValidator:
         """
         try:
             # Create temporary files
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.py') as code_file, \
-                 tempfile.NamedTemporaryFile(mode='w', suffix='_test.py') as test_file:
+            with self.tempfile.NamedTemporaryFile(mode='w', suffix='.py') as code_file, \
+                 self.tempfile.NamedTemporaryFile(mode='w', suffix='_test.py') as test_file:
                 
                 # Write code to file
                 code_file.write(content)
@@ -160,12 +169,12 @@ class CodeValidator:
                 test_file.flush()
                 
                 # Run coverage
-                cov = Coverage()
+                cov = self.coverage_cls()
                 cov.start()
                 
                 try:
                     # Try to run tests
-                    unittest.main(module=test_file.name.replace('.py', ''), exit=False)
+                    self.unittest.main(module=test_file.name.replace('.py', ''), exit=False)
                 except SystemExit:
                     pass
                     

@@ -1,23 +1,21 @@
 """Trello implementation of TaskManagementService."""
-from typing import Optional
 from src.utils.exceptions import ExternalServiceException
 from src.utils.async_base import AsyncContextManager
 from .base import TaskManagementService
 from src.services.trello.service import TrelloService
-from src.services.trello.config import TrelloConfig
+from src.core.dependencies import ServiceDeps
 
 class TrelloTaskManagementService(TaskManagementService, AsyncContextManager):
     """Trello implementation of TaskManagementService."""
     
-    def __init__(self, config: Optional[TrelloConfig] = None) -> None:
+    def __init__(self, deps: ServiceDeps):
         """Initialize the Trello service.
         
         Args:
-            config: Optional TrelloConfig instance. If not provided,
-                   will be loaded from global config.
+            deps: Service dependencies including configuration
         """
         super().__init__()
-        self.trello = TrelloService(config)
+        self.trello = TrelloService(deps.settings.trello)
         self._resource = self.trello
 
     async def create_board(self, name: str, description: str) -> str:

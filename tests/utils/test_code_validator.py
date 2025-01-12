@@ -1,12 +1,49 @@
 """Tests for code validation utilities."""
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, MagicMock
 from src.utils.code_validator import CodeValidator
 
 @pytest.fixture
-def validator():
-    """Create a code validator instance."""
-    return CodeValidator()
+def mock_coverage():
+    """Create a mock coverage class."""
+    mock_cov_instance = MagicMock()
+    mock_cov_instance.analysis.return_value = (None, [], None)  # No covered lines
+    
+    mock_cov_cls = MagicMock()
+    mock_cov_cls.return_value = mock_cov_instance
+    return mock_cov_cls, mock_cov_instance
+
+@pytest.fixture
+def mock_unittest():
+    """Create a mock unittest module."""
+    mock_unittest = MagicMock()
+    return mock_unittest
+
+@pytest.fixture
+def mock_tempfile():
+    """Create a mock tempfile module."""
+    mock_tempfile = MagicMock()
+    mock_code_file = MagicMock()
+    mock_code_file.name = "test_code.py"
+    mock_test_file = MagicMock()
+    mock_test_file.name = "test_test_code.py"
+    
+    mock_tempfile.NamedTemporaryFile.return_value.__enter__.side_effect = [
+        mock_code_file,
+        mock_test_file
+    ]
+    return mock_tempfile, mock_code_file, mock_test_file
+
+@pytest.fixture
+def validator(mock_coverage, mock_unittest, mock_tempfile):
+    """Create a code validator instance with mocked dependencies."""
+    mock_cov_cls, _ = mock_coverage
+    mock_temp, _, _ = mock_tempfile
+    return CodeValidator(
+        coverage_cls=mock_cov_cls,
+        unittest_module=mock_unittest,
+        tempfile_module=mock_temp
+    )
 
 @pytest.mark.asyncio
 async def test_run_linter(validator):
@@ -68,15 +105,24 @@ def complex_function(x, y):
     assert complexity > 0  # Complex function should have non-zero complexity
 
 @pytest.mark.asyncio
-async def test_check_test_coverage(validator):
+async def test_check_test_coverage(validator, mock_coverage, mock_unittest, mock_tempfile):
     """Test coverage checking."""
     code = """
 def simple_function(x):
     return x * 2
 """
+    _, mock_cov = mock_coverage
+    _, mock_code_file, mock_test_file = mock_tempfile
+    
     coverage = await validator.check_test_coverage(code)
+    
     assert isinstance(coverage, float)
     assert 0 <= coverage <= 100  # Coverage should be a percentage
+    mock_cov.start.assert_called_once()
+    mock_cov.stop.assert_called_once()
+    mock_unittest.main.assert_called_once()
+    assert mock_code_file.write.called
+    assert mock_test_file.write.called
 
 @pytest.mark.asyncio
 async def test_run_security_check(validator):

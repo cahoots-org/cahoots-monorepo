@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import stripe.error
 
 from src.api.webhook import router, WebhookResponse
+from src.api.dependencies import get_verified_event_system, get_stripe_client
 
 @pytest.fixture
 def mock_event_system():
@@ -13,7 +14,6 @@ def mock_event_system():
     mock = AsyncMock()
     mock.is_connected = True
     mock.verify_connection.return_value = True
-    mock.disconnect = AsyncMock()
     return mock
 
 @pytest.fixture
@@ -37,8 +37,8 @@ def app(mock_event_system, mock_stripe):
         return mock_stripe
         
     app.dependency_overrides = {
-        "get_verified_event_system": get_mock_event_system,
-        "get_stripe_client": get_mock_stripe
+        get_verified_event_system: get_mock_event_system,
+        get_stripe_client: get_mock_stripe
     }
     app.include_router(router)
     return app
@@ -88,4 +88,4 @@ def test_webhook_success(client, mock_stripe, mock_event_system):
     # Verify mocks were called correctly
     mock_stripe.construct_event.assert_called_once()
     mock_stripe.handle_webhook_event.assert_called_once_with(mock_event)
-    mock_event_system.disconnect.assert_called_once() 
+    mock_event_system.verify_connection.assert_called_once() 

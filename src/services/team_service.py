@@ -1,18 +1,28 @@
+"""Team service for managing team configurations."""
 from typing import Dict, List, Optional
-from fastapi import HTTPException, Depends
-from sqlalchemy.orm import Session
+from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+from redis.asyncio import Redis
 import time
 
 from src.models.team_config import TeamConfig, ServiceRole, RoleConfig, ProjectLimits
-from src.dependencies import TeamServiceDeps
+from src.utils.k8s import KubernetesClient
+from src.core.dependencies import ServiceDeps
 
 class TeamService:
-    def __init__(self, deps: TeamServiceDeps = Depends()):
+    """Service for managing team configurations."""
+    
+    def __init__(self, deps: ServiceDeps, project_id: str):
+        """Initialize team service.
+        
+        Args:
+            deps: Service dependencies
+            project_id: Project ID
+        """
         self.db = deps.db
         self.redis = deps.redis
         self.k8s = deps.k8s
-        self.context = deps.context
-        self.project_id = deps.project_id
+        self.project_id = project_id
         
     async def get_team_config(self) -> TeamConfig:
         """Retrieve the current team configuration."""
@@ -41,12 +51,6 @@ class TeamService:
         config_key = f"team_config:{self.project_id}"
         await self.redis.set(config_key, new_config.model_dump_json())
         await self._save_config_to_db(new_config)
-        
-        # Update context allocation
-        await self._update_context_allocation(new_config)
-        
-        # Trigger service scaling
-        await self._scale_services(new_config)
         
         return new_config
     
@@ -81,43 +85,6 @@ class TeamService:
                 raise HTTPException(status_code=400, 
                                   detail=f"Service tier {role_config.tier} not allowed for {role}")
     
-    async def _update_context_allocation(self, config: TeamConfig):
-        """Update context allocation based on new configuration."""
-        # Calculate context allocation based on role priorities and instances
-        total_priority = sum(rc.context_priority * rc.instances 
-                           for rc in config.roles.values() if rc.enabled)
-        
-        for role, role_config in config.roles.items():
-            if role_config.enabled:
-                allocation = (role_config.context_priority * role_config.instances * 
-                            config.context_limit_mb) // total_priority
-                await self.context.set_role_context_limit(
-                    self.project_id, role, allocation
-                )
-    
-    async def _scale_services(self, config: TeamConfig):
-        """Scale services based on new configuration."""
-        for role, role_config in config.roles.items():
-            if role_config.enabled:
-                # Signal service scaling system to adjust instance count
-                await self._scale_role_instances(role, role_config.instances)
-    
-    async def _scale_role_instances(self, role: ServiceRole, instances: int):
-        """Scale instances for a specific role using Kubernetes."""
-        scaling_key = f"scale:{self.project_id}:{role}"
-        await self.redis.set(scaling_key, instances)
-        
-        # Scale Kubernetes deployment
-        deployment_name = f"{role}-{self.project_id}"
-        success = await self.k8s.scale_deployment(
-            deployment_name=deployment_name,
-            replicas=instances
-        )
-        
-        if not success:
-            # Log error but don't fail the request
-            print(f"Warning: Failed to scale {deployment_name} to {instances} replicas")
-    
     async def _load_config_from_db(self) -> Optional[TeamConfig]:
         """Load team configuration from database."""
         result = await self.db.execute(
@@ -147,4 +114,14 @@ class TeamService:
                 "timestamp": int(time.time())
             }
         )
-        await self.db.commit() 
+        await self.db.commit()
+        
+    async def _scale_role_instances(self, role: ServiceRole, instances: int):
+        """Scale the number of instances for a role.
+        
+        Args:
+            role: The service role to scale
+            instances: The desired number of instances
+        """
+        deployment_name = f"{role}-{self.project_id}"
+        await self.k8s.scale_deployment(deployment_name=deployment_name, replicas=instances) 

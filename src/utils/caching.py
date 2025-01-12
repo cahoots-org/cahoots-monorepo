@@ -1,4 +1,4 @@
-"""Cache management with multi-level caching and predictive warming."""
+"""Cache management with multi-level caching."""
 from typing import Any, Dict, Optional, TypeVar, Generic, List, Callable, Set
 from collections import OrderedDict, defaultdict
 import json
@@ -10,6 +10,7 @@ from redis import Redis
 from functools import wraps
 
 from .error_handling import SystemError, ErrorCategory, ErrorSeverity, RecoveryStrategy
+from .version_vector import VersionVector
 
 T = TypeVar('T')
 
@@ -39,8 +40,11 @@ class CacheEntry(Generic[T]):
         self.last_accessed = datetime.utcnow()
         
     def to_dict(self) -> Dict:
+        value = self.value
+        if isinstance(value, VersionVector):
+            value = value.to_dict()
         return {
-            "value": self.value,
+            "value": value,
             "ttl": self.ttl,
             "version": self.version,
             "last_updated": self.last_updated.isoformat(),
@@ -49,9 +53,15 @@ class CacheEntry(Generic[T]):
         }
         
     @classmethod
-    def from_dict(cls, data: Dict) -> 'CacheEntry[T]':
+    def from_dict(cls, data: Dict, value_type: Optional[type] = None) -> 'CacheEntry[T]':
+        value = data["value"]
+        if value_type == VersionVector and isinstance(value, dict):
+            vector = VersionVector(versions=value.get("versions", {}))
+            if "timestamp" in value:
+                vector.timestamp = datetime.fromisoformat(value["timestamp"])
+            value = vector
         return cls(
-            value=data["value"],
+            value=value,
             ttl=data["ttl"],
             version=data["version"],
             last_updated=datetime.fromisoformat(data["last_updated"]),
@@ -129,61 +139,13 @@ class CacheManager:
         self._invalidation_callbacks: Dict[str, List[Callable]] = {}
         self._warmup_tasks: Set[asyncio.Task] = set()
         self._running = True
-        self._start_warmup_monitor()
         
-    def _start_warmup_monitor(self) -> None:
-        """Start background task for predictive cache warming."""
-        async def monitor_patterns():
-            while self._running:
-                try:
-                    await self._check_warmup_patterns()
-                except Exception as e:
-                    self.logger.error(f"Error in warmup monitor: {str(e)}")
-                await asyncio.sleep(300)  # Check every 5 minutes
-                
-        asyncio.create_task(monitor_patterns())
-        
-    async def _check_warmup_patterns(self) -> None:
-        """Check access patterns and pre-warm frequently accessed keys."""
-        for key, entry in self.local_cache.cache.items():
-            pattern = self.local_cache.get_access_pattern(key)
-            if len(pattern) >= self.warmup_threshold:
-                # Calculate average time between accesses
-                intervals = [
-                    (t2 - t1).total_seconds()
-                    for t1, t2 in zip(pattern[:-1], pattern[1:])
-                ]
-                if intervals:
-                    avg_interval = sum(intervals) / len(intervals)
-                    last_access = pattern[-1]
-                    time_since_last = (datetime.utcnow() - last_access).total_seconds()
-                    
-                    # If we're approaching the average interval, pre-warm
-                    if time_since_last >= avg_interval * 0.8:
-                        self._warmup_tasks.add(
-                            asyncio.create_task(self._warm_cache(key))
-                        )
-                        
-    async def _warm_cache(self, key: str) -> None:
-        """Pre-warm cache for a key."""
-        try:
-            # Implement your cache warming logic here
-            # This might involve fetching fresh data from the database
-            self.logger.info(f"Pre-warming cache for key: {key}")
-            # await self._fetch_fresh_data(key)
-        except Exception as e:
-            self.logger.error(f"Error warming cache for {key}: {str(e)}")
-        finally:
-            # Clean up completed task
-            for task in self._warmup_tasks:
-                if task.done():
-                    self._warmup_tasks.remove(task)
-                    
     async def get(
         self,
         key: str,
         default: Any = None,
-        ttl: Optional[int] = None
+        ttl: Optional[int] = None,
+        value_type: Optional[type] = None
     ) -> Any:
         """Get value from cache, trying local cache first then Redis."""
         # Try local cache first
@@ -192,11 +154,11 @@ class CacheManager:
             
         # Try Redis
         try:
-            data = self.redis.get(key)
+            data = await self.redis.get(key)
             if not data:
                 return default
                 
-            entry = CacheEntry.from_dict(json.loads(data))
+            entry = CacheEntry.from_dict(json.loads(data), value_type)
             if entry.is_expired():
                 await self.delete(key)
                 return default
@@ -220,23 +182,15 @@ class CacheManager:
         ttl = ttl or self.default_ttl
         
         try:
-            # Get current version if updating
-            current_version = 1
-            if version is None:
-                data = self.redis.get(key)
-                if data:
-                    entry = CacheEntry.from_dict(json.loads(data))
-                    current_version = entry.version + 1
-                    
-            # Create new entry
+            # Create new entry with version 1 for new values
             entry = CacheEntry(
                 value=value,
                 ttl=ttl,
-                version=version or current_version
+                version=1  # Always start with version 1 for new values
             )
             
             # Update Redis
-            self.redis.setex(
+            await self.redis.setex(
                 key,
                 ttl,
                 json.dumps(entry.to_dict())
@@ -244,9 +198,6 @@ class CacheManager:
             
             # Update local cache
             self.local_cache.put(key, value, ttl)
-            
-            # Trigger invalidation callbacks with exponential backoff
-            await self._trigger_invalidation_with_backoff(key)
             
         except Exception as e:
             raise SystemError(
@@ -261,72 +212,55 @@ class CacheManager:
     async def delete(self, key: str) -> None:
         """Delete value from both caches."""
         try:
-            self.redis.delete(key)
+            await self.redis.delete(key)
             if key in self.local_cache.cache:
                 del self.local_cache.cache[key]
-                
-            await self._trigger_invalidation_with_backoff(key)
-            
         except Exception as e:
             self.logger.error(f"Error deleting from cache: {str(e)}")
-            
-    async def register_invalidation_callback(
-        self,
-        key_pattern: str,
-        callback: Callable
-    ) -> None:
-        """Register a callback for cache invalidation events."""
-        if key_pattern not in self._invalidation_callbacks:
-            self._invalidation_callbacks[key_pattern] = []
-        self._invalidation_callbacks[key_pattern].append(callback)
-        
-    async def _trigger_invalidation_with_backoff(self, key: str) -> None:
-        """Trigger invalidation callbacks with exponential backoff."""
-        for pattern, callbacks in self._invalidation_callbacks.items():
-            if pattern in key:
-                for i, callback in enumerate(callbacks):
-                    # Add jitter to prevent thundering herd
-                    delay = (2 ** i) * (0.1 + random.random() * 0.1)
-                    try:
-                        await asyncio.sleep(delay)
-                        await callback(key)
-                    except Exception as e:
-                        self.logger.error(
-                            f"Error in cache invalidation callback: {str(e)}"
-                        )
 
 def cached(
     ttl: Optional[int] = None,
     key_prefix: str = "",
-    key_builder: Optional[Callable] = None
+    key_builder: Optional[Callable] = None,
+    value_type: Optional[type] = None
 ):
-    """Decorator for caching function results."""
+    """Cache decorator that supports async Redis operations."""
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Get cache manager instance
-            # This should be injected in a real application
-            cache_manager = CacheManager(Redis())
+            # Get cache manager instance from first arg (self)
+            if not args:
+                raise ValueError("Cached function must be a method")
+            cache_manager = args[0].cache_manager
             
             # Build cache key
             if key_builder:
                 cache_key = key_builder(*args, **kwargs)
             else:
-                # Default key building
+                # Default to using function args as key
                 key_parts = [key_prefix, func.__name__]
-                key_parts.extend(str(arg) for arg in args)
+                key_parts.extend(str(arg) for arg in args[1:])
                 key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
                 cache_key = ":".join(key_parts)
                 
             # Try to get from cache
-            result = await cache_manager.get(cache_key)
-            if result is not None:
-                return result
+            cached_value = await cache_manager.get(
+                cache_key,
+                value_type=value_type
+            )
+            if cached_value is not None:
+                return cached_value
                 
-            # Execute function and cache result
+            # Call function if cache miss
             result = await func(*args, **kwargs)
-            await cache_manager.set(cache_key, result, ttl)
-            return result
             
+            # Cache result
+            await cache_manager.set(
+                cache_key,
+                result,
+                ttl=ttl
+            )
+            
+            return result
         return wrapper
     return decorator 

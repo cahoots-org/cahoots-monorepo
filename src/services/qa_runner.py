@@ -2,32 +2,26 @@
 import asyncio
 import logging
 import time
-from typing import List, Optional
+from typing import List
 
 from src.models.qa_suite import TestSuite, TestCase, QAResult, TestStatus
 from src.utils.exceptions import ExternalServiceException
-from src.utils.model import Model
-from src.utils.event_system import EventSystem
+from src.core.dependencies import ServiceDeps
 
 logger = logging.getLogger(__name__)
 
 class QARunner:
     """QA runner service."""
     
-    def __init__(
-        self,
-        model: Optional[Model] = None,
-        event_system: Optional[EventSystem] = None
-    ):
+    def __init__(self, deps: ServiceDeps):
         """Initialize the QA runner.
         
         Args:
-            model: Optional model instance for test execution
-            event_system: Optional event system instance
+            deps: Service dependencies including model and event system
         """
         self.running = False
-        self.model = model
-        self.event_system = event_system
+        self.model = deps.model
+        self.event_system = deps.event_system
         
     async def __aenter__(self):
         """Enter async context."""

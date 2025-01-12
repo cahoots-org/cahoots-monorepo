@@ -21,7 +21,7 @@ class GitHubService:
             config: Configuration object containing GitHub settings
         """
         self.config = config
-        self.github = Github(config.github_api_key)
+        self.github = Github(config.api_key)
         self.logger = logging.getLogger(__name__)
         self.workspace_dir = config.workspace_dir
         self.repo_name = config.repo_name

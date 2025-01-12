@@ -9,6 +9,8 @@ from src.utils.exceptions import ExternalServiceException
 def trello_config() -> TrelloConfig:
     """Create test Trello config."""
     return TrelloConfig(
+        name="trello",
+        url="https://api.trello.com/1",
         api_key="test-key",
         api_token="test-token"
     )
@@ -21,28 +23,14 @@ async def trello_service(trello_config: TrelloConfig) -> TrelloService:
     await service.close()
 
 @pytest.mark.asyncio
-async def test_init_with_env_config() -> None:
-    """Test initializing service with config from environment."""
-    mock_config = Mock(spec=TrelloConfig)
-    mock_config.api_key = "env-key"
-    mock_config.api_token = "env-token"
-    mock_config.base_url = "https://api.trello.com/1"
-    mock_config.timeout = 30
-
-    with patch("src.services.trello.config.TrelloConfig.from_env", return_value=mock_config):
-        service = TrelloService()
-        assert service.config.api_key == "env-key"
-        assert service.config.api_token == "env-token"
-        assert service.config.base_url == "https://api.trello.com/1"
-        assert service.config.timeout == 30
-
-@pytest.mark.asyncio
-async def test_init_with_custom_config(trello_config: TrelloConfig) -> None:
-    """Test initializing service with custom config."""
+async def test_init_with_config(trello_config: TrelloConfig) -> None:
+    """Test initializing service with config."""
     service = TrelloService(config=trello_config)
     assert service.config == trello_config
     assert service.client.api_key == trello_config.api_key
     assert service.client.api_token == trello_config.api_token
+    assert service.client.base_url == trello_config.url
+    assert service.client.timeout == trello_config.timeout
 
 @pytest.mark.asyncio
 async def test_create_board(trello_service: TrelloService) -> None:

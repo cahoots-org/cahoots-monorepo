@@ -1,42 +1,49 @@
-"""Tests for health check integration."""
+"""Integration tests for health check endpoints."""
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock
+
+from src.api.main import app
+from src.core.dependencies import BaseDeps
 
 @pytest.mark.asyncio
-async def test_health_check_integration(
-    test_client: TestClient,
-    mock_event_system: AsyncMock
-) -> None:
-    """Test the health check endpoint with integrated services."""
-    # Configure mock event system
-    mock_event_system.is_connected = True
-    mock_event_system.connect = AsyncMock()
+async def test_health_check_integration(mock_redis) -> None:
+    """Test health check endpoint with integrated dependencies."""
+    # Create mock DB
+    mock_result = AsyncMock()
+    mock_result.scalar_one_or_none = AsyncMock(return_value=1)
+    mock_db = AsyncMock()
+    mock_db.execute = AsyncMock(return_value=mock_result)
+    
+    # Create mock event system
+    mock_event_system = AsyncMock()
     mock_event_system.verify_connection = AsyncMock(return_value=True)
-    mock_event_system._connected = True
     
-    # Configure mock Redis
-    mock_redis = AsyncMock()
-    mock_redis.ping = AsyncMock(return_value=True)
-    mock_event_system.redis = mock_redis
+    # Create deps with mocked services
+    deps = BaseDeps()
+    deps.db = mock_db
+    deps.event_system = mock_event_system
+    deps.redis = mock_redis
     
-    # Patch event system
-    with patch("src.api.core.get_event_system", return_value=mock_event_system), \
-         patch("src.api.core._event_system", mock_event_system):  # Also patch the global instance
-        # Ensure event system is connected
-        await mock_event_system.connect()
-        
-        response = test_client.get("/health")
+    # Override the app's dependency
+    app.dependency_overrides[BaseDeps] = lambda: deps
+    
+    # Use test client
+    with TestClient(app) as client:
+        response = client.get("/health")
         assert response.status_code == 200
         
         data = response.json()
         assert data["status"] == "healthy"
-        assert isinstance(data["uptime_seconds"], int)
-        assert data["redis_connected"] is True
-        assert data["components"]["event_system"] == "healthy"
+        assert data["database"] == "connected"
+        assert data["event_system"] == "connected"
+        assert data["redis"] == "connected"
         
         # Check Redis service health
         redis_health = data["services"]["redis"]
         assert redis_health["status"] == "healthy"
         assert isinstance(redis_health["latency_ms"], float)
-        assert redis_health["details"] == {} 
+        assert redis_health["details"] == {}
+        
+    # Clean up
+    app.dependency_overrides.clear() 

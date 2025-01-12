@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException
 from ..utils.config import config
 
-router = APIRouter()
+router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
 @router.post("/github")
 async def github_webhook(payload: dict) -> dict:

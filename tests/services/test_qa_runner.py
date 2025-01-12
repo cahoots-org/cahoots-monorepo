@@ -1,27 +1,25 @@
 """Tests for QA runner service."""
 import pytest
 from datetime import datetime
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch, MagicMock
 from src.services.qa_runner import QARunner
 from src.models.qa_suite import TestSuite, TestCase, TestStatus, QAResult
 from src.utils.exceptions import ExternalServiceException
+from src.core.dependencies import ServiceDeps
 
 @pytest.fixture
-def mock_model():
-    """Create mock model instance."""
-    mock = AsyncMock()
-    mock.generate_response = AsyncMock()
-    return mock
+def mock_deps():
+    """Create mock dependencies."""
+    deps = MagicMock(spec=ServiceDeps)
+    deps.model = AsyncMock()
+    deps.model.generate_response = AsyncMock()
+    deps.event_system = AsyncMock()
+    return deps
 
 @pytest.fixture
-def mock_event_system():
-    """Create mock event system instance."""
-    return AsyncMock()
-
-@pytest.fixture
-def qa_runner(mock_model, mock_event_system):
+def qa_runner(mock_deps):
     """Create QA runner instance with mock dependencies."""
-    return QARunner(model=mock_model, event_system=mock_event_system)
+    return QARunner(deps=mock_deps)
 
 @pytest.fixture
 def valid_test_case():
@@ -64,7 +62,7 @@ async def test_close(qa_runner):
     # Verify no exceptions raised
 
 @pytest.mark.asyncio
-async def test_run_test_case_all_steps_pass(qa_runner, valid_test_case, mock_model):
+async def test_run_test_case_all_steps_pass(qa_runner, valid_test_case, mock_deps):
     """Test successful test case execution with all steps passing."""
     # Mock model responses for each step
     mock_responses = [
@@ -81,17 +79,17 @@ async def test_run_test_case_all_steps_pass(qa_runner, valid_test_case, mock_mod
         Details: Redirected to dashboard"""
     ]
     
-    mock_model.generate_response.side_effect = mock_responses
+    mock_deps.model.generate_response.side_effect = mock_responses
     
     result = await qa_runner.run_test_case(valid_test_case)
     
     assert result.status == TestStatus.PASSED
     assert result.actual_result == valid_test_case.expected_result
     assert result.execution_time is not None
-    assert mock_model.generate_response.call_count == 3
+    assert mock_deps.model.generate_response.call_count == 3
 
 @pytest.mark.asyncio
-async def test_run_test_case_with_failure(qa_runner, valid_test_case, mock_model):
+async def test_run_test_case_with_failure(qa_runner, valid_test_case, mock_deps):
     """Test test case execution with a failing step."""
     # Mock responses with one failing step
     mock_responses = [
@@ -108,7 +106,7 @@ async def test_run_test_case_with_failure(qa_runner, valid_test_case, mock_model
         Details: Button remains inactive"""
     ]
     
-    mock_model.generate_response.side_effect = mock_responses
+    mock_deps.model.generate_response.side_effect = mock_responses
     
     result = await qa_runner.run_test_case(valid_test_case)
     
@@ -116,12 +114,12 @@ async def test_run_test_case_with_failure(qa_runner, valid_test_case, mock_model
     assert "Step 2: Invalid credentials error" in result.actual_result
     assert "Step 3: Login button disabled" in result.actual_result
     assert result.execution_time is not None
-    assert mock_model.generate_response.call_count == 3
+    assert mock_deps.model.generate_response.call_count == 3
 
 @pytest.mark.asyncio
-async def test_run_test_case_with_exception(qa_runner, valid_test_case, mock_model):
+async def test_run_test_case_with_exception(qa_runner, valid_test_case, mock_deps):
     """Test test case execution with an exception."""
-    mock_model.generate_response.side_effect = Exception("Network error")
+    mock_deps.model.generate_response.side_effect = Exception("Network error")
     
     result = await qa_runner.run_test_case(valid_test_case)
     
@@ -136,7 +134,10 @@ async def test_run_test_case_with_exception(qa_runner, valid_test_case, mock_mod
 @pytest.mark.asyncio
 async def test_run_test_case_without_model(valid_test_case):
     """Test error handling when model is not provided."""
-    runner = QARunner(model=None)
+    deps = MagicMock(spec=ServiceDeps)
+    deps.model = None
+    deps.event_system = AsyncMock()
+    runner = QARunner(deps=deps)
     
     with pytest.raises(ValueError, match="Model is required for test execution"):
         await runner.run_test_case(valid_test_case)
@@ -184,7 +185,7 @@ async def test_parse_step_result_malformed(qa_runner):
     assert result['details'] == ''
 
 @pytest.mark.asyncio
-async def test_run_test_suite_success(qa_runner, valid_test_suite, mock_model):
+async def test_run_test_suite_success(qa_runner, valid_test_suite, mock_deps):
     """Test running a complete test suite successfully."""
     # Mock successful responses for all steps
     mock_responses = [
@@ -193,14 +194,14 @@ async def test_run_test_suite_success(qa_runner, valid_test_suite, mock_model):
         Details: None"""
     ] * 3  # One response for each step
     
-    mock_model.generate_response.side_effect = mock_responses
+    mock_deps.model.generate_response.side_effect = mock_responses
     
     results = await qa_runner.run_test_suite(valid_test_suite)
     
     assert len(results) == 1
     assert results[0].status == TestStatus.PASSED
     assert results[0].actual_result == valid_test_suite.test_cases[0].expected_result
-    assert mock_model.generate_response.call_count == 3
+    assert mock_deps.model.generate_response.call_count == 3
 
 @pytest.mark.asyncio
 async def test_run_test_suite_already_running(qa_runner, valid_test_suite):
@@ -213,9 +214,9 @@ async def test_run_test_suite_already_running(qa_runner, valid_test_suite):
     assert "already running" in str(exc_info.value)
 
 @pytest.mark.asyncio
-async def test_run_test_suite_with_exception(qa_runner, valid_test_suite, mock_model):
+async def test_run_test_suite_with_exception(qa_runner, valid_test_suite, mock_deps):
     """Test test suite execution with an exception."""
-    mock_model.generate_response.side_effect = Exception("Fatal error")
+    mock_deps.model.generate_response.side_effect = Exception("Fatal error")
     
     results = await qa_runner.run_test_suite(valid_test_suite)
     
@@ -226,14 +227,10 @@ async def test_run_test_suite_with_exception(qa_runner, valid_test_suite, mock_m
 @pytest.mark.asyncio
 async def test_run_test_suite_empty(qa_runner):
     """Test running an empty test suite."""
-    empty_suite = TestSuite(
-        story_id="empty123",
-        title="Empty Suite",
-        description="Empty test suite",
-        test_cases=[]
-    )
-    
-    results = await qa_runner.run_test_suite(empty_suite)
-    
-    assert len(results) == 0
-    assert not qa_runner.running 
+    with pytest.raises(ValueError, match="Test suite must contain at least one test case"):
+        empty_suite = TestSuite(
+            story_id="empty123",
+            title="Empty Suite",
+            description="Empty test suite",
+            test_cases=[]
+        ) 

@@ -5,7 +5,7 @@ import pytest
 import stripe
 from fastapi import FastAPI, HTTPException
 from src.api.webhook import router, stripe_webhook
-from src.services.stripe_service import StripeClient
+from src.api.dependencies import get_verified_event_system, get_stripe_client
 
 # Sample webhook events for testing
 SAMPLE_EVENTS = {
@@ -59,13 +59,20 @@ SAMPLE_EVENTS = {
 }
 
 @pytest.fixture
-def app() -> FastAPI:
-    """Create test FastAPI application.
-    
-    Returns:
-        FastAPI application
-    """
+def app(mock_event_system, mock_stripe_client) -> FastAPI:
+    """Create test FastAPI application."""
     app = FastAPI()
+    
+    async def get_mock_event_system():
+        return mock_event_system
+        
+    async def get_mock_stripe():
+        return mock_stripe_client
+        
+    app.dependency_overrides = {
+        get_verified_event_system: get_mock_event_system,
+        get_stripe_client: get_mock_stripe
+    }
     app.include_router(router)
     return app
 
@@ -76,7 +83,9 @@ def mock_stripe_client() -> MagicMock:
     Returns:
         Mock Stripe client
     """
-    mock = MagicMock(spec=StripeClient)
+    mock = MagicMock(spec=stripe)
+    mock.construct_event = MagicMock()
+    mock.handle_webhook_event = AsyncMock()
     return mock
 
 @pytest.fixture
@@ -88,6 +97,7 @@ def mock_event_system() -> AsyncMock:
     """
     mock = AsyncMock()
     mock.publish = AsyncMock(return_value=True)
+    mock.verify_connection = AsyncMock(return_value=True)
     return mock
 
 @pytest.fixture
@@ -257,7 +267,7 @@ async def test_webhook_invalid_signature(
     # Configure mock request with invalid signature
     mock_request.headers = {"stripe-signature": "invalid_signature"}
     mock_request.body = AsyncMock(return_value=json.dumps(SAMPLE_EVENTS["subscription_created"]).encode())
-    mock_stripe_client.construct_event.side_effect = ValueError("Invalid signature")
+    mock_stripe_client.construct_event.side_effect = stripe.error.SignatureVerificationError("Invalid signature", "sig_header")
 
     with pytest.raises(HTTPException) as exc:
         await stripe_webhook(mock_request, mock_event_system, mock_stripe_client)

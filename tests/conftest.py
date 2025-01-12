@@ -11,31 +11,48 @@ from src.services.github_service import GitHubService
 
 # Base mock fixtures
 @pytest.fixture
-def mock_redis():
-    """Create a mock Redis client."""
+async def mock_redis():
+    """Create a comprehensive mock Redis client with all needed functionality."""
     mock = AsyncMock(spec=Redis)
-    mock.ping.return_value = True
+    
+    # Basic Redis operations
+    mock.ping = AsyncMock(return_value=True)
+    mock.get = AsyncMock()
+    mock.set = AsyncMock()
+    mock.setex = AsyncMock()
+    mock.delete = AsyncMock()
+    mock.publish = AsyncMock(return_value=1)
+    mock.hset = AsyncMock(return_value=True)
+    mock.hgetall = AsyncMock(return_value={})
+    
+    # Pipeline functionality
+    pipeline_mock = AsyncMock()
+    pipeline_mock.execute = AsyncMock()
+    mock.pipeline = AsyncMock(return_value=pipeline_mock)
+    
+    # PubSub functionality
+    pubsub_mock = AsyncMock()
+    pubsub_mock.ping = AsyncMock(return_value=True)
+    pubsub_mock.subscribe = AsyncMock(return_value=True)
+    pubsub_mock.unsubscribe = AsyncMock(return_value=True)
+    pubsub_mock.get_message = AsyncMock(return_value=None)
+    pubsub_mock.close = AsyncMock()
+    
+    mock.pubsub = AsyncMock(return_value=pubsub_mock)
     return mock
 
 @pytest.fixture
-def mock_event_system():
+def mock_event_system(mock_redis):
     """Create a mock event system."""
-    mock = AsyncMock(spec=EventSystem)
-    mock.is_connected = True
-    mock.verify_connection.return_value = True
-    mock.publish = AsyncMock()
-    mock.subscribe = AsyncMock()
-    mock.unsubscribe = AsyncMock()
-    mock.disconnect = AsyncMock()
-    
-    # Add redis mock
-    mock_redis = AsyncMock()
-    mock_redis.set = AsyncMock()
-    mock_redis.delete = Mock()
-    mock_redis.ping = AsyncMock(return_value=True)
-    mock.redis = mock_redis
-    
-    return mock
+    event_system = AsyncMock(spec=EventSystem)
+    event_system.redis = mock_redis
+    event_system.is_connected = True
+    event_system._connected = True
+    event_system.verify_connection = AsyncMock(return_value=True)
+    event_system.publish = AsyncMock()
+    event_system.subscribe = AsyncMock()
+    event_system.unsubscribe = AsyncMock()
+    return event_system
 
 @pytest.fixture
 def mock_stripe():
@@ -85,11 +102,37 @@ def mock_env_vars(monkeypatch):
     monkeypatch.setenv("TRELLO_API_KEY", "test-key")
     monkeypatch.setenv("TRELLO_API_TOKEN", "test-token")
     monkeypatch.setenv("TRELLO_BOARD_ID", "test-board")
+    monkeypatch.setenv("K8S_NAMESPACE", "test-namespace")
 
 @pytest.fixture
-def base_app():
+def base_app(mock_redis):
     """Create a base FastAPI app for testing."""
+    from fastapi import FastAPI
+    from src.api.health import router as health_router
+    from src.api.projects import router as projects_router
+    from src.api.organizations import router as organizations_router
+    from src.api.billing import router as billing_router
+    from src.api.webhooks import router as webhooks_router
+    from src.api.metrics import router as metrics_router
+    from src.api.routers import context
+    from src.api.middleware.security import SecurityMiddleware
+    from src.utils.security import SecurityManager
+    
     app = FastAPI()
+    
+    # Add security middleware with test security manager
+    security_manager = SecurityManager(mock_redis)
+    app.add_middleware(SecurityMiddleware, security_manager=security_manager)
+    
+    # Include routers
+    app.include_router(health_router, prefix="/health")
+    app.include_router(projects_router, prefix="/api/projects")
+    app.include_router(organizations_router, prefix="/api/organizations")
+    app.include_router(billing_router, prefix="/api/billing")
+    app.include_router(webhooks_router, prefix="/api/webhooks")
+    app.include_router(context.router, prefix="/api/context")
+    app.include_router(metrics_router, prefix="/metrics")
+    
     return app
 
 @pytest.fixture
@@ -100,4 +143,5 @@ def test_client(base_app):
     For routes that need dependencies, create a specific test client in the test file.
     """
     with TestClient(base_app) as client:
+        client.headers = {"X-API-Key": "test_api_key"}
         yield client

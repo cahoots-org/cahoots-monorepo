@@ -148,22 +148,13 @@ class TestSuite(BaseModel):
         if not v:
             raise ValueError("Field must not be empty")
         return v
-    
-    @model_validator(mode='after')
-    def validate_test_cases(self) -> 'TestSuite':
-        """Validate test cases after model creation.
         
-        Raises:
-            ValueError: If test cases list is empty
+    @field_validator('test_cases')
+    def validate_test_cases(cls, v: List[TestCase]) -> List[TestCase]:
+        if not v:
+            raise ValueError("Test suite must contain at least one test case")
+        return v
         
-        Returns:
-            TestSuite: The validated test suite
-        """
-        if not self.test_cases:
-            raise ValueError("Test cases must not be empty")
-            
-        return self
-    
     def add_test_case(self, test_case: TestCase) -> None:
         """Add a test case to the suite."""
         self.test_cases.append(test_case)

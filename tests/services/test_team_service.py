@@ -4,21 +4,22 @@ from fastapi import HTTPException
 
 from src.models.team_config import TeamConfig, ServiceRole, RoleConfig, ProjectLimits
 from src.services.team_service import TeamService
-from src.dependencies import TeamServiceDeps
+from src.core.dependencies import ServiceDeps
+from src.utils.k8s import KubernetesClient
 
 @pytest.fixture
 def mock_deps():
-    deps = MagicMock(spec=TeamServiceDeps)
+    """Create mock dependencies."""
+    deps = MagicMock(spec=ServiceDeps)
     deps.db = AsyncMock()
     deps.redis = AsyncMock()
-    deps.k8s = AsyncMock()
-    deps.context = AsyncMock()
-    deps.project_id = "test-project"
+    deps.k8s = MagicMock(spec=KubernetesClient)
     return deps
 
 @pytest.fixture
 def team_service(mock_deps):
-    return TeamService(deps=mock_deps)
+    """Create team service with mock dependencies."""
+    return TeamService(deps=mock_deps, project_id="test-project")
 
 @pytest.fixture
 def sample_config():
@@ -68,7 +69,7 @@ async def test_get_team_config_create_default(team_service, mock_deps):
     config = await team_service.get_team_config()
     
     # Assert
-    assert config.project_id == mock_deps.project_id  # Only verify the essential field
+    assert config.project_id == "test-project"  # Use the project_id from team_service initialization
 
 @pytest.mark.asyncio
 async def test_update_team_config_success(team_service, mock_deps, sample_config):
@@ -126,7 +127,7 @@ async def test_scale_role_instances(team_service, mock_deps):
     await team_service._scale_role_instances(role, instances)
     
     # Assert
-    mock_deps.k8s.scale_deployment.assert_called_once_with(  # Only verify the k8s scaling
-        deployment_name=f"{role}-{mock_deps.project_id}",
+    mock_deps.k8s.scale_deployment.assert_called_once_with(
+        deployment_name=f"{role}-test-project",
         replicas=instances
     ) 

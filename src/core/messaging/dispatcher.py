@@ -1,6 +1,6 @@
 """Message dispatcher implementation."""
 from enum import Enum
-from typing import Dict, List, Optional, Callable, Any, Union, Set
+from typing import Dict, List, Optional, Callable, Any, Union, Set, Tuple
 import asyncio
 from datetime import datetime
 import logging
@@ -55,29 +55,35 @@ class Message:
 class MessageDispatcher:
     """Message dispatcher for inter-component communication."""
 
-    def __init__(self):
-        """Initialize the message dispatcher."""
-        self._handlers: Dict[str, List[tuple[Optional[str], Callable]]] = {}
+    def __init__(self) -> None:
+        """Initialize the dispatcher."""
+        self._handlers = {}  # type: Dict[str, List[Tuple[Optional[str], Callable]]]
         self._queues = {
-            priority: asyncio.Queue() for priority in MessagePriority
+            priority: asyncio.Queue() 
+            for priority in MessagePriority
         }
-        self._tasks: Set[asyncio.Task] = set()
+        self._tasks = set()  # Change back to set for set operations
         self._running = False
         self._cleanup_event = asyncio.Event()
         self.logger = logging.getLogger(__name__)
 
     async def start(self):
-        """Start the message dispatcher."""
+        """Start the dispatcher."""
         if self._running:
             return
 
         self._running = True
         self._cleanup_event.clear()
         
-        # Create a task for each priority queue
+        # Initialize queues for each priority level
+        self._queues = {
+            priority: asyncio.Queue() for priority in MessagePriority
+        }
+        
+        # Start queue processing tasks
         for priority in MessagePriority:
             task = asyncio.create_task(self._process_queues())
-            self._tasks.add(task)
+            self._tasks.add(task)  # Use add instead of append for sets
             task.add_done_callback(self._tasks.discard)
 
     async def stop(self):
@@ -164,7 +170,7 @@ class MessageDispatcher:
 
     async def _process_queues(self) -> None:
         """Process all queues in priority order."""
-        priorities = sorted(MessagePriority, key=lambda p: -p.value)  # Higher priorities first
+        priorities = sorted(MessagePriority, key=lambda p: p.value, reverse=True)  # Higher priorities first
         
         while self._running:
             try:
@@ -173,7 +179,7 @@ class MessageDispatcher:
                 for priority in priorities:
                     queue = self._queues[priority]
                     
-                    # Process all messages in this priority queue
+                    # Process all messages in this priority queue before moving to lower priority
                     while not queue.empty():
                         try:
                             message = queue.get_nowait()
@@ -182,8 +188,15 @@ class MessageDispatcher:
                                 messages_processed = True
                             except Exception as e:
                                 self.logger.error(f"Error processing message: {e}")
-                                message.status = MessageStatus.FAILED
-                                message.error = MessageError(str(e), e)
+                                # Only send error report if there are error handlers
+                                if MessageType.ERROR_REPORT.value in self._handlers:
+                                    error_message = Message(
+                                        type=MessageType.ERROR_REPORT,
+                                        payload={"original_message": message},
+                                        error=message.error,
+                                        priority=MessagePriority.HIGH
+                                    )
+                                    await self.send(error_message)
                             finally:
                                 queue.task_done()
                         except asyncio.QueueEmpty:
@@ -255,7 +268,11 @@ class MessageDispatcher:
                     try:
                         await task
                     except Exception as e:
-                        raise MessageError(f"Handler error: {str(e)}", e)
+                        # Create error message
+                        error_msg = MessageError(f"Handler error: {str(e)}", e)
+                        message.status = MessageStatus.FAILED
+                        message.error = error_msg
+                        raise error_msg
                         
                 message.status = MessageStatus.DELIVERED
                 message.processed_at = datetime.now().timestamp()

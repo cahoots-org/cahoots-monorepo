@@ -13,7 +13,7 @@ from src.schemas.context import (
     VersionVectorResponse
 )
 
-router = APIRouter(prefix="/context", tags=["context"])
+router = APIRouter(prefix="/api/context", tags=["context"])
 
 @router.post("/{project_id}/events", response_model=ContextEventResponse)
 async def append_event(

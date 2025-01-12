@@ -1,4 +1,5 @@
-from fastapi import Response
+"""Metrics endpoints."""
+from fastapi import APIRouter, Response, Depends
 from prometheus_client import (
     generate_latest,
     CONTENT_TYPE_LATEST,
@@ -6,10 +7,15 @@ from prometheus_client import (
 from typing import Optional
 import logging
 
+from src.api.auth import verify_api_key
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-def get_metrics() -> Response:
+router = APIRouter(tags=["metrics"])
+
+@router.get("")
+async def get_metrics(organization_id: str = Depends(verify_api_key)) -> Response:
     """Generate Prometheus metrics response.
     
     Returns:

@@ -32,6 +32,8 @@ class Developer(BaseAgent):
         super().__init__("gpt-4-1106-preview", start_listening=False, event_system=event_system)
         
         self.github = github_service or GitHubService(github_config)
+        self.github_service = self.github  # Store as github_service for consistency
+        self.github_config = github_config  # Store github_config
         self.developer_id = developer_id
         self.logger = BaseLogger(self.__class__.__name__)
         self.focus = focus

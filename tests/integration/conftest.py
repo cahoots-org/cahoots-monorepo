@@ -29,32 +29,15 @@ async def redis_client(event_loop: asyncio.AbstractEventLoop) -> AsyncGenerator[
         await client.aclose()
 
 
-@pytest_asyncio.fixture
-async def event_system(redis_client: Redis) -> AsyncGenerator[EventSystem, None]:
-    """Create an event system for testing."""
-    from src.api.core import get_event_system, _event_system
-    
-    # Store original event system if it exists
-    original_event_system = _event_system
-    
-    # Create test event system
-    system = EventSystem()
-    await system.connect(redis_client)
-    
-    # Replace global event system
-    import src.api.core
-    src.api.core._event_system = system
-    
-    yield system
-    
-    try:
-        await system.stop_listening()
-    except Exception:
-        # Ignore any errors during cleanup
-        pass
-        
-    # Restore original event system
-    src.api.core._event_system = original_event_system
+@pytest.fixture
+async def event_system(mock_redis):
+    """Create event system instance."""
+    from src.utils.event_system import EventSystem
+    system = EventSystem(redis=mock_redis)
+    await system.connect()  # Ensure connection is established
+    system._pubsub = await mock_redis.pubsub()  # Initialize pubsub
+    await system._pubsub.ping()  # Verify pubsub connection
+    return system
 
 
 @pytest_asyncio.fixture
@@ -62,3 +45,14 @@ async def async_client() -> AsyncGenerator[AsyncClient, None]:
     """Create an async HTTP client for testing."""
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client 
+
+
+@pytest.fixture
+def mock_github_config():
+    """Create mock GitHub config."""
+    return {
+        "token": "mock_token",
+        "owner": "test_owner",
+        "repo": "test_repo",
+        "base_branch": "main"
+    } 

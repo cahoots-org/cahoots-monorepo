@@ -1,8 +1,7 @@
 """Organization API endpoints."""
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from src.database.session import get_session
+from src.core.dependencies import BaseDeps
 from src.services.organization_service import OrganizationService
 from src.schemas.organizations import (
     OrganizationCreate,
@@ -10,18 +9,18 @@ from src.schemas.organizations import (
     OrganizationResponse
 )
 
-router = APIRouter(prefix="/organizations", tags=["organizations"])
+router = APIRouter(tags=["organizations"])
 
 @router.post("", response_model=OrganizationResponse, status_code=status.HTTP_201_CREATED)
 async def create_organization(
     data: OrganizationCreate,
-    db: AsyncSession = Depends(get_session)
+    deps: BaseDeps = Depends()
 ) -> OrganizationResponse:
     """Create a new organization.
     
     Args:
         data: Organization data
-        db: Database session
+        deps: Base dependencies
         
     Returns:
         Created organization
@@ -30,7 +29,7 @@ async def create_organization(
         HTTPException: If organization creation fails
     """
     try:
-        service = OrganizationService(db)
+        service = OrganizationService(deps)
         organization = await service.create_organization(data)
         return organization
     except Exception as e:
@@ -41,12 +40,12 @@ async def create_organization(
 
 @router.get("", response_model=List[OrganizationResponse])
 async def list_organizations(
-    db: AsyncSession = Depends(get_session)
+    deps: BaseDeps = Depends()
 ) -> List[OrganizationResponse]:
     """List all organizations.
     
     Args:
-        db: Database session
+        deps: Base dependencies
         
     Returns:
         List of organizations
@@ -55,7 +54,7 @@ async def list_organizations(
         HTTPException: If organization listing fails
     """
     try:
-        service = OrganizationService(db)
+        service = OrganizationService(deps)
         organizations = await service.list_organizations()
         return organizations
     except Exception as e:
@@ -67,13 +66,13 @@ async def list_organizations(
 @router.get("/{organization_id}", response_model=OrganizationResponse)
 async def get_organization(
     organization_id: str,
-    db: AsyncSession = Depends(get_session)
+    deps: BaseDeps = Depends()
 ) -> OrganizationResponse:
     """Get organization by ID.
     
     Args:
         organization_id: Organization ID
-        db: Database session
+        deps: Base dependencies
         
     Returns:
         Organization details
@@ -82,7 +81,7 @@ async def get_organization(
         HTTPException: If organization not found
     """
     try:
-        service = OrganizationService(db)
+        service = OrganizationService(deps)
         organization = await service.get_organization(organization_id)
         if not organization:
             raise HTTPException(
@@ -102,14 +101,14 @@ async def get_organization(
 async def update_organization(
     organization_id: str,
     data: OrganizationUpdate,
-    db: AsyncSession = Depends(get_session)
+    deps: BaseDeps = Depends()
 ) -> OrganizationResponse:
     """Update organization.
     
     Args:
         organization_id: Organization ID
         data: Update data
-        db: Database session
+        deps: Base dependencies
         
     Returns:
         Updated organization
@@ -118,7 +117,7 @@ async def update_organization(
         HTTPException: If organization not found or update fails
     """
     try:
-        service = OrganizationService(db)
+        service = OrganizationService(deps)
         organization = await service.update_organization(organization_id, data)
         if not organization:
             raise HTTPException(
@@ -137,19 +136,19 @@ async def update_organization(
 @router.delete("/{organization_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_organization(
     organization_id: str,
-    db: AsyncSession = Depends(get_session)
+    deps: BaseDeps = Depends()
 ) -> None:
     """Delete organization.
     
     Args:
         organization_id: Organization ID
-        db: Database session
+        deps: Base dependencies
         
     Raises:
         HTTPException: If organization not found or deletion fails
     """
     try:
-        service = OrganizationService(db)
+        service = OrganizationService(deps)
         deleted = await service.delete_organization(organization_id)
         if not deleted:
             raise HTTPException(

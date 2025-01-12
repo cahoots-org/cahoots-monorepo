@@ -8,16 +8,13 @@ from .config import TrelloConfig
 class TrelloService(AsyncContextManager):
     """Service for interacting with Trello API."""
     
-    def __init__(self, config: Optional[TrelloConfig] = None) -> None:
+    def __init__(self, config: TrelloConfig) -> None:
         """Initialize the Trello service.
         
         Args:
-            config: Optional TrelloConfig instance. If not provided,
-                   will be loaded from global config.
+            config: TrelloConfig instance for Trello API configuration
         """
         super().__init__()
-        if not config:
-            config = TrelloConfig.from_env()
         self.config = config
         self.client = TrelloClient(
             api_key=config.api_key,

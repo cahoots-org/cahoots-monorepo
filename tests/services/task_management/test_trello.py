@@ -1,11 +1,12 @@
 """Tests for TrelloTaskManagementService."""
 import pytest
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 from src.services.task_management.trello import TrelloTaskManagementService
 from src.services.trello.config import TrelloConfig
+from src.core.dependencies import ServiceDeps
 
 @pytest.fixture
-def mock_config():
+def mock_trello_config():
     """Create a mock Trello config."""
     return TrelloConfig(
         name="trello",
@@ -20,12 +21,20 @@ def mock_config():
     )
 
 @pytest.fixture
-async def trello_service(mock_config):
+def mock_deps(mock_trello_config):
+    """Create mock dependencies."""
+    deps = MagicMock(spec=ServiceDeps)
+    deps.settings = MagicMock()
+    deps.settings.trello = mock_trello_config
+    return deps
+
+@pytest.fixture
+async def trello_service(mock_deps):
     """Create a Trello service instance with mocked service."""
     with patch("src.services.task_management.trello.TrelloService") as mock_service_cls:
         mock_service = AsyncMock()
         mock_service_cls.return_value = mock_service
-        service = TrelloTaskManagementService(mock_config)
+        service = TrelloTaskManagementService(deps=mock_deps)
         yield service, mock_service
 
 @pytest.mark.asyncio

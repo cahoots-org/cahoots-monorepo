@@ -8,17 +8,18 @@ from src.schemas.organizations import (
     OrganizationUpdate,
     OrganizationResponse
 )
+from src.core.dependencies import BaseDeps
 
 class OrganizationService:
     """Organization service."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, deps: BaseDeps):
         """Initialize service.
         
         Args:
-            db: Database session
+            deps: Base dependencies including database
         """
-        self.db = db
+        self.db = deps.db
 
     async def create_organization(
         self,

@@ -5,20 +5,24 @@ import requests
 import json
 import aiohttp
 from .config import config
+from .event_system import EventSystem
 
 class Model:
     """Model class for interacting with Together.xyz API."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, event_system: Optional[EventSystem] = None) -> None:
         """Initialize model.
         
         Args:
             model_name: Name of model to use
+            event_system: Optional event system instance
             
         Raises:
             RuntimeError: If Together API key is not configured
         """
-        self.model_name = model_name
+        self.model = model_name  # For backward compatibility
+        self.model_name = model_name  # Original attribute
+        self.event_system = event_system
         
         # Get config
         if "together" not in config.services:
@@ -54,7 +58,7 @@ class Model:
         try:
             async with aiohttp.ClientSession() as session:
                 data = {
-                    "model": self.model_name,
+                    "model": self.model,
                     "messages": [{"role": "user", "content": prompt}],
                     "max_tokens": 1000,
                     "temperature": 0.7,

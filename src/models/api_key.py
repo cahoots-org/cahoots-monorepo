@@ -1,7 +1,9 @@
 """API key model."""
 from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import relationship
 from src.database.database import Base
 
@@ -9,7 +11,7 @@ class APIKey(Base):
     """API key model."""
     __tablename__ = "api_keys"
 
-    id = Column(String, primary_key=True)
+    id = Column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid4)
     hashed_key = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
@@ -18,8 +20,8 @@ class APIKey(Base):
     last_used_at = Column(DateTime, nullable=True)
     
     # Foreign keys
-    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    organization_id = Column(PostgresUUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    user_id = Column(PostgresUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     
     # Relationships
     organization = relationship("Organization", back_populates="api_keys")

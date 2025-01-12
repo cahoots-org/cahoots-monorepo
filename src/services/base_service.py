@@ -73,8 +73,9 @@ class ServiceResponse(BaseModel):
 class BaseService:
     """Base class for service interactions with retry and circuit breaker patterns"""
     
-    def __init__(self, config: ServiceConfig):
+    def __init__(self, config: ServiceConfig, deps=None):
         self.config = config
+        self.deps = deps
         self.logger = Logger(f"Service-{config.name}")
         self.circuit_breaker = CircuitBreakerState()
         self._client: Optional[httpx.AsyncClient] = None
@@ -126,6 +127,11 @@ class BaseService:
         """Make HTTP request with retry and circuit breaker logic"""
         if not self.circuit_breaker.should_allow_request():
             CIRCUIT_BREAKER_STATE.labels(service=self.config.name).set(1)
+            if self.deps and self.deps.event_system:
+                await self.deps.event_system.emit("circuit_breaker.open", {
+                    "service": self.config.name,
+                    "last_failure": self.circuit_breaker.last_failure_time
+                })
             return ServiceResponse(
                 success=False,
                 error="Circuit breaker is open",
@@ -162,6 +168,14 @@ class BaseService:
                 response.raise_for_status()
                 self.circuit_breaker.record_success()
                 
+                if self.deps and self.deps.event_system:
+                    await self.deps.event_system.emit("request.success", {
+                        "service": self.config.name,
+                        "method": method,
+                        "endpoint": endpoint,
+                        "status_code": response.status_code
+                    })
+                
                 return ServiceResponse(
                     success=True,
                     data=response.json() if response.content else None,
@@ -173,6 +187,12 @@ class BaseService:
                 if response.status_code >= 500:
                     self.circuit_breaker.record_failure()
                     CIRCUIT_BREAKER_FAILURES.labels(service=self.config.name).inc()
+                    if self.deps and self.deps.event_system:
+                        await self.deps.event_system.emit("circuit_breaker.failure", {
+                            "service": self.config.name,
+                            "error": str(e),
+                            "failure_count": self.circuit_breaker.failure_count
+                        })
                 retry_count += 1
                 SERVICE_ERROR_COUNTER.labels(
                     service=self.config.name,
@@ -184,12 +204,26 @@ class BaseService:
                 last_error = str(e)
                 self.circuit_breaker.record_failure()
                 CIRCUIT_BREAKER_FAILURES.labels(service=self.config.name).inc()
+                if self.deps and self.deps.event_system:
+                    await self.deps.event_system.emit("circuit_breaker.failure", {
+                        "service": self.config.name,
+                        "error": str(e),
+                        "failure_count": self.circuit_breaker.failure_count
+                    })
                 retry_count += 1
                 SERVICE_ERROR_COUNTER.labels(
                     service=self.config.name,
                     error_type="unexpected_error"
                 ).inc()
                 self.logger.error(f"Unexpected error (attempt {retry_count}): {str(e)}")
+
+        if self.deps and self.deps.event_system:
+            await self.deps.event_system.emit("request.max_retries", {
+                "service": self.config.name,
+                "method": method,
+                "endpoint": endpoint,
+                "last_error": last_error
+            })
 
         return ServiceResponse(
             success=False,

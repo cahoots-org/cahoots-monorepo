@@ -29,6 +29,7 @@ def register_error_handlers(app):
         """
         error_response = {
             "success": False,
+            "detail": str(exc.detail),
             "error": {
                 "code": f"HTTP_{exc.status_code}",
                 "message": str(exc.detail),
@@ -76,6 +77,7 @@ def register_error_handlers(app):
         
         error_response = {
             "success": False,
+            "detail": "Request validation failed",
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": "Request validation failed",
@@ -112,6 +114,7 @@ def register_error_handlers(app):
         """
         error_response = {
             "success": False,
+            "detail": str(exc),
             "error": exc.to_dict()
         }
         
@@ -130,26 +133,17 @@ def register_error_handlers(app):
         )
     
     @app.exception_handler(Exception)
-    async def generic_exception_handler(
-        request: Request,
-        exc: Exception
-    ) -> JSONResponse:
-        """Handle any unhandled exceptions.
-        
-        Args:
-            request: Request instance
-            exc: Unhandled exception
-            
-        Returns:
-            JSONResponse: Error response
-        """
+    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Handle any unhandled exceptions."""
         error_response = {
             "success": False,
+            "detail": str(exc),
             "error": {
                 "code": "INTERNAL_ERROR",
-                "message": str(exc),
+                "message": "An internal server error occurred",
                 "details": {
-                    "type": exc.__class__.__name__
+                    "type": exc.__class__.__name__,
+                    "message": str(exc)
                 }
             }
         }
@@ -159,11 +153,10 @@ def register_error_handlers(app):
             extra={
                 "path": request.url.path,
                 "error_type": exc.__class__.__name__
-            },
-            exc_info=True
+            }
         )
         
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content=error_response
-        ) 
+        )

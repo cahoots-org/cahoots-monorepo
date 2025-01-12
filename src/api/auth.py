@@ -5,7 +5,7 @@ from fastapi.security import APIKeyHeader
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from src.database.session import get_session
+from src.api.dependencies import get_db
 from src.models.user import User
 from src.models.api_key import APIKey
 from src.utils.security import hash_api_key
@@ -14,7 +14,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def verify_api_key(
     api_key: Optional[str] = Depends(api_key_header),
-    db: AsyncSession = Depends(get_session)
+    db: AsyncSession = Depends(get_db)
 ) -> str:
     """Verify API key.
     
@@ -62,7 +62,7 @@ async def verify_api_key(
 
 async def get_current_user(
     api_key: str = Depends(api_key_header),
-    db: AsyncSession = Depends(get_session)
+    db: AsyncSession = Depends(get_db)
 ) -> User:
     """Get current user from API key.
     

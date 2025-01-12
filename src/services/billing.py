@@ -1,30 +1,30 @@
-"""Billing service for subscription and payment management."""
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+"""Billing service implementation."""
+from typing import Dict, List, Optional, Any
+from datetime import datetime, timedelta
 from decimal import Decimal
 import stripe
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from ..models.billing import SubscriptionTier, Invoice, UsageRecord
-from ..database.models import Organization
-from ..utils.stripe_client import StripeClient
-from ..database.models import Organization as OrganizationModel
-from ..database.models import Invoice as InvoiceModel
-from ..database.models import UsageRecord as UsageRecordModel
+from src.models.billing import SubscriptionTier, Invoice, UsageRecord
+from src.database.models import Organization
+from src.utils.stripe_client import StripeClient
+from src.database.models import Organization as OrganizationModel
+from src.database.models import Invoice as InvoiceModel
+from src.database.models import UsageRecord as UsageRecordModel
+from src.core.dependencies import ServiceDeps
 
 class BillingService:
     """Service for managing subscriptions and payments."""
     
-    def __init__(self, db: AsyncSession, stripe_client: StripeClient):
+    def __init__(self, deps: ServiceDeps):
         """Initialize billing service.
         
         Args:
-            db: Database session
-            stripe_client: Stripe API client
+            deps: Service dependencies including database and Stripe client
         """
-        self.db = db
-        self.stripe = stripe_client
-    
+        self.db = deps.db
+        self.stripe = deps.stripe
+        
     async def create_subscription(
         self,
         organization: Organization,
@@ -119,7 +119,7 @@ class BillingService:
         query = (
             select(InvoiceModel)
             .where(InvoiceModel.organization_id == organization.id)
-            .order_by(InvoiceModel.created_at.desc())
+            .order_by(InvoiceModel.created.desc())
             .limit(limit)
         )
         
@@ -132,13 +132,11 @@ class BillingService:
         return [
             Invoice(
                 id=str(invoice.id),
-                organization_id=str(invoice.organization_id),
-                amount=invoice.amount,
+                customer_id=str(invoice.customer_id),
+                subscription_id=str(invoice.subscription_id),
+                amount_due=invoice.amount_due,
                 status=invoice.status,
-                due_date=invoice.due_date,
-                paid_date=invoice.paid_date,
-                line_items=invoice.line_items,
-                created_at=invoice.created_at
+                created=invoice.created.isoformat()
             )
             for invoice in invoice_models
         ]

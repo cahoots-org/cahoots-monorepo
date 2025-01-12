@@ -1,6 +1,6 @@
-"""Federation service."""
+"""Federation service implementation."""
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,17 +12,19 @@ from src.models.federation import (
 )
 from src.models.identity_provider import IdentityProvider
 from src.models.user import User
+from src.core.dependencies import ServiceDeps
 
 class FederationService:
-    """Service for managing federated identities."""
+    """Service for managing federation between providers."""
     
-    def __init__(self, db: AsyncSession):
+    def __init__(self, deps: ServiceDeps):
         """Initialize federation service.
         
         Args:
-            db: Database session
+            deps: Service dependencies including database and event system
         """
-        self.db = db
+        self.db = deps.db
+        self.event_system = deps.event_system
         self.trust_chain = TrustChain()
         
     async def initialize(self) -> None:
@@ -47,21 +49,18 @@ class FederationService:
 
     async def get_federated_identity(
         self,
-        user_id: str,
-        provider_id: str
+        mapping_id: str
     ) -> Optional[FederatedIdentity]:
-        """Get federated identity for user and provider.
+        """Get federated identity by mapping ID.
         
         Args:
-            user_id: User ID
-            provider_id: Provider ID
+            mapping_id: Mapping ID
             
         Returns:
             Optional[FederatedIdentity]: Federated identity if found
         """
         stmt = select(FederatedIdentityMapping).where(
-            FederatedIdentityMapping.user_id == user_id,
-            FederatedIdentityMapping.provider_id == provider_id,
+            FederatedIdentityMapping.id == mapping_id,
             FederatedIdentityMapping.is_active == True
         )
         result = await self.db.execute(stmt)
@@ -75,7 +74,7 @@ class FederationService:
                 metadata=mapping.metadata
             )
         return None
-
+        
     async def link_identity(
         self,
         user_id: str,
@@ -91,10 +90,14 @@ class FederationService:
             bool: Success status
         """
         # Check if mapping already exists
-        existing = await self.get_federated_identity(
-            user_id,
-            identity.provider_id
+        stmt = select(FederatedIdentityMapping).where(
+            FederatedIdentityMapping.user_id == user_id,
+            FederatedIdentityMapping.provider_id == identity.provider_id,
+            FederatedIdentityMapping.is_active == True
         )
+        result = await self.db.execute(stmt)
+        existing = result.scalar_one_or_none()
+        
         if existing:
             return False
             
@@ -106,28 +109,25 @@ class FederationService:
             attributes=identity.attributes,
             metadata=identity.metadata
         )
-        self.db.add(mapping)
+        await self.db.add(mapping)
         await self.db.commit()
         
         return True
 
     async def unlink_identity(
         self,
-        user_id: str,
-        provider_id: str
+        mapping_id: str
     ) -> bool:
-        """Unlink federated identity from user.
+        """Unlink federated identity.
         
         Args:
-            user_id: User ID
-            provider_id: Provider ID
+            mapping_id: Mapping ID
             
         Returns:
             bool: Success status
         """
         stmt = select(FederatedIdentityMapping).where(
-            FederatedIdentityMapping.user_id == user_id,
-            FederatedIdentityMapping.provider_id == provider_id,
+            FederatedIdentityMapping.id == mapping_id,
             FederatedIdentityMapping.is_active == True
         )
         result = await self.db.execute(stmt)
@@ -142,53 +142,53 @@ class FederationService:
 
     async def sync_attributes(
         self,
-        user_id: str,
-        provider_id: str,
+        mapping_id: str,
         attributes: Dict
     ) -> Dict:
         """Synchronize identity attributes.
         
         Args:
-            user_id: User ID
-            provider_id: Provider ID
+            mapping_id: Mapping ID
             attributes: New attributes
             
         Returns:
             Dict: Updated attributes
         """
-        # Get attribute mappings for provider
-        stmt = select(AttributeMapping).where(
-            AttributeMapping.provider_id == provider_id
-        )
-        result = await self.db.execute(stmt)
-        mappings = result.scalars().all()
-        
-        # Apply mappings
-        mapped_attrs = {}
-        for mapping in mappings:
-            if mapping.source_attribute in attributes:
-                value = attributes[mapping.source_attribute]
-                
-                # Apply transformation if specified
-                if mapping.transform_function:
-                    # TODO: Implement attribute transformation
-                    pass
-                    
-                mapped_attrs[mapping.target_attribute] = value
-        
-        # Update identity mapping
+        # Get identity mapping
         stmt = select(FederatedIdentityMapping).where(
-            FederatedIdentityMapping.user_id == user_id,
-            FederatedIdentityMapping.provider_id == provider_id,
+            FederatedIdentityMapping.id == mapping_id,
             FederatedIdentityMapping.is_active == True
         )
         result = await self.db.execute(stmt)
         mapping = result.scalar_one_or_none()
         
-        if mapping:
-            mapping.attributes.update(mapped_attrs)
-            mapping.last_synced = datetime.utcnow()
-            await self.db.commit()
+        if not mapping:
+            return {}
+            
+        # Get attribute mappings for provider
+        stmt = select(AttributeMapping).where(
+            AttributeMapping.provider_id == mapping.provider_id
+        )
+        result = await self.db.execute(stmt)
+        attr_mappings = result.scalars().all()
+        
+        # Apply mappings
+        mapped_attrs = {}
+        for attr_mapping in attr_mappings:
+            if attr_mapping.source_attribute in attributes:
+                value = attributes[attr_mapping.source_attribute]
+                
+                # Apply transformation if specified
+                if attr_mapping.transform_function:
+                    # TODO: Implement attribute transformation
+                    pass
+                    
+                mapped_attrs[attr_mapping.target_attribute] = value
+        
+        # Update mapping attributes
+        mapping.attributes.update(mapped_attrs)
+        mapping.last_synced = datetime.utcnow()
+        await self.db.commit()
             
         return mapped_attrs
 
@@ -221,7 +221,7 @@ class FederationService:
             valid_from=datetime.utcnow(),
             valid_until=datetime.utcnow() + timedelta(days=valid_days)
         )
-        self.db.add(relationship)
+        await self.db.add(relationship)
         await self.db.commit()
         
         # Update trust chain
@@ -234,21 +234,18 @@ class FederationService:
 
     async def revoke_trust(
         self,
-        provider_id: str,
-        trusted_provider_id: str
+        relationship_id: str
     ) -> bool:
         """Revoke trust relationship.
         
         Args:
-            provider_id: Provider ID
-            trusted_provider_id: Trusted provider ID
+            relationship_id: Relationship ID
             
         Returns:
             bool: Success status
         """
         stmt = select(TrustRelationship).where(
-            TrustRelationship.provider_id == provider_id,
-            TrustRelationship.trusted_provider_id == trusted_provider_id,
+            TrustRelationship.id == relationship_id,
             TrustRelationship.is_active == True
         )
         result = await self.db.execute(stmt)
@@ -256,31 +253,72 @@ class FederationService:
         
         if relationship:
             relationship.is_active = False
-            relationship.valid_until = datetime.utcnow()
             await self.db.commit()
             
             # Update trust chain
             self.trust_chain.remove_trust(
-                str(provider_id),
-                str(trusted_provider_id)
+                str(relationship.provider_id),
+                str(relationship.trusted_provider_id)
             )
-            
             return True
             
         return False
 
     async def validate_trust(
         self,
-        source_id: str,
-        target_id: str
+        provider_id: str,
+        target_provider_id: str
     ) -> bool:
-        """Validate trust between providers.
+        """Validate trust relationship between providers.
         
         Args:
-            source_id: Source provider ID
-            target_id: Target provider ID
+            provider_id: Provider ID
+            target_provider_id: Target provider ID
             
         Returns:
-            bool: Trust status
+            bool: Whether trust exists
         """
-        return self.trust_chain.validate_chain(source_id, target_id) 
+        return self.trust_chain.validate_chain(
+            str(provider_id),
+            str(target_provider_id)
+        )
+
+    async def create_attribute_mapping(
+        self,
+        provider_id: str,
+        source_attribute: str,
+        target_attribute: str,
+        transform_function: Optional[str] = None
+    ) -> AttributeMapping:
+        """Create attribute mapping for provider.
+        
+        Args:
+            provider_id: Provider ID
+            source_attribute: Source attribute name
+            target_attribute: Target attribute name
+            transform_function: Optional transform function
+            
+        Returns:
+            AttributeMapping: Created mapping
+        """
+        # Check if provider exists
+        stmt = select(IdentityProvider).where(
+            IdentityProvider.id == provider_id
+        )
+        result = await self.db.execute(stmt)
+        provider = result.scalar_one_or_none()
+        
+        if not provider:
+            raise ValueError("Provider not found")
+            
+        # Create mapping
+        mapping = AttributeMapping(
+            provider_id=provider_id,
+            source_attribute=source_attribute,
+            target_attribute=target_attribute,
+            transform_function=transform_function
+        )
+        await self.db.add(mapping)
+        await self.db.commit()
+        
+        return mapping 

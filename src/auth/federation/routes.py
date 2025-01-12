@@ -16,27 +16,26 @@ from src.schemas.federation import (
     TrustRelationshipCreate,
     AttributeMappingCreate
 )
+from src.core.dependencies import ServiceDeps
 
 router = APIRouter(prefix="/federation", tags=["federation"])
 
 async def get_federation_service(
-    db: AsyncSession = Depends(get_session)
+    deps: ServiceDeps = Depends()
 ) -> FederationService:
     """Get federation service instance."""
-    service = FederationService(db)
+    service = FederationService(deps=deps)
     await service.initialize()
     return service
 
 @router.post("/identities")
 async def link_federated_identity(
-    user_id: str,
     identity: FederatedIdentityCreate,
     service: FederationService = Depends(get_federation_service)
 ) -> Dict:
     """Link federated identity to user.
     
     Args:
-        user_id: User ID
         identity: Federated identity data
         service: Federation service
         
@@ -50,32 +49,30 @@ async def link_federated_identity(
         metadata=identity.metadata
     )
     
-    success = await service.link_identity(user_id, federated_identity)
+    success = await service.link_identity(identity.user_id, federated_identity)
     if not success:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_409_CONFLICT,
             detail="Identity already linked"
         )
     
     return {"status": "success"}
 
-@router.delete("/identities/{provider_id}")
+@router.delete("/identities/{mapping_id}")
 async def unlink_federated_identity(
-    user_id: str,
-    provider_id: str,
+    mapping_id: str,
     service: FederationService = Depends(get_federation_service)
 ) -> Dict:
-    """Unlink federated identity from user.
+    """Unlink federated identity.
     
     Args:
-        user_id: User ID
-        provider_id: Provider ID
+        mapping_id: Mapping ID
         service: Federation service
         
     Returns:
         Dict: Success response
     """
-    success = await service.unlink_identity(user_id, provider_id)
+    success = await service.unlink_identity(mapping_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,32 +80,6 @@ async def unlink_federated_identity(
         )
     
     return {"status": "success"}
-
-@router.put("/identities/{provider_id}/attributes")
-async def sync_identity_attributes(
-    user_id: str,
-    provider_id: str,
-    attributes: Dict,
-    service: FederationService = Depends(get_federation_service)
-) -> Dict:
-    """Synchronize identity attributes.
-    
-    Args:
-        user_id: User ID
-        provider_id: Provider ID
-        attributes: New attributes
-        service: Federation service
-        
-    Returns:
-        Dict: Updated attributes
-    """
-    updated_attrs = await service.sync_attributes(
-        user_id,
-        provider_id,
-        attributes
-    )
-    
-    return {"attributes": updated_attrs}
 
 @router.post("/trust")
 async def establish_trust_relationship(
@@ -141,23 +112,21 @@ async def establish_trust_relationship(
         "valid_until": trust.valid_until.isoformat()
     }
 
-@router.delete("/trust/{provider_id}/{trusted_provider_id}")
+@router.delete("/trust/{relationship_id}")
 async def revoke_trust_relationship(
-    provider_id: str,
-    trusted_provider_id: str,
+    relationship_id: str,
     service: FederationService = Depends(get_federation_service)
 ) -> Dict:
     """Revoke trust relationship.
     
     Args:
-        provider_id: Provider ID
-        trusted_provider_id: Trusted provider ID
+        relationship_id: Relationship ID
         service: Federation service
         
     Returns:
         Dict: Success response
     """
-    success = await service.revoke_trust(provider_id, trusted_provider_id)
+    success = await service.revoke_trust(relationship_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -168,38 +137,38 @@ async def revoke_trust_relationship(
 
 @router.get("/trust/validate")
 async def validate_trust_relationship(
-    source_id: str,
-    target_id: str,
+    provider_id: str,
+    trusted_provider_id: str,
     service: FederationService = Depends(get_federation_service)
 ) -> Dict:
     """Validate trust between providers.
     
     Args:
-        source_id: Source provider ID
-        target_id: Target provider ID
+        provider_id: Provider ID
+        trusted_provider_id: Trusted provider ID
         service: Federation service
         
     Returns:
         Dict: Trust status
     """
-    is_trusted = await service.validate_trust(source_id, target_id)
+    is_trusted = await service.validate_trust(provider_id, trusted_provider_id)
     return {"trusted": is_trusted}
 
 @router.post("/attributes/mapping")
 async def create_attribute_mapping(
     mapping: AttributeMappingCreate,
-    db: AsyncSession = Depends(get_session)
+    service: FederationService = Depends(get_federation_service)
 ) -> Dict:
     """Create attribute mapping.
     
     Args:
         mapping: Attribute mapping data
-        db: Database session
+        service: Federation service
         
     Returns:
         Dict: Created mapping
     """
-    attr_mapping = AttributeMapping(
+    attr_mapping = await service.create_attribute_mapping(
         provider_id=mapping.provider_id,
         source_attribute=mapping.source_attribute,
         target_attribute=mapping.target_attribute,
@@ -207,12 +176,28 @@ async def create_attribute_mapping(
         is_required=mapping.is_required
     )
     
-    db.add(attr_mapping)
-    await db.commit()
-    
     return {
         "id": str(attr_mapping.id),
         "provider_id": str(attr_mapping.provider_id),
         "source_attribute": attr_mapping.source_attribute,
         "target_attribute": attr_mapping.target_attribute
-    } 
+    }
+
+@router.post("/identities/{mapping_id}/sync")
+async def sync_identity_attributes(
+    mapping_id: str,
+    attributes: Dict,
+    service: FederationService = Depends(get_federation_service)
+) -> Dict:
+    """Synchronize identity attributes.
+    
+    Args:
+        mapping_id: Mapping ID
+        attributes: New attributes
+        service: Federation service
+        
+    Returns:
+        Dict: Updated attributes
+    """
+    updated_attrs = await service.sync_attributes(mapping_id, attributes)
+    return {"attributes": updated_attrs} 

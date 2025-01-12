@@ -56,7 +56,7 @@ async def test_handler_registration(dispatcher):
     assert len(dispatcher._handlers[MessageType.TASK_ASSIGNMENT.value]) == 1
     
     dispatcher.unregister_handler(MessageType.TASK_ASSIGNMENT, handler)
-    assert len(dispatcher._handlers[MessageType.TASK_ASSIGNMENT.value]) == 0
+    assert MessageType.TASK_ASSIGNMENT.value not in dispatcher._handlers  # Key should be removed when empty
 
 @pytest.mark.asyncio
 async def test_message_sending(dispatcher, test_message):
@@ -130,11 +130,12 @@ async def test_message_priority_ordering(dispatcher):
     
     await asyncio.sleep(0.1)  # Allow time for processing
     
-    # Verify messages were processed in priority order
+    # Verify messages were processed in priority order (highest to lowest)
     priorities = [message.priority for message in received_messages]
     assert priorities == sorted(
         priorities,
-        key=lambda p: (p.value, messages[priorities.index(p)].created_at)
+        key=lambda p: (p.value, messages[priorities.index(p)].created_at),
+        reverse=True  # Higher priorities first
     )
     
     await dispatcher.stop()

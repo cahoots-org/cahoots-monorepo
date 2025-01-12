@@ -38,7 +38,7 @@ class FileManager:
             return "tests/test_main.py"
         else:
             # Create a valid Python module name
-            module_name = "_".join(word.lower() for word in task.title.split() if word.isalnum())
+            module_name = "_".join(word.lower() for word in "".join(c if c.isalnum() or c.isspace() else " " for c in task.title).split())
             return f"src/core/{module_name}.py"
             
     def gather_implementation_context(self, task: Task, file_path: str) -> str:
@@ -60,6 +60,8 @@ class FileManager:
                 context_parts.append(f"Existing file content:\n{existing_code}")
         except FileNotFoundError:
             context_parts.append("This will be a new file.")
+        except PermissionError:
+            self.logger.warning(f"Permission denied when trying to read {file_path}")
             
         # Add related files based on task type
         if "model" in task.title.lower():

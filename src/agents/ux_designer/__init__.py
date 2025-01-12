@@ -43,7 +43,7 @@ class UXDesigner(BaseAgent):
 
         self.designer_id = self.designer_id.replace("-", "_")  # Normalize to underscore
         self.uxdesigner_id = self.designer_id  # Add this for test compatibility
-        self.github = github_service or GitHubService(github_config)
+        self.github_service = github_service or GitHubService(github_config)
         self.logger = BaseLogger(self.__class__.__name__)
         self.design_system = DesignSystem((github_config or {}).get('design_system', {}))
         self.accessibility_checker = AccessibilityChecker()

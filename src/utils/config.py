@@ -3,6 +3,8 @@
 from typing import Dict, List, Optional, Any
 from pydantic import BaseModel, field_validator, ConfigDict, SecretStr, Field
 from src.utils.exceptions import ConfigurationError
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class ServiceConfig(BaseModel):
     """Base configuration for services with common fields."""
@@ -172,9 +174,10 @@ class Config(BaseModel):
 class TrelloConfig(ServiceConfig):
     """Trello-specific configuration."""
     
-    api_token: Optional[str] = Field(default=None, description="Trello API token")
+    api_token: str = Field(..., description="Trello API token")
     organization_id: Optional[str] = Field(default=None, description="Trello organization ID")
     board_template_id: Optional[str] = Field(default=None, description="Template board ID")
+    api_key: str = Field(..., description="API key for service authentication")
     
     @classmethod
     def from_env(cls, **defaults) -> "TrelloConfig":
@@ -194,6 +197,50 @@ class TrelloConfig(ServiceConfig):
         if not v:
             raise ConfigurationError("Trello API token is required")
         return v
+
+class GitHubConfig(ServiceConfig):
+    """GitHub service configuration."""
+    workspace_dir: str = Field(description="Directory for cloning repositories")
+    repo_name: str = Field(description="Name of the repository")
+
+    @property
+    def github_api_key(self) -> str:
+        """Map api_key to github_api_key for compatibility."""
+        return self.api_key
+
+    @classmethod
+    def from_env(cls, prefix: str = "GITHUB_") -> "GitHubConfig":
+        """Create config from environment variables."""
+        return cls(
+            name="github",
+            url="https://api.github.com",
+            api_key=os.getenv(f"{prefix}API_KEY"),
+            workspace_dir=os.getenv(f"{prefix}WORKSPACE_DIR", "/tmp/workspace"),
+            repo_name=os.getenv(f"{prefix}REPO_NAME", "test_repo")
+        )
+
+class Settings(BaseSettings):
+    """Application settings."""
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_dev_team"
+    REDIS_URL: str = "redis://localhost:6379/0"
+    EVENT_SYSTEM_URL: str = "redis://localhost:6379/1"
+    STRIPE_API_KEY: str = "sk_test_..."
+    STRIPE_WEBHOOK_SECRET: str = "whsec_..."
+    K8S_NAMESPACE: str = "default"
+    MODEL_NAME: str = "claude-3-sonnet-20240229"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="allow"
+    )
+
+@lru_cache()
+def get_settings() -> Settings:
+    """Get application settings."""
+    return Settings()
+
+settings = get_settings()
 
 # Create and export config instance with default values
 config = Config(

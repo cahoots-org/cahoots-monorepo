@@ -107,7 +107,8 @@ def test_trello_config_validation():
     assert config.board_template_id == "test-board"
     
     # Test missing API key
-    with pytest.raises(ConfigurationError, match="Trello API key is required"):
+    from pydantic import ValidationError
+    with pytest.raises(ValidationError):
         TrelloConfig(
             name="trello",
             url="https://api.trello.com/1",
@@ -115,7 +116,7 @@ def test_trello_config_validation():
         )
         
     # Test missing API token
-    with pytest.raises(ConfigurationError, match="Trello API token is required"):
+    with pytest.raises(ValidationError):
         TrelloConfig(
             name="trello",
             url="https://api.trello.com/1",

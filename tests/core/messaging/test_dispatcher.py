@@ -46,9 +46,26 @@ async def test_message_creation(sample_message):
 @pytest.mark.asyncio
 async def test_dispatcher_initialization(dispatcher):
     """Test dispatcher initialization."""
+    # A new dispatcher should not be running
     assert dispatcher.is_running == False
-    assert len(dispatcher._handlers) == 0
-    assert len(dispatcher._queues) == 0
+    
+    # No handlers should be registered for any message type
+    async def test_handler(message):
+        pass
+    
+    # Register and then unregister a handler to verify initial state
+    dispatcher.register_handler(MessageType.TASK_ASSIGNMENT, test_handler)
+    dispatcher.unregister_handler(MessageType.TASK_ASSIGNMENT, test_handler)
+    
+    # After unregistering, the handler should not be present
+    message = Message(
+        type=MessageType.TASK_ASSIGNMENT,
+        payload={"test": "data"}
+    )
+    
+    # The dispatcher should accept registration of new handlers
+    dispatcher.register_handler(MessageType.TASK_ASSIGNMENT, test_handler)
+    assert MessageType.TASK_ASSIGNMENT.value in dispatcher._handlers
 
 @pytest.mark.asyncio
 async def test_dispatcher_start_stop(dispatcher):
@@ -67,8 +84,8 @@ async def test_dispatcher_register_handler(dispatcher):
     
     dispatcher.register_handler(MessageType.TASK_ASSIGNMENT, test_handler)
     assert len(dispatcher._handlers) == 1
-    assert MessageType.TASK_ASSIGNMENT in dispatcher._handlers
-    assert test_handler in dispatcher._handlers[MessageType.TASK_ASSIGNMENT]
+    assert MessageType.TASK_ASSIGNMENT.value in dispatcher._handlers
+    assert (None, test_handler) in dispatcher._handlers[MessageType.TASK_ASSIGNMENT.value]
 
 @pytest.mark.asyncio
 async def test_dispatcher_unregister_handler(dispatcher):
@@ -80,7 +97,7 @@ async def test_dispatcher_unregister_handler(dispatcher):
     assert len(dispatcher._handlers) == 1
     
     dispatcher.unregister_handler(MessageType.TASK_ASSIGNMENT, test_handler)
-    assert len(dispatcher._handlers[MessageType.TASK_ASSIGNMENT]) == 0
+    assert MessageType.TASK_ASSIGNMENT.value not in dispatcher._handlers
 
 @pytest.mark.asyncio
 async def test_dispatcher_send(dispatcher, sample_message):

@@ -1,60 +1,104 @@
 """Test organization management endpoints."""
 import pytest
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.testclient import TestClient
+from datetime import datetime
+from uuid import uuid4
 
-from src.api.organizations import list_organizations, create_organization
-from src.schemas.organizations import OrganizationCreate, OrganizationResponse
+from src.api.organizations import router
 from src.database.models import Organization
+from src.core.dependencies import BaseDeps
+from src.services.organization_service import OrganizationService
+from src.schemas.organizations import OrganizationResponse
+from src.api.auth import verify_api_key
+
+@pytest.fixture
+def mock_db():
+    """Mock database session."""
+    mock = AsyncMock()
+    mock.add = AsyncMock()
+    mock.commit = AsyncMock()
+    mock.refresh = AsyncMock()
+    mock.execute = AsyncMock()
+    mock.delete = AsyncMock()
+    return mock
+
+@pytest.fixture
+def mock_deps(mock_db):
+    """Mock base dependencies."""
+    deps = MagicMock(spec=BaseDeps)
+    deps.db = mock_db
+    return deps
+
+@pytest.fixture
+def client(mock_deps):
+    """Test client."""
+    app = FastAPI()
+    app.include_router(router, prefix="/api/organizations")
+    
+    # Override dependencies
+    app.dependency_overrides = {
+        BaseDeps: lambda: mock_deps,
+        verify_api_key: lambda: "test_org_id"
+    }
+    
+    return TestClient(app)
 
 @pytest.mark.asyncio
-async def test_list_organizations(
-    test_client: FastAPI,
-    mock_db: AsyncSession
-):
+async def test_list_organizations(client, mock_db):
     """Test listing organizations."""
-    # Mock the database query result
+    # Create a mock organization
+    mock_org = MagicMock()
+    mock_org.id = str(uuid4())
+    mock_org.name = "Test Org"
+    mock_org.email = "test@example.com"
+    mock_org.description = "Test organization"
+    mock_org.created_at = datetime.utcnow()
+    mock_org.updated_at = datetime.utcnow()
+    
+    # Mock the database response
     mock_result = MagicMock()
-    mock_result.scalars().all.return_value = []
+    mock_result.scalars = MagicMock()
+    mock_result.scalars.return_value = MagicMock()
+    mock_result.scalars.return_value.all = MagicMock(return_value=[mock_org])
     mock_db.execute = AsyncMock(return_value=mock_result)
     
-    with patch("src.api.organizations.get_session", return_value=mock_db):
-        response = await list_organizations(db=mock_db)
-        assert response == []
+    response = client.get("/api/organizations", headers={"X-API-Key": "test_api_key"})
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    assert response.json()[0]["name"] == mock_org.name
+    assert response.json()[0]["email"] == mock_org.email
 
 @pytest.mark.asyncio
-async def test_create_organization(
-    test_client: FastAPI,
-    mock_db: AsyncSession
-):
+async def test_create_organization(client, mock_db):
     """Test creating an organization."""
     org_data = {
         "name": "Test Org",
-        "api_key": "test_key_123",
-        "is_active": True,
-        "subscription_tier": "free"
+        "email": "test@example.com",
+        "description": "Test organization"
     }
     
+    # Create a mock organization
+    mock_org = MagicMock()
+    mock_org.id = str(uuid4())
+    mock_org.name = org_data["name"]
+    mock_org.email = org_data["email"]
+    mock_org.description = org_data["description"]
+    mock_org.created_at = datetime.utcnow()
+    mock_org.updated_at = datetime.utcnow()
+    
     # Mock the database operations
-    mock_db.add = AsyncMock()
-    mock_db.commit = AsyncMock()
-    mock_db.refresh = AsyncMock()
+    async def mock_refresh(org):
+        org.id = mock_org.id
+        org.created_at = mock_org.created_at
+        org.updated_at = mock_org.updated_at
+        return org
     
-    # Mock the service to return a valid organization
-    mock_org = Organization(
-        name=org_data["name"],
-        api_key=org_data["api_key"],
-        is_active=org_data["is_active"],
-        subscription_tier=org_data["subscription_tier"]
-    )
+    mock_db.refresh.side_effect = mock_refresh
     
-    with patch("src.api.organizations.get_session", return_value=mock_db), \
-         patch("src.services.organization_service.OrganizationService.create_organization", 
-               new_callable=AsyncMock, return_value=mock_org):
-        response = await create_organization(data=org_data, db=mock_db)
-        assert isinstance(response, Organization)
-        assert response.name == org_data["name"]
-        assert response.api_key == org_data["api_key"]
-        assert response.is_active == org_data["is_active"]
-        assert response.subscription_tier == org_data["subscription_tier"] 
+    response = client.post("/api/organizations", json=org_data, headers={"X-API-Key": "test_api_key"})
+    assert response.status_code == 201
+    assert response.json()["name"] == org_data["name"]
+    assert response.json()["email"] == org_data["email"]
+    assert response.json()["description"] == org_data["description"] 

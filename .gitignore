@@ -14,7 +14,7 @@ venv/
 
 # Testing
 .pytest_cache/
-.coverage
+.coverage*
 htmlcov/
 
 # Logs

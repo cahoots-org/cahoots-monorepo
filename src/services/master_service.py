@@ -1,25 +1,27 @@
+"""Master service implementation."""
 from typing import Dict, List, Optional
 from fastapi import HTTPException
 import redis.asyncio as redis
 
 from src.models.team_config import ServiceRole, RoleConfig, TeamConfig
 from src.utils.context_utils import ContextClient
+from src.core.dependencies import ServiceDeps
+from src.services.team_service import TeamService
 
 class MasterService:
-    def __init__(self, project_id: str, redis: redis.Redis, context: ContextClient):
-        self.project_id = project_id
-        self.redis = redis
-        self.context = context
+    """Service for orchestrating requests across team roles."""
+    
+    def __init__(self, deps: ServiceDeps, project_id: str):
+        """Initialize master service.
         
-        # Create TeamServiceDeps for TeamService
-        deps = TeamServiceDeps(
-            db=None,  # This will be injected by FastAPI
-            redis=redis,
-            k8s=None,  # This will be injected by FastAPI
-            context=context,
-            project_id=project_id
-        )
-        self.team_service = TeamService(deps=deps)
+        Args:
+            deps: Service dependencies including redis, context client, and team service
+            project_id: Project ID
+        """
+        self.redis = deps.redis
+        self.context = deps.context
+        self.team_service = TeamService(deps=deps, project_id=project_id)
+        self.project_id = project_id
 
     async def handle_request(self, request_type: str, payload: dict) -> dict:
         """Handle incoming requests with dynamic team configuration."""
@@ -145,9 +147,8 @@ class MasterService:
         role_config: RoleConfig
     ) -> dict:
         """Process request through instances of a specific role."""
-        instance = instances[hash(str(context)) % len(instances)]
-        
         try:
+            instance = instances[hash(str(context)) % len(instances)]
             return {
                 "instance": instance,
                 "tier": role_config.tier,
@@ -160,5 +161,5 @@ class MasterService:
         except Exception as e:
             raise HTTPException(
                 status_code=500,
-                detail=f"Error processing request with {role} instance {instance}: {str(e)}"
+                detail=f"Error processing request with {role} instance {role}-0: {str(e)}"
             ) 

@@ -23,6 +23,22 @@ class VersionVector:
         return cls()
         
     @classmethod
+    def from_json(cls, json_str: str) -> 'VersionVector':
+        """Create version vector from JSON string.
+        
+        Args:
+            json_str: JSON string containing version data
+            
+        Returns:
+            VersionVector instance
+        """
+        data = json.loads(json_str)
+        vector = cls(versions=data.get("versions", {}))
+        if "timestamp" in data:
+            vector.timestamp = datetime.fromisoformat(data["timestamp"])
+        return vector
+        
+    @classmethod
     def from_event(cls, event: ContextEvent) -> 'VersionVector':
         """Create version vector from event data.
         
@@ -32,11 +48,17 @@ class VersionVector:
         Returns:
             VersionVector instance
         """
-        try:
-            vector_data = json.loads(event.version_vector)
-            return cls(versions=vector_data.get("versions", {}))
-        except (json.JSONDecodeError, AttributeError):
+        if not event.version_vector:
             return cls()
+            
+        # Handle JSON string version vector
+        if isinstance(event.version_vector, str):
+            return cls.from_json(event.version_vector)
+            
+        vector = cls(versions=event.version_vector)
+        if hasattr(event, 'timestamp'):
+            vector.timestamp = event.timestamp
+        return vector
             
     def increment(self, node_id: str) -> None:
         """Increment version for a node.
@@ -137,64 +159,24 @@ class VersionVector:
                 
         return False
         
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> Dict[str, int]:
         """Convert to dictionary representation.
         
         Returns:
             Dict containing version data
         """
-        return {
-            "versions": self.versions,
-            "timestamp": self.timestamp.isoformat()
-        }
+        return self.versions
         
     def to_json(self) -> str:
-        """Convert to JSON string.
+        """Convert to JSON string representation.
         
         Returns:
-            JSON string representation
+            JSON string containing version data
         """
-        return json.dumps(self.to_dict())
-        
-    @classmethod
-    def from_json(cls, json_str: str) -> 'VersionVector':
-        """Create version vector from JSON string.
-        
-        Args:
-            json_str: JSON string representation
-            
-        Returns:
-            VersionVector instance
-        """
-        try:
-            data = json.loads(json_str)
-            vector = cls(versions=data.get("versions", {}))
-            if "timestamp" in data:
-                vector.timestamp = datetime.fromisoformat(data["timestamp"])
-            return vector
-        except json.JSONDecodeError:
-            return cls()
-            
-    def get_conflicts(self, other: 'VersionVector') -> List[str]:
-        """Get list of nodes with conflicting versions.
-        
-        Args:
-            other: Version vector to compare with
-            
-        Returns:
-            List of node IDs with conflicts
-        """
-        conflicts = []
-        all_nodes = set(self.versions.keys()) | set(other.versions.keys())
-        
-        for node in all_nodes:
-            self_version = self.versions.get(node, 0)
-            other_version = other.versions.get(node, 0)
-            
-            if self_version != other_version:
-                conflicts.append(node)
-                
-        return conflicts
+        return json.dumps({
+            "versions": self.versions,
+            "timestamp": self.timestamp.isoformat()
+        })
         
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, VersionVector):

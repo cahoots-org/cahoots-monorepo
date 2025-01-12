@@ -2,7 +2,7 @@
 from typing import Optional
 from redis.asyncio import Redis, ConnectionPool
 from fastapi import Depends
-from src.config import get_settings
+from src.utils.config import get_settings
 
 _pool: Optional[ConnectionPool] = None
 

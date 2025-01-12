@@ -24,6 +24,7 @@ class ErrorCategory(Enum):
     TIMEOUT = "timeout"            # Timeout errors
     DEPENDENCY = "dependency"      # External service/dependency errors
     DATA = "data"                  # Data integrity/consistency errors
+    SYSTEM = "system"             # System-level errors
     UNKNOWN = "unknown"            # Uncategorized errors
 
 class RecoveryStrategy(Enum):

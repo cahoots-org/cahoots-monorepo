@@ -26,6 +26,7 @@ class QATester(BaseAgent):
         
         # Initialize services
         self.tester_id = str(uuid.uuid4())
+        self.model = Model(model_name="gpt-4-1106-preview", event_system=self.event_system)  # Pass event system
         self.test_suite_generator = QASuiteGenerator(self.model, self.logger)
         self.test_runner = QARunner(self.model)
         
