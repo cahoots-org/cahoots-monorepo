@@ -100,7 +100,7 @@ class UXDesigner(BaseAgent):
             
             # Generate design artifacts
             design_specs = self.create_design_specs(task)
-            mockups = self.create_mockups(design_specs)
+            mockups = await self.create_mockups(design_specs)
             
             # Format results
             results_data = {

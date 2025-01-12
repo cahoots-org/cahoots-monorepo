@@ -40,6 +40,7 @@ httpx>=0.25.2
 # Task management
 trello>=0.9.7
 github3.py>=4.0.1
+PyGithub>=2.1.1
 
 # Billing and subscriptions
 stripe>=7.6.0
