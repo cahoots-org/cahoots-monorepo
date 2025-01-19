@@ -59,7 +59,8 @@ async def async_client(mock_deps, mock_settings, mock_db):
         get_settings: lambda: mock_settings,
     }
     
-    async with AsyncClient(app=app, base_url="http://test") as client:
+    from httpx import ASGITransport
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
         yield client
 
 @pytest.mark.asyncio
