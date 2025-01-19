@@ -1,26 +1,26 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ai-dev-team
+  name: cahoots
   labels:
-    app: ai-dev-team
+    app: cahoots
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: ai-dev-team
+      app: cahoots
   template:
     metadata:
       labels:
-        app: ai-dev-team
+        app: cahoots
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8000"
         prometheus.io/path: "/metrics"
     spec:
       containers:
-      - name: ai-dev-team
-        image: ai-dev-team:latest
+      - name: cahoots
+        image: cahoots:latest
         ports:
         - containerPort: 8000
           name: http
@@ -64,21 +64,21 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: ai-dev-team-config
+          name: cahoots-config
       - name: secrets
         secret:
-          secretName: ai-dev-team-secrets
+          secretName: cahoots-secrets
       - name: tls
         secret:
-          secretName: ai-dev-team-tls
+          secretName: cahoots-tls
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team
+  name: cahoots
   labels:
-    app: ai-dev-team
+    app: cahoots
 spec:
   type: ClusterIP
   ports:
@@ -87,4 +87,4 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: ai-dev-team 
+    app: cahoots 

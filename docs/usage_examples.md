@@ -1,6 +1,6 @@
 # Usage Examples
 
-This document provides examples of how to use the core components of the AI Dev Team project.
+This document provides examples of how to use the core components of the Cahoots project.
 
 ## Table of Contents
 - [Event System](#event-system)
@@ -16,7 +16,7 @@ The Event System provides a pub/sub mechanism for asynchronous communication bet
 ### Basic Usage
 
 ```python
-from src.utils.event_system import EventSystem, Event, EventType, EventPriority
+from packages.core.src.utils.event_system import EventSystem, Event, EventType, EventPriority
 
 # Create and start the event system
 event_system = EventSystem()
@@ -59,7 +59,7 @@ The Message Dispatcher handles message routing between components with support f
 ### Basic Usage
 
 ```python
-from src.core.messaging.dispatcher import MessageDispatcher, Message, MessageType
+from packages.core.src.messaging.dispatcher import MessageDispatcher, Message, MessageType
 
 # Create and start the dispatcher
 dispatcher = MessageDispatcher()
@@ -98,7 +98,7 @@ The configuration system supports environment variables, YAML files, and program
 ### Basic Usage
 
 ```python
-from src.utils.config import Config, load_config, configure_logging
+from packages.core.src.utils.config import Config, load_config, configure_logging
 
 # Load configuration
 config = load_config("config.yaml")
@@ -152,7 +152,7 @@ The error handling system provides consistent error management across the applic
 ### Basic Usage
 
 ```python
-from src.utils.exceptions import (
+from packages.core.src.utils.exceptions import (
     BaseError,
     ValidationError,
     handle_error,
@@ -180,7 +180,7 @@ except Exception as e:
 ### Custom Error Types
 
 ```python
-from src.utils.exceptions import BaseError
+from packages.core.src.utils.exceptions import BaseError
 
 class CustomError(BaseError):
     """Custom error type."""
@@ -203,10 +203,13 @@ The shared utilities module provides common functionality used across the applic
 ### String Manipulation
 
 ```python
-from src.utils.shared_utils import (
+from packages.core.src.utils.shared_utils import (
     sanitize_string,
     truncate_string,
-    format_timestamp
+    format_timestamp,
+    safe_json_loads,
+    safe_json_dumps,
+    retry_async
 )
 
 # Sanitize strings
@@ -222,7 +225,7 @@ timestamp = format_timestamp()  # Current time in ISO format
 ### JSON Handling
 
 ```python
-from src.utils.shared_utils import safe_json_loads, safe_json_dumps
+from packages.core.src.utils.shared_utils import safe_json_loads, safe_json_dumps
 
 # Safely parse JSON
 data = safe_json_loads('{"key": "value"}')
@@ -234,7 +237,7 @@ json_str = safe_json_dumps({"key": "value"})
 ### Retry Mechanism
 
 ```python
-from src.utils.shared_utils import retry_async
+from packages.core.src.utils.shared_utils import retry_async
 
 @retry_async(max_attempts=3, delay=1.0)
 async def fetch_data():
@@ -250,7 +253,7 @@ except Exception as e:
 ### Performance Measurement
 
 ```python
-from src.utils.shared_utils import measure_time, measure_time_async
+from packages.core.src.utils.shared_utils import measure_time, measure_time_async
 
 @measure_time
 def slow_operation():
@@ -266,7 +269,7 @@ async def slow_async_operation():
 ### Data Processing
 
 ```python
-from src.utils.shared_utils import chunk_list, merge_dicts
+from packages.core.src.utils.shared_utils import chunk_list, merge_dicts
 
 # Split list into chunks
 chunks = chunk_list([1, 2, 3, 4, 5], chunk_size=2)
@@ -280,7 +283,7 @@ merged = merge_dicts(dict1, dict2)
 ### Time and Duration
 
 ```python
-from src.utils.shared_utils import parse_duration, format_duration
+from packages.core.src.utils.shared_utils import parse_duration, format_duration
 
 # Parse duration strings
 seconds = parse_duration("1h")  # 3600

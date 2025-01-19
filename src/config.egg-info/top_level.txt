@@ -1,6 +1,0 @@
-agents
-api
-config
-models
-services
-utils

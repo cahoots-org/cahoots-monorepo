@@ -1,10 +1,10 @@
 terraform {
   backend "s3" {
     # These values will be overridden by backend config files
-    bucket         = "ai-dev-team-terraform-state"
+    bucket         = "cahoots-terraform-state"
     key            = "terraform.tfstate"
     region         = "us-west-2"
-    dynamodb_table = "ai-dev-team-terraform-locks"
+    dynamodb_table = "cahoots-terraform-locks"
     encrypt        = true
   }
 } 

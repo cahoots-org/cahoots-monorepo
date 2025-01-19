@@ -24,7 +24,7 @@ The development overlay (`development/`) is optimized for local development and 
 
 ### Configuration
 ```yaml
-namespace: ai-dev-team-dev
+namespace: cahoots-dev
 resources:
   requests:
     cpu: 250m
@@ -53,7 +53,7 @@ The production overlay (`production/`) is optimized for reliability and performa
 
 ### Configuration
 ```yaml
-namespace: ai-dev-team-prod
+namespace: cahoots-prod
 resources:
   requests:
     cpu: 1000m
@@ -96,7 +96,7 @@ kubectl apply -k overlays/production
 1. Add to the configMapGenerator in the appropriate kustomization.yaml:
    ```yaml
    configMapGenerator:
-     - name: ai-dev-team-config
+     - name: cahoots-config
        behavior: merge
        literals:
          - NEW_VAR=value
@@ -108,7 +108,7 @@ kubectl apply -k overlays/production
    patches:
      - target:
          kind: Deployment
-         name: ai-dev-team
+         name: cahoots
        patch: |
          - op: replace
            path: /spec/template/spec/containers/0/resources/requests/cpu
@@ -140,13 +140,13 @@ kubectl apply -k overlays/production
    - Check current namespace
    - Verify environment variables
    ```bash
-   kubectl get configmap ai-dev-team-config -o yaml
+   kubectl get configmap cahoots-config -o yaml
    ```
 
 2. **Resource Constraints**
    - Monitor resource usage
    ```bash
-   kubectl top pods -n ai-dev-team-dev
+   kubectl top pods -n cahoots-dev
    ```
 
 3. **Configuration Issues**

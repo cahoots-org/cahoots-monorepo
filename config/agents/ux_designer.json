@@ -1,0 +1,66 @@
+{
+    "name": "UX Designer",
+    "type": "ux_designer",
+    "model_name": "${UX_MODEL}",
+    "events": {
+        "listen": ["story_assigned", "feedback_received"],
+        "publish": ["design_completed", "design_updated"]
+    },
+    "capabilities": {
+        "design_system": {
+            "components": {
+                "core": ["Button", "Input", "Card", "Modal", "Navigation"],
+                "layout": ["Grid", "Flex", "Container", "Stack"],
+                "feedback": ["Alert", "Toast", "Progress", "Spinner"]
+            },
+            "themes": {
+                "light": {
+                    "colors": {
+                        "primary": "#0070f3",
+                        "secondary": "#7928ca",
+                        "success": "#0070f3",
+                        "error": "#ff0000"
+                    },
+                    "typography": {
+                        "fontFamily": "Inter, system-ui, sans-serif",
+                        "sizes": {
+                            "h1": "2.5rem",
+                            "h2": "2rem",
+                            "body": "1rem"
+                        }
+                    }
+                }
+            }
+        },
+        "accessibility": {
+            "standards": ["WCAG 2.1", "Section 508"],
+            "checks": ["contrast", "keyboard_nav", "screen_reader", "aria"],
+            "minimum_contrast": 4.5,
+            "focus_visible": true
+        },
+        "responsive_design": {
+            "breakpoints": {
+                "sm": "640px",
+                "md": "768px",
+                "lg": "1024px",
+                "xl": "1280px"
+            },
+            "mobile_first": true,
+            "container_max_widths": {
+                "sm": "540px",
+                "md": "720px",
+                "lg": "960px",
+                "xl": "1140px"
+            }
+        },
+        "design_tools": {
+            "preferred": "figma",
+            "export_formats": ["png", "svg", "css"],
+            "collaboration": {
+                "commenting": true,
+                "versioning": true,
+                "sharing": ["view", "comment", "edit"]
+            }
+        }
+    }
+} 

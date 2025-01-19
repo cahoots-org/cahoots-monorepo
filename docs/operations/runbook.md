@@ -1,7 +1,7 @@
 # Production Runbook
 
 ## System Overview
-The AI Development Team system consists of several key components:
+The Cahoots system consists of several key components:
 - FastAPI application servers
 - Redis for message queuing and caching
 - AI agent workers

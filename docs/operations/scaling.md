@@ -1,7 +1,7 @@
 # Scaling Strategies
 
 ## Overview
-This document outlines strategies for scaling the AI Development Team system to handle increased load and maintain performance under various conditions.
+This document outlines strategies for scaling the Cahoots system to handle increased load and maintain performance under various conditions.
 
 ## Key Metrics for Scaling Decisions
 
@@ -28,7 +28,7 @@ This document outlines strategies for scaling the AI Development Team system to 
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ai-dev-team-api
+  name: cahoots-api
 spec:
   replicas: 4  # Adjust based on load
   template:
@@ -159,12 +159,12 @@ CACHING_CONFIG = {
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: ai-dev-team-api
+  name: cahoots-api
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: ai-dev-team-api
+    name: cahoots-api
   minReplicas: 2
   maxReplicas: 10
   metrics:

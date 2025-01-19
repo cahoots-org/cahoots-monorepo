@@ -1,12 +1,12 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: ai-dev-team-network-policy
-  namespace: ai-dev-team
+  name: cahoots-network-policy
+  namespace: cahoots
 spec:
   podSelector:
     matchLabels:
-      app: ai-dev-team
+      app: cahoots
   policyTypes:
   - Ingress
   - Egress
@@ -14,7 +14,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: ai-dev-team
+          app: cahoots
     ports:
     - protocol: TCP
       port: 8000
@@ -29,7 +29,7 @@ spec:
   - to:
     - podSelector:
         matchLabels:
-          app: ai-dev-team-redis
+          app: cahoots-redis
     ports:
     - protocol: TCP
       port: 6379
@@ -45,18 +45,18 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: redis-network-policy
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   podSelector:
     matchLabels:
-      app: ai-dev-team-redis
+      app: cahoots-redis
   policyTypes:
   - Ingress
   ingress:
   - from:
     - podSelector:
         matchLabels:
-          app: ai-dev-team
+          app: cahoots
     ports:
     - protocol: TCP
       port: 6379 

@@ -4,7 +4,7 @@ metadata:
   name: master-service
   labels:
     app.kubernetes.io/name: master-service
-    app.kubernetes.io/part-of: ai-dev-team
+    app.kubernetes.io/part-of: cahoots
 spec:
   template:
     metadata:
@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: master-service
-        image: ai-dev-team/master:latest
+        image: cahoots/master:latest
         volumeMounts:
         - name: config
           mountPath: /config
@@ -48,10 +48,10 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: ai-dev-team-config
+          name: cahoots-config
       - name: secrets
         secret:
-          secretName: ai-dev-team-secrets
+          secretName: cahoots-secrets
 
 ---
 apiVersion: serving.knative.dev/v1
@@ -60,7 +60,7 @@ metadata:
   name: pm-service
   labels:
     app.kubernetes.io/name: pm-service
-    app.kubernetes.io/part-of: ai-dev-team
+    app.kubernetes.io/part-of: cahoots
 spec:
   template:
     metadata:
@@ -73,7 +73,7 @@ spec:
     spec:
       containers:
       - name: pm-service
-        image: ai-dev-team/pm:latest
+        image: cahoots/pm:latest
         volumeMounts:
         - name: config
           mountPath: /config
@@ -104,10 +104,10 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: ai-dev-team-config
+          name: cahoots-config
       - name: secrets
         secret:
-          secretName: ai-dev-team-secrets
+          secretName: cahoots-secrets
 
 ---
 apiVersion: serving.knative.dev/v1
@@ -116,7 +116,7 @@ metadata:
   name: developer-service
   labels:
     app.kubernetes.io/name: developer-service
-    app.kubernetes.io/part-of: ai-dev-team
+    app.kubernetes.io/part-of: cahoots
 spec:
   template:
     metadata:
@@ -129,7 +129,7 @@ spec:
     spec:
       containers:
       - name: developer-service
-        image: ai-dev-team/developer:latest
+        image: cahoots/developer:latest
         volumeMounts:
         - name: config
           mountPath: /config
@@ -160,10 +160,10 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: ai-dev-team-config
+          name: cahoots-config
       - name: secrets
         secret:
-          secretName: ai-dev-team-secrets
+          secretName: cahoots-secrets
 
 ---
 apiVersion: serving.knative.dev/v1
@@ -172,7 +172,7 @@ metadata:
   name: ux-service
   labels:
     app.kubernetes.io/name: ux-service
-    app.kubernetes.io/part-of: ai-dev-team
+    app.kubernetes.io/part-of: cahoots
 spec:
   template:
     metadata:
@@ -185,7 +185,7 @@ spec:
     spec:
       containers:
       - name: ux-service
-        image: ai-dev-team/ux:latest
+        image: cahoots/ux:latest
         volumeMounts:
         - name: config
           mountPath: /config
@@ -216,10 +216,10 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: ai-dev-team-config
+          name: cahoots-config
       - name: secrets
         secret:
-          secretName: ai-dev-team-secrets
+          secretName: cahoots-secrets
 
 ---
 apiVersion: serving.knative.dev/v1
@@ -228,7 +228,7 @@ metadata:
   name: tester-service
   labels:
     app.kubernetes.io/name: tester-service
-    app.kubernetes.io/part-of: ai-dev-team
+    app.kubernetes.io/part-of: cahoots
 spec:
   template:
     metadata:
@@ -241,7 +241,7 @@ spec:
     spec:
       containers:
       - name: tester-service
-        image: ai-dev-team/tester:latest
+        image: cahoots/tester:latest
         volumeMounts:
         - name: config
           mountPath: /config
@@ -272,7 +272,7 @@ spec:
       volumes:
       - name: config
         configMap:
-          name: ai-dev-team-config
+          name: cahoots-config
       - name: secrets
         secret:
-          secretName: ai-dev-team-secrets 
+          secretName: cahoots-secrets 

@@ -149,8 +149,8 @@ jobs:
 
       - name: Deploy to staging
         run: |
-          kubectl --kubeconfig=kubeconfig.yaml -n staging set image deployment/ai-dev-team \
-            ai-dev-team=ghcr.io/${{ github.repository }}:${{ github.sha }}
+          kubectl --kubeconfig=kubeconfig.yaml -n staging set image deployment/cahoots \
+            cahoots=ghcr.io/${{ github.repository }}:${{ github.sha }}
 
   deploy-production:
     name: Deploy to Production
@@ -174,5 +174,5 @@ jobs:
 
       - name: Deploy to production
         run: |
-          kubectl --kubeconfig=kubeconfig.yaml -n production set image deployment/ai-dev-team \
-            ai-dev-team=ghcr.io/${{ github.repository }}:${{ github.sha }} 
+          kubectl --kubeconfig=kubeconfig.yaml -n production set image deployment/cahoots \
+            cahoots=ghcr.io/${{ github.repository }}:${{ github.sha }} 

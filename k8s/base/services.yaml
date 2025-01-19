@@ -1,66 +1,66 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team-master
+  name: cahoots-master
 spec:
   ports:
   - port: 8000
     targetPort: 8000
   selector:
-    app: ai-dev-team-master
+    app: cahoots-master
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team-project-manager
+  name: cahoots-project-manager
 spec:
   ports:
   - port: 8000
     targetPort: 8000
   selector:
-    app: ai-dev-team-project-manager
+    app: cahoots-project-manager
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team-developer
+  name: cahoots-developer
 spec:
   ports:
   - port: 8000
     targetPort: 8000
   selector:
-    app: ai-dev-team-developer
+    app: cahoots-developer
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team-ux-designer
+  name: cahoots-ux-designer
 spec:
   ports:
   - port: 8000
     targetPort: 8000
   selector:
-    app: ai-dev-team-ux-designer
+    app: cahoots-ux-designer
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team-tester
+  name: cahoots-tester
 spec:
   ports:
   - port: 8000
     targetPort: 8000
   selector:
-    app: ai-dev-team-tester
+    app: cahoots-tester
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team
+  name: cahoots
 spec:
   type: LoadBalancer
   ports:
   - port: 80
     targetPort: 8000
   selector:
-    app: ai-dev-team-master 
+    app: cahoots-master 

@@ -8,9 +8,9 @@ on:
 
 env:
   AWS_REGION: us-west-2
-  ECR_REPOSITORY: ai-dev-team
-  ECS_SERVICE: ai-dev-team
-  ECS_CLUSTER: ai-dev-team-cluster
+  ECR_REPOSITORY: cahoots
+  ECS_SERVICE: cahoots
+  ECS_CLUSTER: cahoots-cluster
   TERRAFORM_VERSION: 1.5.0
 
 jobs:

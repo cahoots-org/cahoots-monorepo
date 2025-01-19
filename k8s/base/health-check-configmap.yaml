@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: ai-dev-team-health-check
+  name: cahoots-health-check
 data:
   check_health.sh: |
     #!/bin/sh
