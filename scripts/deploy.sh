@@ -43,7 +43,7 @@ echo "Building Docker images..."
 services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
 for service in "${services[@]}"; do
   echo "Building $service service..."
-  docker build -t "ai-dev-team-$service:latest" -f "docker/$service/Dockerfile" .
+  docker build -t "cahoots-$service:latest" -f "docker/$service/Dockerfile" .
 done
 
 # Initialize Terraform
@@ -59,11 +59,11 @@ terraform apply tfplan
 
 # Update ECS services
 echo "Updating ECS services..."
-CLUSTER_NAME="ai-dev-team-${ENVIRONMENT}"
+CLUSTER_NAME="cahoots-${ENVIRONMENT}"
 for service in "${services[@]}"; do
   aws ecs update-service \
     --cluster "$CLUSTER_NAME" \
-    --service "ai-dev-team-$service" \
+    --service "cahoots-$service" \
     --force-new-deployment \
     --region "$REGION"
 done

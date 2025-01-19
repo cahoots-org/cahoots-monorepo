@@ -1,0 +1,145 @@
+{
+  "battle_metrics": {
+    "current_battle": {
+      "name": "Context Hydra",
+      "level": 7,
+      "hp_total": 50,
+      "damage_taken": 15,
+      "timestamp": "2024-03-19T16:45:00Z",
+      "initial_strategy_success_rate": 0.6,
+      "attempts_to_victory": 1,
+      "damage_sources": [
+        {"name": "Memory Leak Head", "damage": 10, "status": "identified"}
+      ],
+      "successful_tactics": [
+        "Memory Protection Pattern identified leaks"
+      ],
+      "active_equipment": {
+        "pattern_recognition_lens": {
+          "activation_count": 1,
+          "effectiveness": 0.8
+        }
+      }
+    },
+    "last_battle": {
+      "name": "Circuit Breaker Wraith",
+      "level": 6,
+      "victory_status": "complete",
+      "damage_dealt": 40,
+      "damage_taken": 15,
+      "patterns_mastered": ["async_lock_pattern"],
+      "equipment_used": ["pattern_recognition_lens", "code_edit_sword"]
+    }
+  },
+  "equipment_effectiveness": {
+    "pattern_recognition_lens": {
+      "battles_used": 2,
+      "successful_identifications": 3,
+      "failed_identifications": 2,
+      "success_rate": 0.6,
+      "effective_against": [
+        "memory_leaks",
+        "async_patterns",
+        "cache_consistency"
+      ],
+      "ineffective_against": [
+        "concurrent_operations",
+        "distributed_locks"
+      ],
+      "synergies": [
+        {
+          "equipment": "test_coverage_shield",
+          "effectiveness": 0.8,
+          "scenarios": ["pattern_validation", "regression_prevention"]
+        }
+      ]
+    },
+    "test_coverage_shield": {
+      "battles_used": 2,
+      "successful_blocks": 5,
+      "damage_taken": 4,
+      "success_rate": 0.56,
+      "effective_against": [
+        "regression_bugs",
+        "memory_protection"
+      ],
+      "ineffective_against": [
+        "concurrent_bugs",
+        "cache_races"
+      ],
+      "synergies": [
+        {
+          "equipment": "pattern_recognition_lens",
+          "effectiveness": 0.8,
+          "scenarios": ["bug_identification", "coverage_gaps"]
+        }
+      ]
+    },
+    "code_edit_sword": {
+      "battles_used": 2,
+      "successful_strikes": 5,
+      "failed_strikes": 3,
+      "success_rate": 0.625,
+      "effective_against": [
+        "simple_bugs",
+        "pattern_application"
+      ],
+      "ineffective_against": [
+        "complex_refactoring",
+        "concurrent_fixes"
+      ],
+      "synergies": [
+        {
+          "equipment": "pattern_recognition_lens",
+          "effectiveness": 0.7,
+          "scenarios": ["targeted_fixes", "pattern_implementation"]
+        }
+      ]
+    }
+  },
+  "pattern_effectiveness": {
+    "async_lock_pattern": {
+      "times_used": 4,
+      "success_rate": 0.75,
+      "complexity_score": 0.7,
+      "maintenance_burden": 0.3,
+      "effective_scenarios": [
+        "resource_cleanup",
+        "state_protection",
+        "circuit_breaker_state"
+      ],
+      "ineffective_scenarios": [
+        "distributed_coordination",
+        "cache_synchronization"
+      ]
+    },
+    "bulk_operation_pattern": {
+      "times_used": 2,
+      "success_rate": 0.5,
+      "complexity_score": 0.6,
+      "maintenance_burden": 0.4,
+      "effective_scenarios": [
+        "batch_deletion",
+        "cache_cleanup"
+      ],
+      "ineffective_scenarios": [
+        "concurrent_modifications",
+        "partial_failures"
+      ]
+    },
+    "error_handling_pattern": {
+      "times_used": 4,
+      "success_rate": 0.75,
+      "complexity_score": 0.4,
+      "maintenance_burden": 0.2,
+      "effective_scenarios": [
+        "cleanup_failures",
+        "lock_release"
+      ],
+      "ineffective_scenarios": [
+        "distributed_errors",
+        "cascade_failures"
+      ]
+    }
+  }
+} 

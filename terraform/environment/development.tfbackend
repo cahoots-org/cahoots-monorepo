@@ -1,5 +1,5 @@
-bucket         = "ai-dev-team-terraform-state-dev"
+bucket         = "cahoots-terraform-state-dev"
 key            = "development/terraform.tfstate"
 region         = "us-west-2"
-dynamodb_table = "ai-dev-team-terraform-locks-dev"
+dynamodb_table = "cahoots-terraform-locks-dev"
 encrypt        = true 

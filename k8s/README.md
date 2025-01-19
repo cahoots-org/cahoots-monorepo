@@ -1,6 +1,6 @@
 # Kubernetes Deployment Guide
 
-This directory contains the Kubernetes configuration for deploying the AI Development Team microservices.
+This directory contains the Kubernetes configuration for deploying the Cahoots microservices.
 
 ## Structure
 
@@ -59,12 +59,12 @@ k8s/
 
 1. View service logs:
    ```bash
-   kubectl logs -f deployment/ai-dev-team-master -n ai-dev-team
+   kubectl logs -f deployment/cahoots-master -n cahoots
    ```
 
 2. Check pod status:
    ```bash
-   kubectl get pods -n ai-dev-team
+   kubectl get pods -n cahoots
    ```
 
 3. Access Kubernetes dashboard:
@@ -89,24 +89,24 @@ k8s/
 
 1. If pods are in `CrashLoopBackOff`:
    ```bash
-   kubectl describe pod <pod-name> -n ai-dev-team
-   kubectl logs <pod-name> -n ai-dev-team
+   kubectl describe pod <pod-name> -n cahoots
+   kubectl logs <pod-name> -n cahoots
    ```
 
 2. Check ConfigMaps and Secrets:
    ```bash
-   kubectl get configmap -n ai-dev-team
-   kubectl get secret -n ai-dev-team
+   kubectl get configmap -n cahoots
+   kubectl get secret -n cahoots
    ```
 
 3. Verify environment variables:
    ```bash
-   kubectl exec <pod-name> -n ai-dev-team -- env
+   kubectl exec <pod-name> -n cahoots -- env
    ```
 
 4. Reset deployment:
    ```bash
-   kubectl delete deployment --all -n ai-dev-team
-   kubectl delete pod --all -n ai-dev-team
+   kubectl delete deployment --all -n cahoots
+   kubectl delete pod --all -n cahoots
    ./scripts/run_local.sh
    ``` 

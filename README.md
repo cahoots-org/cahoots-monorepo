@@ -1,4 +1,4 @@
-# AI Dev Team API
+# Cahoots API
 
 An AI-powered development team that automates software development tasks through a RESTful API.
 
@@ -24,8 +24,8 @@ An AI-powered development team that automates software development tasks through
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/ai-dev-team.git
-cd ai-dev-team
+git clone https://github.com/yourusername/cahoots.git
+cd cahoots
 ```
 
 2. Create and activate a virtual environment:
@@ -58,15 +58,15 @@ The API will be available at http://localhost:8000
 Build and run using Docker:
 
 ```bash
-docker build -t ai-dev-team .
-docker run -p 8000:8000 --env-file .env ai-dev-team
+docker build -t cahoots .
+docker run -p 8000:8000 --env-file .env cahoots
 ```
 
 ### Kubernetes Deployment
 
 1. Create the necessary secrets:
 ```bash
-kubectl create secret generic ai-dev-team-secrets \
+kubectl create secret generic cahoots-secrets \
   --from-file=.env
 ```
 
@@ -132,12 +132,13 @@ See `.env.example` for available environment variables.
 ├── config/             # Configuration files
 ├── k8s/               # Kubernetes manifests
 ├── scripts/           # Utility scripts
-├── src/               # Source code
-│   ├── api/          # API endpoints
-│   ├── agents/       # AI agents
-│   ├── models/       # Data models
-│   ├── services/     # External services
-│   └── utils/        # Utilities
+├── packages/          # Monorepo packages
+│   ├── core/         # Core functionality
+│   ├── service/      # Shared services
+│   ├── agent_qa/     # QA Tester agent
+│   ├── agent_pm/     # Project Manager agent
+│   ├── agent_ux/     # UX Designer agent
+│   └── agent_developer/ # Developer agent
 └── tests/            # Test suite
 ```
 
@@ -341,3 +342,19 @@ stripe trigger payment_intent.payment_failed
    - Application logs
    - Stripe Dashboard webhook logs
    - Database transaction logs
+
+## System Requirements
+
+### Redis Configuration
+For Redis to function properly, memory overcommit must be enabled. Add the following to `/etc/sysctl.conf`:
+
+```bash
+vm.overcommit_memory = 1
+```
+
+Then apply the changes:
+```bash
+sudo sysctl -p
+```
+
+This configuration is required to prevent background save or replication failures in Redis.

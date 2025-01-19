@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: context-manager
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 1
   selector:
@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: context-manager
-        image: ai-dev-team/context-manager:latest
+        image: cahoots/context-manager:latest
         imagePullPolicy: Never
         env:
         - name: REDIS_HOST
@@ -36,7 +36,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: master
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 1
   selector:
@@ -49,7 +49,7 @@ spec:
     spec:
       containers:
       - name: master
-        image: ai-dev-team/master:latest
+        image: cahoots/master:latest
         imagePullPolicy: Never
         ports:
         - containerPort: 8000
@@ -68,7 +68,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: project-manager
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 1
   selector:
@@ -81,7 +81,7 @@ spec:
     spec:
       containers:
       - name: project-manager
-        image: ai-dev-team/project-manager:latest
+        image: cahoots/project-manager:latest
         imagePullPolicy: Never
         env:
         - name: REDIS_HOST
@@ -98,7 +98,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: developer
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 0  # Scaled by HPA
   selector:
@@ -111,7 +111,7 @@ spec:
     spec:
       containers:
       - name: developer
-        image: ai-dev-team/developer:latest
+        image: cahoots/developer:latest
         imagePullPolicy: Never
         env:
         - name: REDIS_HOST
@@ -128,7 +128,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: developer-hpa
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -174,7 +174,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ux-designer
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 0  # Scaled by HPA
   selector:
@@ -187,7 +187,7 @@ spec:
     spec:
       containers:
       - name: ux-designer
-        image: ai-dev-team/ux-designer:latest
+        image: cahoots/ux-designer:latest
         imagePullPolicy: Never
         env:
         - name: REDIS_HOST
@@ -204,7 +204,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: ux-designer-hpa
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -250,7 +250,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: qa-tester
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 0  # Scaled by HPA
   selector:
@@ -263,7 +263,7 @@ spec:
     spec:
       containers:
       - name: qa-tester
-        image: ai-dev-team/qa-tester:latest
+        image: cahoots/qa-tester:latest
         imagePullPolicy: Never
         env:
         - name: REDIS_HOST
@@ -280,7 +280,7 @@ apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: qa-tester-hpa
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
@@ -326,7 +326,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: redis
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   serviceName: redis
   replicas: 3  # Primary + 2 replicas
@@ -387,7 +387,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
-  namespace: ai-dev-team
+  namespace: cahoots
 data:
   redis.conf: |
     appendonly yes
@@ -421,7 +421,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   serviceName: postgres
   replicas: 1
@@ -474,7 +474,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: master
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   selector:
     app: master
@@ -486,7 +486,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: redis
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   selector:
     app: redis
@@ -498,7 +498,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   selector:
     app: postgres

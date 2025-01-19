@@ -1,6 +1,6 @@
 # Development Guide
 
-This guide provides detailed information for developers working on the AI Dev Team API.
+This guide provides detailed information for developers working on the Cahoots API.
 
 ## Development Environment Setup
 
@@ -227,16 +227,16 @@ uvicorn src.api.main:app --reload
 ### Docker Development
 
 ```bash
-docker build -t ai-dev-team:dev .
-docker run -p 8000:8000 --env-file .env ai-dev-team:dev
+docker build -t cahoots:dev .
+docker run -p 8000:8000 --env-file .env cahoots:dev
 ```
 
 ### Kubernetes Development
 
 1. Build and push image:
 ```bash
-docker build -t ghcr.io/org/ai-dev-team:dev .
-docker push ghcr.io/org/ai-dev-team:dev
+docker build -t ghcr.io/org/cahoots:dev .
+docker push ghcr.io/org/cahoots:dev
 ```
 
 2. Deploy to development cluster:
@@ -281,12 +281,12 @@ logger.debug(
 
 1. Access logs:
 ```bash
-kubectl logs -f deployment/ai-dev-team
+kubectl logs -f deployment/cahoots
 ```
 
 2. Shell into container:
 ```bash
-kubectl exec -it deployment/ai-dev-team -- /bin/bash
+kubectl exec -it deployment/cahoots -- /bin/bash
 ```
 
 ## Performance Optimization

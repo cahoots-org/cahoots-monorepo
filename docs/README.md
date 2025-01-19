@@ -1,7 +1,7 @@
-# AI Development Team Documentation
+# Cahoots Documentation
 
 ## Overview
-The AI Development Team is a cloud-native application that orchestrates AI agents to collaborate on software development tasks. This documentation provides comprehensive information about deploying, operating, and maintaining the system in production.
+The Cahoots is a cloud-native application that orchestrates AI agents to collaborate on software development tasks. This documentation provides comprehensive information about deploying, operating, and maintaining the system in production.
 
 ## Table of Contents
 

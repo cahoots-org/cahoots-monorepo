@@ -1,0 +1,56 @@
+{
+    "name": "Project Manager",
+    "type": "project_manager",
+    "model_name": "${PM_MODEL}",
+    "events": {
+        "listen": ["story_created", "task_completed", "pr_created", "design_completed"],
+        "publish": ["story_assigned", "feedback_provided"]
+    },
+    "capabilities": {
+        "task_management": {
+            "assignment_rules": {
+                "developer": {
+                    "keywords": ["implement", "fix", "refactor"],
+                    "metadata_field": "required_skills"
+                },
+                "ux_designer": {
+                    "keywords": ["design", "ui", "ux", "mockup"],
+                    "metadata_field": "design_requirements"
+                }
+            },
+            "priority_rules": {
+                "high": ["security", "critical", "urgent"],
+                "medium": ["feature", "enhancement"],
+                "low": ["documentation", "refactor"]
+            }
+        },
+        "workflow_management": {
+            "board_structure": {
+                "columns": ["Backlog", "In Progress", "Review", "Done"],
+                "swimlanes": ["High", "Medium", "Low"]
+            },
+            "status_transitions": {
+                "story_assigned": "In Progress",
+                "pr_created": "Review",
+                "task_completed": "Done"
+            }
+        },
+        "team_coordination": {
+            "feedback_rules": {
+                "pr_review": {
+                    "required_reviewers": 1,
+                    "auto_assign": true
+                },
+                "design_review": {
+                    "required_reviewers": 1,
+                    "auto_assign": true
+                }
+            },
+            "notification_rules": {
+                "story_assigned": ["assignee"],
+                "feedback_needed": ["reviewer"],
+                "task_completed": ["team"]
+            }
+        }
+    }
+} 

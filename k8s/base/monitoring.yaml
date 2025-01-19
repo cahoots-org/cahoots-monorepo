@@ -1,11 +1,11 @@
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: ai-dev-team
+  name: cahoots
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: ai-dev-team
+      app.kubernetes.io/part-of: cahoots
   endpoints:
   - port: http
     path: /metrics
@@ -13,10 +13,10 @@ spec:
     scrapeTimeout: 14s
     basicAuth:
       username:
-        name: ai-dev-team-secrets
+        name: cahoots-secrets
         key: PROMETHEUS_BASIC_AUTH_USER
       password:
-        name: ai-dev-team-secrets
+        name: cahoots-secrets
         key: PROMETHEUS_BASIC_AUTH_PASS
 ---
 apiVersion: monitoring.coreos.com/v1
@@ -35,13 +35,13 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: ai-dev-team-alerts
+  name: cahoots-alerts
 spec:
   groups:
-  - name: ai-dev-team
+  - name: cahoots
     rules:
     - alert: ServiceDown
-      expr: up{app_kubernetes_io_part_of="ai-dev-team"} == 0
+      expr: up{app_kubernetes_io_part_of="cahoots"} == 0
       for: 5m
       labels:
         severity: critical
@@ -49,8 +49,8 @@ spec:
         summary: "Service {{ $labels.pod }} is down"
     - alert: HighErrorRate
       expr: |
-        rate(http_requests_total{status=~"5..",app_kubernetes_io_part_of="ai-dev-team"}[5m])
-        / rate(http_requests_total{app_kubernetes_io_part_of="ai-dev-team"}[5m]) > 0.1
+        rate(http_requests_total{status=~"5..",app_kubernetes_io_part_of="cahoots"}[5m])
+        / rate(http_requests_total{app_kubernetes_io_part_of="cahoots"}[5m]) > 0.1
       for: 5m
       labels:
         severity: warning

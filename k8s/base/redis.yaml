@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ai-dev-team-redis
+  name: cahoots-redis
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ai-dev-team-redis
+      app: cahoots-redis
   template:
     metadata:
       labels:
-        app: ai-dev-team-redis
+        app: cahoots-redis
     spec:
       containers:
       - name: redis
@@ -20,7 +20,7 @@ spec:
         - containerPort: 6379
         envFrom:
         - configMapRef:
-            name: ai-dev-team-config
+            name: cahoots-config
         resources:
           requests:
             memory: "128Mi"
@@ -32,10 +32,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ai-dev-team-redis
+  name: cahoots-redis
 spec:
   ports:
   - port: 6379
     targetPort: 6379
   selector:
-    app: ai-dev-team-redis 
+    app: cahoots-redis 

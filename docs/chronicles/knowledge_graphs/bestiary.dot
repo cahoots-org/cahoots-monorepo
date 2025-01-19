@@ -1,0 +1,72 @@
+digraph Bestiary {
+    // Graph settings
+    rankdir=TB;
+    node [shape=diamond, style=filled, fillcolor=white];
+    
+    // Monster Categories
+    subgraph cluster_guardians {
+        label="System Guardians"
+        style=filled;
+        fillcolor=lightpink;
+        
+        IntegrationHydra [label="Integration Hydra\nLevel 8\nEvent System Guardian"]
+        EventRetentionBasilisk [label="Event Retention Basilisk\nLevel 7\nStorage Guardian\nDEFEATED\n(3 Heads: Lock, Execute, Size)"]
+        ContextHydra [label="Context Hydra\nLevel 7\nMemory Guardian\nDEFEATED\n(5 Heads)"]
+    }
+
+    subgraph cluster_challengers {
+        label="System Challengers"
+        style=filled;
+        fillcolor=lightblue;
+        
+        SecuritySpecter [label="Security Specter\nLevel 6\nDEFEATED"]
+        CircuitBreakerWraith [label="Circuit Breaker Wraith\nLevel 6\nState Protector\nDEFEATED\n(Victory: Async Lock Pattern)"]
+        FederationPhantom [label="Federation Phantom\nLevel 6\nIdentity Validator\n(Variant of Security Specter)"]
+    }
+
+    subgraph cluster_elementals {
+        label="System Elementals"
+        style=filled;
+        fillcolor=lightgreen;
+        
+        ConcurrencyChimera [label="Concurrency Chimera\nLevel 7\nState Management"]
+        OrchestrationOgre [label="Orchestration Ogre\nLevel 6\nService Coordinator"]
+    }
+
+    // Evolution Relationships
+    IntegrationHydra -> EventRetentionBasilisk [label="evolved", style=dashed]
+    IntegrationHydra -> ContextHydra [label="evolved", style=dashed]
+    SecuritySpecter -> CircuitBreakerWraith [label="evolved", style=dashed]
+    SecuritySpecter -> FederationPhantom [label="evolved", style=dashed]
+
+    // Battle Equipment
+    subgraph cluster_equipment {
+        label="Battle Equipment"
+        node [shape=box];
+        
+        PatternLens [label="Pattern Recognition Lens\n(60% Success Rate)\nEffective: Memory Leaks, Async\nIneffective: Concurrent Ops"]
+        TestShield [label="Test Coverage Shield\n(56% Success Rate)\nEffective: Memory Protection\nIneffective: Cache Races"]
+        CodeSword [label="Code Edit Sword\n(62.5% Success Rate)\nEffective: Simple Bugs\nIneffective: Complex Refactoring"]
+    }
+
+    // Equipment Effectiveness
+    PatternLens -> EventRetentionBasilisk [label="identified weaknesses"]
+    TestShield -> EventRetentionBasilisk [label="validated defenses"]
+    CodeSword -> EventRetentionBasilisk [label="struck decisive blows"]
+
+    // Equipment Synergies
+    edge [style=dotted, color=blue]
+    PatternLens -> TestShield [label="80% Pattern Validation"]
+    PatternLens -> CodeSword [label="70% Pattern Implementation"]
+
+    // Victory Patterns
+    subgraph cluster_patterns {
+        label="Victory Patterns"
+        node [shape=hexagon];
+        
+        AsyncLockPattern [label="Async Lock Pattern\n75% Success Rate\nDefeated: Circuit Breaker Wraith"]
+    }
+
+    // Pattern Applications
+    AsyncLockPattern -> CircuitBreakerWraith [label="vanquished", color=green]
+} 

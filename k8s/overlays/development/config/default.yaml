@@ -4,6 +4,15 @@ env: development
 debug: true
 log_level: DEBUG
 
+# Database Configuration
+database:
+  url: postgresql+asyncpg://postgres:postgres@localhost:5432/ai_dev_team
+  pool_size: 5
+  max_overflow: 10
+  pool_timeout: 30
+  pool_recycle: 1800
+  echo: false
+
 # Redis Configuration
 redis:
   host: localhost

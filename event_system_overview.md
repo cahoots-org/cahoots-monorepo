@@ -2,7 +2,7 @@
 
 ## Introduction
 
-In the AI Development Team's distributed microservices architecture, we have implemented a robust event system to address several inherent challenges. Our architecture comprises six independent service types: Master, Project Manager, Developer, UX Designer, Tester, and Context Manager. Each service type is designed to be horizontally scalable, allowing us to dynamically adjust the number of instances based on per-project demand. This scalability ensures that we can efficiently handle varying workloads and maintain optimal performance.
+In the Cahoots's distributed microservices architecture, we have implemented a robust event system to address several inherent challenges. Our architecture comprises six independent service types: Master, Project Manager, Developer, UX Designer, Tester, and Context Manager. Each service type is designed to be horizontally scalable, allowing us to dynamically adjust the number of instances based on per-project demand. This scalability ensures that we can efficiently handle varying workloads and maintain optimal performance.
 
 The Master service, potentially fronted by a load balancer, acts as the central coordinator, managing external requests and dispatching tasks to the appropriate agents. This setup allows for horizontal scaling, ensuring that the Master service can handle increased loads efficiently. In contrast, the agents—Project Manager, Developer, UX Designer, and Tester—are specialized services that perform specific roles within the system. The Context Manager is a separate internal service that plays a crucial role in maintaining consistency and traceability across distributed services. This separation of concerns allows for more efficient task management and resource allocation.
 
@@ -112,4 +112,4 @@ As we move towards multi-tenancy and enhanced monitoring, we anticipate challeng
 
 ## Conclusion
 
-The event system is a sophisticated component that ensures reliable communication and state management across the AI Development Team's architecture. Its design supports scalability, flexibility, and robust error handling, making it a critical part of our system's infrastructure. This document provides an overview for external audiences, highlighting the system's capabilities and the strategic choices that underpin its design. 
+The event system is a sophisticated component that ensures reliable communication and state management across the Cahoots's architecture. Its design supports scalability, flexibility, and robust error handling, making it a critical part of our system's infrastructure. This document provides an overview for external audiences, highlighting the system's capabilities and the strategic choices that underpin its design. 

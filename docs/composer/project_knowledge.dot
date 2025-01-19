@@ -1,0 +1,35 @@
+digraph ProjectKnowledge {
+    // ... existing code ...
+    
+    // Lurking Monsters
+    subgraph cluster_monsters {
+        label="Pattern Recognition"
+        style=filled;
+        fillcolor=pink;
+        
+        IntegrationWraith [shape=diamond, 
+                         label="Integration Wraith\nLevel 8\nEvent System Guardian\n(Message Processing Pattern)\nComplexity: High - Distributed State"]
+        
+        MockMimic [shape=diamond,
+                           label="Mock Mimic\nLevel 7\nState Management\n(Behavior Focus Pattern)\nComplexity: High - Redis Concurrency"]
+        
+        MessageMinotaur [shape=diamond,
+                          label="Message Validation Minotaur\nLevel 7\nData Validation\n(Type System Pattern)\nComplexity: High - Federation"]
+        
+        SecuritySpecter [shape=diamond,
+                          label="Security Specter\nLevel 6\nPolicy Enforcement\n(Authorization Pattern)\nComplexity: Medium - Known Patterns"]
+    }
+    
+    // Monster Relationships - Updated with pattern recognition and complexity
+    IntegrationWraith -> EventSystem [label="guards\n(Message Processing)\nRisk: Event Loss", color=red, style=bold]
+    MockMimic -> Redis [label="haunts\n(State Management)\nRisk: Race Conditions", color=red, style=bold]
+    MessageMinotaur -> FederationService [label="challenges\n(Data Validation)\nRisk: Invalid States", color=red, style=bold]
+    SecuritySpecter -> MasterService [label="tests\n(Policy Enforcement)\nRisk: Auth Bypass", color=red, style=bold]
+
+    // Pattern Recognition Relationships with Complexity Analysis
+    IntegrationWraith -> MessageMinotaur [label="shares patterns\nEvent Validation", style=dashed]
+    MockMimic -> SecuritySpecter [label="informs testing\nState Validation", style=dashed]
+    IntegrationWraith -> MockMimic [label="compounds complexity\nDistributed State", style=dashed]
+    
+    // ... rest of existing code ...
+} 

@@ -1,0 +1,48 @@
+{
+  "capabilities": {
+    "security_analysis": {
+      "description": "Ability to analyze security implications and vulnerabilities",
+      "required_skills": ["vulnerability_detection", "threat_modeling"],
+      "context_multiplier": 2.0
+    },
+    "vulnerability_detection": {
+      "description": "Detection of security vulnerabilities in code and architecture",
+      "score_boost": 500
+    },
+    "performance_analysis": {
+      "description": "Analysis of system performance characteristics",
+      "required_skills": ["optimization"],
+      "context_multiplier": 1.5
+    },
+    "optimization": {
+      "description": "Optimization of code and architecture for performance",
+      "score_boost": 400
+    },
+    "code_review": {
+      "description": "General code review capabilities",
+      "required_skills": ["pattern_matching"],
+      "context_multiplier": 1.0
+    },
+    "pattern_matching": {
+      "description": "Recognition of code patterns and anti-patterns",
+      "score_boost": 300
+    }
+  },
+  "agent_types": {
+    "security_expert": {
+      "base_memory_size": 2000,
+      "base_context_window": 4000,
+      "base_priority": 100
+    },
+    "performance_analyst": {
+      "base_memory_size": 1500,
+      "base_context_window": 3000,
+      "base_priority": 90
+    },
+    "code_reviewer": {
+      "base_memory_size": 1000,
+      "base_context_window": 2000,
+      "base_priority": 80
+    }
+  }
+} 

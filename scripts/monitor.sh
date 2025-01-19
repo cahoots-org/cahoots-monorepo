@@ -53,7 +53,7 @@ check_api() {
 # Main monitoring loop
 while true; do
     clear
-    echo "=== AI Dev Team Service Monitor ==="
+    echo "=== Cahoots Service Monitor ==="
     echo "Time: $(date)"
     echo "=================================="
     echo

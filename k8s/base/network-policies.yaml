@@ -12,7 +12,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app.kubernetes.io/part-of: ai-dev-team
+          app.kubernetes.io/part-of: cahoots
     ports:
     - protocol: TCP
       port: 6379
@@ -24,7 +24,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/part-of: ai-dev-team
+      app.kubernetes.io/part-of: cahoots
   policyTypes:
   - Ingress
   - Egress
@@ -32,7 +32,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app.kubernetes.io/part-of: ai-dev-team
+          app.kubernetes.io/part-of: cahoots
     ports:
     - protocol: TCP
       port: 8000

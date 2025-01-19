@@ -1,0 +1,30 @@
+{
+    "name": "Developer",
+    "type": "developer",
+    "model_name": "${DEV_MODEL}",
+    "events": {
+        "listen": ["story_assigned", "feedback_received"],
+        "publish": ["pr_created", "task_completed"]
+    },
+    "capabilities": {
+        "code_generation": {
+            "languages": ["python", "typescript", "javascript"],
+            "frameworks": ["react", "fastapi", "express"],
+            "testing_frameworks": ["pytest", "jest"]
+        },
+        "code_review": {
+            "checks": ["style", "security", "performance", "maintainability"],
+            "auto_fix": ["formatting", "imports", "simple_bugs"]
+        },
+        "ux_integration": {
+            "keywords": ["ux", "ui", "design", "frontend"],
+            "metadata_field": "required_skills",
+            "frameworks": ["react", "tailwind", "material-ui"]
+        },
+        "version_control": {
+            "system": "git",
+            "branch_naming": "feature/{story_id}",
+            "commit_template": "feat({scope}): {description}"
+        }
+    }
+} 

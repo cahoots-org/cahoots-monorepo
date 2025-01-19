@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
-  namespace: ai-dev-team
+  namespace: cahoots
 data:
   redis.conf: |
     # Redis configuration
@@ -54,7 +54,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: redis-data
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   accessModes:
     - ReadWriteOnce

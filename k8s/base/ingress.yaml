@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ai-dev-team
+  name: cahoots
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/proxy-body-size: "50m"
@@ -10,16 +10,16 @@ metadata:
 spec:
   tls:
   - hosts:
-    - ai-dev-team.example.com
-    secretName: ai-dev-team-tls
+    - cahoots.example.com
+    secretName: cahoots-tls
   rules:
-  - host: ai-dev-team.example.com
+  - host: cahoots.example.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: ai-dev-team
+            name: cahoots
             port:
               name: http 

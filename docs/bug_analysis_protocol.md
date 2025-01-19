@@ -1,4 +1,4 @@
-# AI Dev Team Bug Analysis Protocol
+# Cahoots Bug Analysis Protocol
 
 ## System Architecture
 This is a distributed microservices system using Redis for communication with:

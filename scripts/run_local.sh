@@ -3,8 +3,8 @@
 set -e
 
 # Set variables
-NAMESPACE="ai-dev-team"
-MAIN_APP="ai-dev-team"
+NAMESPACE="cahoots"
+MAIN_APP="cahoots"
 SERVICES=("master" "project-manager" "developer" "ux-designer" "tester")
 
 # Create namespace if it doesn't exist
@@ -70,7 +70,7 @@ kubectl apply -k "$TEMP_DIR/overlays/development"
 rm -rf "$TEMP_DIR"
 
 echo "Waiting for services to be ready..."
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=ai-dev-team -n $NAMESPACE --timeout=300s
+kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=cahoots -n $NAMESPACE --timeout=300s
 
 echo "Services deployed successfully!"
 echo "You can access the API at http://localhost:80"

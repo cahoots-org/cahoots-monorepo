@@ -1,0 +1,102 @@
+{
+  "roles": {
+    "project_manager": {
+      "name": "Project Manager",
+      "model_name": "${PM_MODEL}",
+      "events": {
+        "listen": [
+          "project_created",
+          "story_completed",
+          "pr_created",
+          "pr_merged",
+          "task_completed"
+        ],
+        "publish": [
+          "story_assigned",
+          "roadmap_created",
+          "roadmap_failed",
+          "project_manager"
+        ]
+      },
+      "task_assignment_rules": {
+        "ui_prefixes": ["ui", "user interface"],
+        "test_keywords": ["test"],
+        "default_assignment": "developer_{hash % 2 + 1}"
+      },
+      "roadmap_validation": {
+        "required_keys": ["milestones", "tasks", "dependencies", "estimates"]
+      },
+      "board_structure": {
+        "default_lists": ["Backlog", "In Progress", "Review", "Done"]
+      }
+    },
+    "ux_designer": {
+      "name": "UX Designer",
+      "model_name": "${UX_MODEL}",
+      "events": {
+        "listen": ["story_assigned"],
+        "publish": ["design_completed"]
+      },
+      "design_system": {
+        "fallback_specs": {
+          "ui_components": {"type": "basic", "components": ["default layout"]},
+          "layout": {"type": "standard", "structure": "single column"},
+          "color_scheme": {"primary": "#007bff", "secondary": "#6c757d"},
+          "typography": {"main_font": "system-ui", "scale": "default"},
+          "interactions": {"type": "standard", "patterns": ["click", "hover"]},
+          "responsive_design": {"breakpoints": ["sm", "md", "lg"]},
+          "accessibility": {"level": "WCAG 2.1 AA"},
+          "design_system": {"name": "default", "version": "1.0"}
+        }
+      },
+      "required_env_vars": ["DESIGNER_ID"]
+    },
+    "developer": {
+      "name": "Developer",
+      "model_name": "${DEV_MODEL}",
+      "events": {
+        "listen": ["story_assigned", "feedback_received"],
+        "publish": ["pr_created", "task_completed"]
+      },
+      "ux_detection": {
+        "keywords": ["ux", "ui", "design", "frontend"],
+        "metadata_field": "required_skills"
+      }
+    },
+    "tester": {
+      "name": "Quality Assurance",
+      "model_name": "${QA_MODEL}",
+      "events": {
+        "listen": ["pr_created", "test_requested"],
+        "publish": ["test_completed", "feedback_provided"]
+      },
+      "testing_capabilities": [
+        "unit_testing",
+        "integration_testing",
+        "security_testing",
+        "performance_testing"
+      ]
+    }
+  },
+  "team_dynamics": {
+    "collaboration_patterns": {
+      "design_review": {
+        "participants": ["ux_designer", "developer"],
+        "artifacts": ["design_specs", "mockups"]
+      },
+      "code_review": {
+        "participants": ["developer", "tester"],
+        "artifacts": ["pull_request", "test_results"]
+      },
+      "project_sync": {
+        "participants": ["project_manager", "developer", "ux_designer", "tester"],
+        "artifacts": ["roadmap", "status_updates"]
+      }
+    },
+    "communication_channels": {
+      "design_completed": ["project_manager", "developer"],
+      "pr_created": ["project_manager", "tester"],
+      "test_completed": ["project_manager", "developer"]
+    }
+  }
+} 

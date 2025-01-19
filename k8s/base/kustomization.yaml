@@ -1,10 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: ai-dev-team
+namespace: cahoots
 
 commonLabels:
-  app.kubernetes.io/name: ai-dev-team
+  app.kubernetes.io/name: cahoots
   app.kubernetes.io/managed-by: kustomize
 
 resources:
@@ -15,10 +15,10 @@ resources:
 - health-check-configmap.yaml
 
 configMapGenerator:
-- name: ai-dev-team-config
+- name: cahoots-config
   behavior: merge
   literals:
-  - REDIS_HOST=ai-dev-team-redis
+  - REDIS_HOST=cahoots-redis
   - REDIS_PORT=6379
   - REDIS_DB=0
   - LOG_LEVEL=DEBUG 

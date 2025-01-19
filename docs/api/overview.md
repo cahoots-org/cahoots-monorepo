@@ -1,7 +1,7 @@
 # API Overview
 
 ## Introduction
-The AI Development Team API provides a RESTful interface for managing AI-powered software development workflows. This document provides a comprehensive overview of the API's capabilities, authentication mechanisms, and best practices.
+The Cahoots API provides a RESTful interface for managing AI-powered software development workflows. This document provides a comprehensive overview of the API's capabilities, authentication mechanisms, and best practices.
 
 ## Base URL
 ```
@@ -157,8 +157,8 @@ ws.onmessage = (event) => {
 
 ## SDK Support
 Official SDKs available for:
-- Python: `pip install ai-dev-team`
-- JavaScript: `npm install ai-dev-team`
+- Python: `pip install cahoots`
+- JavaScript: `npm install cahoots`
 - Go: `go get github.com/aidevteam/sdk-go`
 
 ## API Changelog

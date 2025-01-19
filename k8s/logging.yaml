@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: elasticsearch
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   serviceName: elasticsearch
   replicas: 1
@@ -50,7 +50,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: elasticsearch
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   selector:
     app: elasticsearch
@@ -64,7 +64,7 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: fluentd
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   selector:
     matchLabels:
@@ -118,7 +118,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fluentd-config
-  namespace: ai-dev-team
+  namespace: cahoots
 data:
   fluent.conf: |
     <source>
@@ -164,7 +164,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kibana
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   replicas: 1
   selector:
@@ -195,7 +195,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: kibana
-  namespace: ai-dev-team
+  namespace: cahoots
 spec:
   selector:
     app: kibana
@@ -207,7 +207,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: fluentd
-  namespace: ai-dev-team
+  namespace: cahoots
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -231,4 +231,4 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: fluentd
-  namespace: ai-dev-team 
+  namespace: cahoots 
