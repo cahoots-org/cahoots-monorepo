@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "cahoots-agents"
 version = "0.1.0"
 description = "AI agents for Cahoots"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "cahoots-core>=0.1.0",
     "cahoots-events>=0.1.0",
@@ -29,6 +29,8 @@ test = [
     "pytest-cov>=4.0",
     "pytest-mock>=3.11.0",
     "pytest-randomly>=3.15.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-xdist>=3.3.1",
 ]
 
 [tool.hatch.build.targets.wheel]

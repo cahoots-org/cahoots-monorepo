@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "cahoots-service"
 version = "0.1.0"
 description = "Service layer for Cahoots"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = [
     "cahoots-core>=0.1.0",
     "cahoots-events>=0.1.0",
@@ -27,7 +27,10 @@ test = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/cahoots_service"]
+
+[tool.hatch.build]
+packages = ["src/cahoots_service"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
