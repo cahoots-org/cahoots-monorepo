@@ -1,8 +1,8 @@
 """Rate limiting middleware."""
 from datetime import datetime, timedelta
 from typing import Optional
+from cahoots_core.utils.infrastructure.redis.client import RedisClient, get_redis_client
 from fastapi import Request, HTTPException
-from src.utils.infrastructure import RedisClient, get_redis_client
 
 class RateLimiter:
     """Rate limiting middleware."""

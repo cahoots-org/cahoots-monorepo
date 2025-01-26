@@ -1,9 +1,9 @@
 """Trello implementation of TaskManagementService."""
+from typing import AsyncContextManager
 from cahoots_core.exceptions import ServiceError
-from src.utils.async_base import AsyncContextManager
-from .base import TaskManagementService
-from src.services.trello.service import TrelloService
-from src.core.dependencies import ServiceDeps
+from cahoots_core.services.trello.service import TrelloService
+from cahoots_service.api.dependencies import ServiceDeps
+from cahoots_service.services.task_management.base import TaskManagementService
 
 class TrelloTaskManagementService(TaskManagementService, AsyncContextManager):
     """Trello implementation of TaskManagementService."""
@@ -33,7 +33,7 @@ class TrelloTaskManagementService(TaskManagementService, AsyncContextManager):
         """
         try:
             response = await self.trello.create_board(name, description)
-            return response["id"]
+            return response.get("id")
         except Exception as e:
             raise ServiceError(
                 service="trello",
@@ -83,7 +83,7 @@ class TrelloTaskManagementService(TaskManagementService, AsyncContextManager):
             str: Card ID
         """
         response = await self.trello.create_card(name, description, board_id, list_name)
-        return response["id"]
+        return response.get("id")
 
     async def check_connection(self) -> bool:
         """Check if we can connect to Trello API."""

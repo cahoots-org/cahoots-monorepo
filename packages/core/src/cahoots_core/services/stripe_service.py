@@ -1,14 +1,16 @@
 """Stripe service implementation."""
 from typing import List, Optional, Dict, Any
-from fastapi import Depends
-from src.utils.config import get_settings
-from src.utils.infrastructure import StripeClient, get_stripe_client
 
-def get_stripe_service() -> StripeClient:
-    """Get Stripe client instance.
+from cahoots_core.utils.infrastructure.stripe.client import StripeClient, get_stripe_client
+from cahoots_core.utils.config import Config
+
+class StripeService:
+    """Service for managing Stripe payments and subscriptions."""
     
-    Returns:
-        StripeClient: Configured Stripe client
-    """
-    settings = get_settings()
-    return get_stripe_client(settings.stripe_api_key) 
+    def __init__(self, config: Config):
+        """Initialize Stripe service.
+        
+        Args:
+            config: Configuration containing Stripe settings
+        """
+        self.client = get_stripe_client(config.stripe.api_key) 

@@ -1,15 +1,34 @@
 """UX Designer agent core module."""
+import datetime
+import json
 from typing import List, Dict, Any, Optional
-from packages.agent_ux.src.utils.event_system import EventSystem
-from packages.agent_ux.src.services.github_service import GitHubService
-from packages.agent_ux.src.utils.base_logger import BaseLogger
-from packages.agent_ux.src.models.team_config import TeamConfig, ServiceRole, RoleConfig
-from packages.agent_ux.src.models.task import Task
-from ..base_agent import BaseAgent
-from .design_system import DesignSystem
-from .accessibility import AccessibilityChecker
-from .pattern_library import PatternLibrary
 import os
+from enum import Enum
+
+from cahoots_core.models.team_config import TeamConfig
+from cahoots_core.models.task import Task, TaskStatus
+from cahoots_core.services.github_service import GitHubService
+from cahoots_events.bus.system import EventSystem
+from cahoots_service.utils.logger import Logger
+from src.cahoots_agents.base import BaseAgent
+from src.cahoots_agents.ux.accessibility.accessibility import AccessibilityChecker
+from src.cahoots_agents.ux.design.design_system import DesignSystem
+from src.cahoots_agents.ux.patterns.pattern_library import PatternLibrary
+
+class DesignPriority(str, Enum):
+    """Priority levels for design tasks."""
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+class DesignStatus(str, Enum):
+    """Status of a design task."""
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    REVIEW = "review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    COMPLETED = "completed"
 
 class UXDesigner(BaseAgent):
     """UX Designer agent responsible for creating UI/UX designs."""
@@ -28,29 +47,57 @@ class UXDesigner(BaseAgent):
             github_config: Optional GitHub config for testing
         """
         # Get team config for model name
-        team_config = TeamConfig.model_validate({
-            "project_id": "default",
-            "roles": {
-                ServiceRole.UX_DESIGNER: RoleConfig()
-            }
-        })
-        model_name = team_config.roles[ServiceRole.UX_DESIGNER].model_name
+        team_config = TeamConfig.from_env()
+        if not team_config:
+            team_config = TeamConfig.model_validate({
+                "project_id": os.getenv("PROJECT_ID", "default"),
+                "team_name": os.getenv("TEAM_NAME", "default"),
+                "roles": {
+                    "ux_designer": {
+                        "model_name": os.getenv("UX_MODEL", "gpt-4"),
+                        "capabilities": ["design", "accessibility", "patterns"]
+                    }
+                }
+            })
+        model_name = team_config.roles.get("ux_designer", {}).get("model_name", "gpt-4")
         
-        # Initialize base class first to set up task manager and event system
-        super().__init__(model_name=model_name, start_listening=start_listening, event_system=event_system)
+        # Initialize base class with proper config
+        config = {
+            "provider": "openai",
+            "api_key": os.getenv("OPENAI_API_KEY"),
+            "model": model_name
+        }
+        super().__init__(
+            agent_type="ux_designer",
+            config=config,
+            event_system=event_system
+        )
 
-        # Set up designer-specific attributes
+        # Store start_listening preference
+        self._start_listening = start_listening
+
+        # Initialize GitHub service
+        self.github_service = github_service or GitHubService(github_config)
+        self.github_config = github_config
+
+        # Initialize design system and pattern library
+        self.design_system = DesignSystem(getattr(github_config, 'design_system', {}) if github_config else {})
+        self.pattern_library = PatternLibrary()
+        self.accessibility_checker = AccessibilityChecker()
+
+        # Get designer ID
         self.designer_id = os.getenv("DESIGNER_ID")
         if not self.designer_id:
-            raise RuntimeError("DESIGNER_ID environment variable is required")
+            raise ValueError("DESIGNER_ID environment variable must be set")
 
+        # Setup event handlers if needed
+        if self._start_listening:
+            self.setup_events()
+
+        # Set up designer-specific attributes
         self.designer_id = self.designer_id.replace("-", "_")  # Normalize to underscore
         self.uxdesigner_id = self.designer_id  # Add this for test compatibility
-        self.github_service = github_service or GitHubService(github_config)
-        self.logger = BaseLogger(self.__class__.__name__)
-        self.design_system = DesignSystem((github_config or {}).get('design_system', {}))
-        self.accessibility_checker = AccessibilityChecker()
-        self.pattern_library = PatternLibrary()
+        self.logger = Logger(self.__class__.__name__)
 
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
@@ -169,7 +216,7 @@ Format the response as a JSON object with these sections.
 """
         
         try:
-            response = self.model.generate_response(prompt)
+            response = self.agent.generate_response(prompt)
             specs = json.loads(response)
             
             # Validate required sections
@@ -275,4 +322,96 @@ Format the response as a JSON object with these sections.
                     "responsive_breakpoints": ["sm", "md", "lg"]
                 }
             }
-        } 
+        }
+
+    async def apply_design_system(self, design: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply design system styles to a design.
+
+        Args:
+            design: Design specification to apply styles to
+
+        Returns:
+            Dict[str, Any]: Design with applied styles
+        """
+        # Get design system styles
+        colors = await self.design_system.get_color_scheme()
+        typography = await self.design_system.get_typography()
+
+        # Apply styles to design
+        design["styles"] = {
+            "colors": colors,
+            "typography": typography
+        }
+
+        return design 
+
+    async def generate_design(self, task: Task) -> Dict[str, Any]:
+        """Generate a UI/UX design based on task requirements.
+
+        Args:
+            task: Task containing design requirements
+
+        Returns:
+            Dict containing design specification
+
+        Raises:
+            ValueError: If design generation fails
+        """
+        prompt = f"Generate UI/UX design for: {task.description}"
+        response = await self.agent.generate_response(prompt)
+        try:
+            return json.loads(response)
+        except json.JSONDecodeError:
+            raise ValueError("Failed to parse design")
+
+    async def validate_accessibility(self, design: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate accessibility of a design.
+
+        Args:
+            design: Design specification to validate
+
+        Returns:
+            Dict containing validation results
+        """
+        prompt = f"Validate accessibility for design: {json.dumps(design)}"
+        response = await self.agent.generate_response(prompt)
+        return json.loads(response)
+
+    async def generate_component_variants(self, component: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate variants of a component.
+
+        Args:
+            component: Base component specification
+
+        Returns:
+            Dict containing component variants
+        """
+        prompt = f"Generate variants for component: {json.dumps(component)}"
+        response = await self.agent.generate_response(prompt)
+        return json.loads(response)
+
+    async def generate_responsive_layout(self, components: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Generate responsive layout for components.
+
+        Args:
+            components: List of components to layout
+
+        Returns:
+            Dict containing responsive layout specification
+        """
+        prompt = f"Generate responsive layout for components: {json.dumps(components)}"
+        response = await self.agent.generate_response(prompt)
+        return json.loads(response)
+
+    async def generate_interaction_states(self, component: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate interaction states for a component.
+
+        Args:
+            component: Component specification
+
+        Returns:
+            Dict containing interaction states
+        """
+        prompt = f"Generate interaction states for component: {json.dumps(component)}"
+        response = await self.agent.generate_response(prompt)
+        return json.loads(response) 

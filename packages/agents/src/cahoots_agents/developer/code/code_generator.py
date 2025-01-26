@@ -3,7 +3,7 @@ from typing import Dict, Any
 import json
 import logging
 
-from src.models.task import Task
+from cahoots_core.models.task import Task
 
 class CodeGenerator:
     """Handles code generation for tasks."""

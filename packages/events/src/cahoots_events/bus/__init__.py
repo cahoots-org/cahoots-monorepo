@@ -26,7 +26,7 @@ from .system import (
 )
 from .queue import (
     Message,
-    MessageQueue,
+    EventQueue,
     QueueError
 )
 
@@ -52,6 +52,6 @@ __all__ = [
     
     # Queue
     'Message',
-    'MessageQueue',
+    'EventQueue',
     'QueueError'
 ] 

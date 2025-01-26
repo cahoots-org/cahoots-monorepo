@@ -4,28 +4,28 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.auth.federation.base import FederatedIdentity, TrustChain
-from src.models.federation import (
+from cahoots_core.models.federation import (
     FederatedIdentityMapping,
     TrustRelationship,
-    AttributeMapping
+    AttributeMapping,
+    FederatedIdentity
 )
-from src.models.identity_provider import IdentityProvider
-from src.models.user import User
-from src.core.dependencies import ServiceDeps
+from cahoots_core.models.identity_provider import IdentityProvider
+from cahoots_core.models.user import User
+from cahoots_core.utils.infrastructure.database.client import DatabaseClient
+from cahoots_core.validation.trust_chain import TrustChainValidator
 
 class FederationService:
     """Service for managing federation between providers."""
     
-    def __init__(self, deps: ServiceDeps):
+    def __init__(self, db_client: DatabaseClient):
         """Initialize federation service.
         
         Args:
-            deps: Service dependencies including database and event system
+            db_client: Database client
         """
-        self.db = deps.db
-        self.event_system = deps.event_system
-        self.trust_chain = TrustChain()
+        self.db = db_client
+        self.trust_chain = TrustChainValidator()
         
     async def initialize(self) -> None:
         """Initialize federation service.

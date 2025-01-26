@@ -60,4 +60,12 @@ class TestExecutionError(TestError):
 
 class TestTimeoutError(TestError):
     """Raised when test execution times out."""
+    pass
+
+class ContextError(AIDTException):
+    """Base class for context-related errors."""
+    pass
+
+class ContextLimitExceeded(ContextError):
+    """Raised when context limit is exceeded."""
     pass 

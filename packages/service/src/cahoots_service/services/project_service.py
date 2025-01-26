@@ -4,14 +4,12 @@ from uuid import UUID
 import logging
 from datetime import datetime
 
-from ..models.projects import Project, ProjectCreate, ProjectUpdate
-from ..utils.config import Settings
-from ..utils.infrastructure import (
-    DatabaseManager,
-    RedisManager,
-    KubernetesClient,
-    GitHubClient
-)
+from cahoots_core.models.project import Project, ProjectCreate, ProjectUpdate
+from cahoots_core.utils.infrastructure.database.manager import DatabaseManager
+from cahoots_core.utils.infrastructure.k8s.client import KubernetesClient
+from cahoots_core.utils.infrastructure.redis.manager import RedisManager
+from cahoots_core.services.github_service import GitHubService
+from cahoots_service.utils.config import ServiceConfig
 
 logger = logging.getLogger(__name__)
 
@@ -20,18 +18,18 @@ class ProjectService:
 
     def __init__(
         self,
-        settings: Settings,
+        settings: ServiceConfig,
         db_manager: DatabaseManager,
         redis_manager: RedisManager,
         k8s_client: KubernetesClient,
-        github_client: GitHubClient
+        github_service: GitHubService
     ):
         """Initialize project service."""
         self.settings = settings
         self.db_manager = db_manager
         self.redis_manager = redis_manager
         self.k8s_client = k8s_client
-        self.github_client = github_client
+        self.github_service = github_service
 
     async def create_project(
         self,
@@ -76,7 +74,7 @@ class ProjectService:
             # Create GitHub repository if needed
             repo = None
             if project_data.agent_config:
-                repo = await self.github_client.create_repository(
+                repo = await self.github_service.create_repository(
                     name=project_data.name,
                     organization=str(organization_id),
                     private=True

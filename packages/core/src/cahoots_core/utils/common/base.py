@@ -6,9 +6,11 @@ import re
 import asyncio
 from functools import wraps
 import time
+import logging
 
 from ..errors import ValidationError
-from ..base import BaseLogger
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 

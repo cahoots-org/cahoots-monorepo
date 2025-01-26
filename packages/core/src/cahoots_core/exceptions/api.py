@@ -101,4 +101,28 @@ class ServerError(APIError):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             severity=ErrorSeverity.ERROR,
             **kwargs
+        )
+
+
+class ServiceError(APIError):
+    """Service-specific error."""
+    
+    def __init__(
+        self,
+        message: str,
+        service_name: Optional[str] = None,
+        operation: Optional[str] = None,
+        **kwargs
+    ):
+        super().__init__(
+            message,
+            code="SERVICE_ERROR",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            severity=ErrorSeverity.ERROR,
+            details={
+                "service": service_name,
+                "operation": operation,
+                **(kwargs.pop("details", {}) or {})
+            },
+            **kwargs
         ) 

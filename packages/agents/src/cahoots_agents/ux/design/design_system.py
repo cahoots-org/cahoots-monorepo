@@ -612,12 +612,12 @@ class DesignSystem:
         if "keyboard-interactions" in accessibility:
             for key, value in accessibility["keyboard-interactions"].items():
                 if isinstance(value, str):
-                    normalized["keyboard-interactions"][key] = {
+                    normalized["keyboard-interactions"].get(key, {}).update({
                         "action": value,
                         "description": f"Trigger {value} action"
-                    }
+                    })
                 elif isinstance(value, dict):
-                    normalized["keyboard-interactions"][key] = value
+                    normalized["keyboard-interactions"].get(key, {}).update(value)
                     
         return normalized
 
@@ -827,7 +827,7 @@ class DesignSystem:
                 
             # Handle named colors
             if value in self.color_names:
-                return self.color_names[value].lower()
+                return self.color_names.get(value, {}).lower()
                 
             return value
             

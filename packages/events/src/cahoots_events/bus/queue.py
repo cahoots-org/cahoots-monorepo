@@ -1,17 +1,20 @@
 """Message queue implementation using Redis."""
-from typing import Dict, Any, Optional, List, Callable, Awaitable, Union
+from typing import Dict, Any, Optional, List, Callable, Awaitable, Union, TYPE_CHECKING
 import json
 import asyncio
 from datetime import datetime, timedelta
 import logging
 from redis.asyncio import Redis
 from uuid import UUID, uuid4
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
+from pydantic.json import timedelta_isoformat
 
 from .types import EventSchema, EventType, EventPriority, EventStatus, PublishError
-from .system import EventSystem
 from ..exceptions import EventError
 from cahoots_core.exceptions import QueueError
+
+if TYPE_CHECKING:
+    from .system import EventSystem
 
 logger = logging.getLogger(__name__)
 
@@ -33,30 +36,33 @@ class Message(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_processed_at: Optional[datetime] = None
     
-    class Config:
-        """Pydantic model configuration."""
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            UUID: str
+    @property
+    def model_serializer(self):
+        """Custom serialization."""
+        return {
+            "id": str,
+            "created_at": lambda dt: dt.isoformat() if dt else None,
+            "last_processed_at": lambda dt: dt.isoformat() if dt else None
         }
     
     def to_event(self) -> EventSchema:
         """Convert message to event schema."""
         return EventSchema(
-            event_type=EventType.from_string(self.message_type),
-            event_data=self.payload,
-            priority=EventPriority.NORMAL if self.priority <= 1 else EventPriority.HIGH,
-            status=EventStatus(self.state),
-            timestamp=self.created_at
+            id=str(self.id),
+            type=self.message_type,
+            payload=self.payload,
+            status=self.state,
+            created_at=self.created_at,
+            last_processed_at=self.last_processed_at
         )
 
-class MessageQueue:
+class EventQueue:
     """Message queue implementation using Redis."""
     
     def __init__(
         self,
         redis: Redis,
-        event_system: Optional[EventSystem] = None,
+        event_system: Optional['EventSystem'] = None,
         prefix: str = "queue:",
         dlq_prefix: str = "dlq:"
     ):
@@ -75,6 +81,7 @@ class MessageQueue:
         self._processing = False
         self._prefix = prefix
         self._dlq_prefix = dlq_prefix
+        self._process_task: Optional[asyncio.Task] = None
         
     def _get_queue_key(self, message_type: str) -> str:
         """Get Redis key for queue."""
@@ -84,46 +91,47 @@ class MessageQueue:
         """Get Redis key for dead letter queue."""
         return f"{self._dlq_prefix}{message_type}"
         
-    async def publish(self, message: Union[Message, Dict[str, Any]]) -> str:
-        """Publish a message to the queue."""
+    async def publish(
+        self,
+        message: Union[Message, Dict[str, Any]]
+    ) -> str:
+        """Publish message to queue."""
+        if isinstance(message, dict):
+            message = Message(**message)
+        
         try:
-            # Convert dict to Message if needed
-            if isinstance(message, dict):
-                message = Message(**message)
+            # Store message data
+            message_json = message.model_dump_json()
+            await self.redis.set(f"message:{message.id}", message_json)
             
-            # Store message in Redis
-            message_json = message.json()
-            await self.redis.set(
-                f"message:{message.id}",
-                message_json
-            )
-            
-            # Add to priority queue
-            score = message.priority * 1000000000 - message.created_at.timestamp()
+            # Add to queue with priority-based score
+            score = message.priority * 1000000000 - datetime.utcnow().timestamp()
             await self.redis.zadd(
                 self._get_queue_key(message.message_type),
                 {str(message.id): score}
             )
             
-            # Notify via event system if available
+            # Notify via event system
             if self.event_system:
                 try:
+                    event = message.to_event()
                     await self.event_system.publish(
-                        f"queue.{message.message_type}",
-                        message.to_event()
+                        f"queue.{message.message_type}.published",
+                        event
                     )
                 except PublishError as e:
-                    self.logger.warning(f"Failed to publish event for message {message.id}: {e}")
-            
-            self.logger.info(f"Published message {message.id} of type {message.message_type}")
+                    self.logger.warning(f"Failed to publish event: {e}")
+                    
             return str(message.id)
             
         except Exception as e:
             raise QueueError(
-                message=f"Failed to publish message: {str(e)}",
+                message=f"Failed to publish message {message.id}: {str(e)}",
                 details={
                     "message_type": message.message_type,
-                    "error": str(e)
+                    "message_id": str(message.id),
+                    "error": str(e),
+                    "operation": "publish"
                 }
             )
             
@@ -142,9 +150,8 @@ class MessageQueue:
             self._handlers[message_type] = []
         self._handlers[message_type].append(handler)
         
-    async def start_processing(self) -> None:
-        """Start processing messages from the queue."""
-        self._processing = True
+    async def _process_loop(self) -> None:
+        """Main processing loop."""
         while self._processing:
             try:
                 # Process messages for each type
@@ -158,10 +165,24 @@ class MessageQueue:
                 self.logger.error(f"Error in message processing loop: {str(e)}")
                 
             await asyncio.sleep(0.1)  # Prevent CPU spinning
+
+    async def start_processing(self) -> None:
+        """Start processing messages from the queue."""
+        if self._processing:
+            return
+            
+        self._processing = True
+        self._process_task = asyncio.create_task(self._process_loop())
             
     async def stop_processing(self) -> None:
         """Stop processing messages."""
+        if not self._processing:
+            return
+            
         self._processing = False
+        if self._process_task:
+            await self._process_task
+            self._process_task = None
         
     async def _process_messages(self, message_type: str) -> None:
         """Process messages of a specific type."""
@@ -176,7 +197,7 @@ class MessageQueue:
             return
             
         try:
-            message = Message.parse_raw(message_data)
+            message = Message.model_validate_json(message_data)
             message.state = EventStatus.PROCESSING.value
             message.last_processed_at = datetime.utcnow()
             await self._store_message(message)
@@ -220,7 +241,7 @@ class MessageQueue:
         """Store message data in Redis."""
         await self.redis.set(
             f"message:{message.id}",
-            message.json()
+            message.model_dump_json()
         )
         
     async def _handle_processing_failure(
@@ -235,8 +256,10 @@ class MessageQueue:
             # Move to dead letter queue
             message.state = EventStatus.FAILED.value
             await self._store_message(message)
+            
+            dlq_key = self._get_dlq_key(message.message_type)
             await self.redis.zadd(
-                self._get_dlq_key(message.message_type),
+                dlq_key,
                 {str(message.id): datetime.utcnow().timestamp()}
             )
             
@@ -294,21 +317,19 @@ class MessageQueue:
         for message_type in message_types:
             dlq_key = self._get_dlq_key(message_type)
             
-            # Get failed messages
-            result = await self.redis.zrange(
-                dlq_key,
-                0,
-                -1,
-                withscores=True
-            )
-            
-            for message_id_bytes, timestamp in result:
+            while True:
+                # Get oldest failed message
+                result = await self.redis.zpopmax(dlq_key)
+                if not result:
+                    break
+                    
+                message_id_bytes, timestamp = result[0]
                 message_id = message_id_bytes.decode('utf-8')
                 message_data = await self.redis.get(f"message:{message_id}")
                 
                 if message_data:
                     try:
-                        message = Message.parse_raw(message_data)
+                        message = Message.model_validate_json(message_data)
                         
                         # Archive message after certain time
                         age = datetime.utcnow() - message.last_processed_at
@@ -318,8 +339,6 @@ class MessageQueue:
                                 f"archive:{message_type}",
                                 {message_id: timestamp}
                             )
-                            # Remove from DLQ
-                            await self.redis.zrem(dlq_key, message_id)
                             
                             self.logger.info(
                                 f"Archived failed message {message_id} "
@@ -366,4 +385,33 @@ class MessageQueue:
         Args:
             message_type: Type of messages to clear
         """
-        await self.redis.delete(self._get_dlq_key(message_type)) 
+        await self.redis.delete(self._get_dlq_key(message_type))
+
+    def register_handler(self, message_type: str, handler: Callable):
+        """Register a handler for a message type.
+        
+        Args:
+            message_type: Type of message to handle
+            handler: Handler function
+        """
+        if message_type not in self._handlers:
+            self._handlers[message_type] = []
+        self._handlers[message_type].append(handler)
+
+    async def process_message(self, message: Message) -> None:
+        """Process a single message.
+        
+        Args:
+            message: Message to process
+        """
+        if message.message_type not in self._handlers:
+            return
+            
+        try:
+            for handler in self._handlers[message.message_type]:
+                await handler(message)
+            message.state = "completed"
+        except Exception as e:
+            message.state = "failed"
+            message.retry_count += 1
+            raise e 

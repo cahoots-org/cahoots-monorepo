@@ -1,8 +1,16 @@
 """QA suite models."""
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+class QATestType(Enum):
+    """Test type enum."""
+    API = "api"
+    INTEGRATION = "integration"
+    PERFORMANCE = "performance"
+    SECURITY = "security"
 
 class TestStatus(Enum):
     """Test status enum."""
@@ -13,7 +21,71 @@ class TestStatus(Enum):
     FAILED = "failed"
     ERROR = "error"
 
-class QAResult(BaseModel):
+class QATestStatus(Enum):
+    """QA test status enum."""
+    NOT_STARTED = "not_started"
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+    ERROR = "error"
+    SKIPPED = "skipped"
+    BLOCKED = "blocked"
+
+class TestStep(BaseModel):
+    """Test step model."""
+    __test__ = False  # Prevent pytest from collecting this as a test class
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "step1",
+                "description": "Enter valid credentials",
+                "expected_result": "User is logged in successfully",
+                "status": "not_started",
+                "actual_result": None,
+                "error_details": None
+            }
+        }
+    )
+    
+    id: str
+    description: str
+    expected_result: str
+    status: TestStatus = TestStatus.NOT_STARTED
+    actual_result: Optional[str] = None
+    error_details: Optional[Dict[str, str]] = None
+    
+    @field_validator('id', 'description', 'expected_result')
+    def validate_string_fields(cls, v: str) -> str:
+        if not v:
+            raise ValueError("Field must not be empty")
+        return v
+
+class QATest(BaseModel):
+    """QA test model."""
+    id: UUID
+    name: str
+    description: str
+    test_type: QATestType
+    steps: List[Dict[str, Any]]
+
+class QATestSuite(BaseModel):
+    """QA test suite model."""
+    id: UUID
+    name: str
+    description: str
+    test_type: QATestType
+    tests: List[QATest]
+    parallel: bool = False
+
+class QASuite(BaseModel):
+    """QA suite model."""
+    id: UUID
+    name: str
+    description: str
+    test_suites: List[QATestSuite]
+    context: Dict[str, Any]
+
+class QATestResult(BaseModel):
     """Test result model."""
     model_config = ConfigDict(
         json_schema_extra={
@@ -40,19 +112,30 @@ class TestCase(BaseModel):
         arbitrary_types_allowed=True,  # Allow Exception and other arbitrary types
         json_schema_extra={
             "example": {
+                "id": "test1",
                 "title": "Login Test",
                 "description": "Test user login functionality",
-                "steps": ["Enter credentials", "Click login"],
-                "expected_result": "User is logged in",
+                "steps": [
+                    {
+                        "id": "step1",
+                        "description": "Enter valid credentials",
+                        "expected_result": "User is logged in successfully"
+                    }
+                ],
+                "metadata": {
+                    "priority": "high",
+                    "type": "functional"
+                },
                 "status": "not_started"
             }
         }
     )
     
+    id: str
     title: str
     description: str
-    steps: List[str]
-    expected_result: str
+    steps: List[TestStep]
+    metadata: Dict[str, Any] = {}
     status: TestStatus = TestStatus.NOT_STARTED
     actual_result: Optional[str] = None
     execution_time: Optional[float] = None
@@ -61,18 +144,16 @@ class TestCase(BaseModel):
     end_time: Optional[datetime] = None
     error: Optional[Exception] = None  # Store the raw error object
     
-    @field_validator('title', 'description', 'expected_result')
+    @field_validator('id', 'title', 'description')
     def validate_string_fields(cls, v: str) -> str:
         if not v:
             raise ValueError("Field must not be empty")
         return v
     
     @field_validator('steps')
-    def validate_steps(cls, v: List[str]) -> List[str]:
+    def validate_steps(cls, v: List[TestStep]) -> List[TestStep]:
         if not v:
             raise ValueError("Steps must not be empty")
-        if not all(step for step in v):
-            raise ValueError("All steps must be non-empty strings")
         return v
         
     def reset(self) -> None:
@@ -147,8 +228,8 @@ class TestCase(BaseModel):
         return {
             "title": self.title,
             "description": self.description,
-            "steps": self.steps,
-            "expected_result": self.expected_result,
+            "steps": [step.to_dict() for step in self.steps],
+            "expected_result": self.steps[-1].expected_result if self.steps else None,
             "status": self.status.value,
             "actual_result": self.actual_result,
             "execution_time": self.execution_time,
@@ -285,3 +366,103 @@ class TestSuite(BaseModel):
             data["updated_at"] = datetime.fromisoformat(data["updated_at"])
             
         return cls(**data) 
+
+class QASuite(BaseModel):
+    """QA suite model that contains multiple test suites."""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "project_id": "project-123",
+                "title": "Project QA Suite",
+                "description": "Complete QA suite for the project",
+                "test_suites": [
+                    {
+                        "story_id": "story-123",
+                        "title": "Login Test Suite",
+                        "description": "Test suite for login functionality",
+                        "test_cases": []
+                    }
+                ],
+                "created_at": "2024-01-01T00:00:00Z",
+                "updated_at": "2024-01-01T00:00:00Z"
+            }
+        }
+    )
+    
+    project_id: str
+    title: str
+    description: str
+    test_suites: List[TestSuite] = []
+    created_at: datetime = datetime.now()
+    updated_at: datetime = datetime.now()
+    
+    @field_validator('project_id', 'title', 'description')
+    def validate_string_fields(cls, v: str) -> str:
+        if not v:
+            raise ValueError("Field must not be empty")
+        return v
+        
+    @field_validator('test_suites')
+    def validate_test_suites(cls, v: List[TestSuite]) -> List[TestSuite]:
+        if not v:
+            raise ValueError("QA suite must contain at least one test suite")
+        return v
+        
+    def add_test_suite(self, test_suite: TestSuite) -> None:
+        """Add a test suite."""
+        if test_suite in self.test_suites:
+            raise ValueError("Test suite already exists")
+        if any(ts.title == test_suite.title for ts in self.test_suites):
+            raise ValueError(f"Test suite with title '{test_suite.title}' already exists")
+        self.test_suites.append(test_suite)
+        self.updated_at = datetime.now()
+    
+    def remove_test_suite(self, title: str) -> None:
+        """Remove a test suite."""
+        self.test_suites = [ts for ts in self.test_suites if ts.title != title]
+        self.updated_at = datetime.now()
+    
+    def get_test_suite(self, title: str) -> Optional[TestSuite]:
+        """Get test suite by title."""
+        for test_suite in self.test_suites:
+            if test_suite.title == title:
+                return test_suite
+        return None
+    
+    def get_status(self) -> TestStatus:
+        """Get overall QA suite status."""
+        if not self.test_suites:
+            return TestStatus.NOT_STARTED
+            
+        statuses = [ts.get_status() for ts in self.test_suites]
+        if TestStatus.ERROR in statuses:
+            return TestStatus.ERROR
+        if TestStatus.RUNNING in statuses:
+            return TestStatus.RUNNING
+        if TestStatus.FAILED in statuses:
+            return TestStatus.FAILED
+        if all(s == TestStatus.PASSED for s in statuses):
+            return TestStatus.PASSED
+        return TestStatus.NOT_STARTED 
+
+class QATestSuiteResult(BaseModel):
+    """QA test suite result model."""
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "suite_id": "suite-123",
+                "status": "passed",
+                "test_results": [],
+                "execution_time": 1.23,
+                "error_details": None
+            }
+        }
+    )
+    
+    suite_id: UUID
+    status: TestStatus
+    test_results: List[QATestResult] = []
+    execution_time: Optional[float] = None
+    error_details: Optional[Dict[str, str]] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None 

@@ -253,9 +253,9 @@ class EmailClient:
             }
             
             if is_html:
-                message["Body"]["Html"] = {"Data": body}
+                message.get("Body", {}).setdefault("Html", {}).setdefault("Data", body)
             else:
-                message["Body"]["Text"] = {"Data": body}
+                message.get("Body", {}).setdefault("Text", {}).setdefault("Data", body)
                 
             # Prepare destination
             destination = {

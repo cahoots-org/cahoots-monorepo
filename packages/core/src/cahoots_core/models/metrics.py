@@ -1,7 +1,7 @@
 """Agent metrics models."""
 from datetime import datetime
 from typing import Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 class ResourceMetrics(BaseModel):
     """System resource utilization metrics."""
@@ -47,8 +47,16 @@ class AgentMetrics(BaseModel):
     health: HealthMetrics = Field(..., description="Health status metrics")
     custom_metrics: Optional[Dict[str, float]] = Field(default=None, description="Custom agent-specific metrics")
 
-    class Config:
-        """Pydantic model configuration."""
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat()
-        } 
+        }
+    )
+
+class Metric(BaseModel):
+    """Metric model."""
+    name: str
+    value: float
+    labels: Dict[str, str] = Field(default_factory=dict)
+    
+    model_config = ConfigDict(from_attributes=True) 

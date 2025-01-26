@@ -1,9 +1,9 @@
 """WebSocket endpoints for real-time updates."""
 from typing import Dict
 from uuid import UUID
+from cahoots_core.utils.infrastructure.redis.client import RedisClient, get_redis_client
+from cahoots_service.api.dependencies import get_current_organization
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from src.core.dependencies import get_current_organization, get_redis_client
-from src.utils.infrastructure import RedisClient
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -59,8 +59,8 @@ async def project_updates(
         while True:
             try:
                 message = await pubsub.get_message(ignore_subscribe_messages=True)
-                if message and message["type"] == "message":
-                    await websocket.send_json(message["data"])
+                if message and message.get("type") == "message":
+                    await websocket.send_json(message.get("data"))
             except WebSocketDisconnect:
                 break
                 

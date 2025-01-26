@@ -25,7 +25,8 @@ test = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.18.0",
     "pytest-cov>=3.0.0",
-    "httpx>=0.23.0"
+    "httpx>=0.23.0",
+    "pytest-randomly>=3.15.0",
 ]
 
 [build-system]
@@ -33,8 +34,54 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
+testpaths = [
+    "packages/core/tests",
+    "packages/events/tests",
+    "packages/context/tests",
+    "packages/service/tests",
+    "packages/agents/tests"
+]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "--verbose",
+    "--cov=packages",
+    "--cov-report=term-missing"
+]
+randomly_seed = 1234
 markers = [
-    "integration: marks tests as integration tests"
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "e2e: End-to-end tests",
+    "slow: Tests that take longer to run",
+    "api: API tests",
+    "db: Database tests",
+    "redis: Redis tests",
+    "security: Security-related tests"
+]
+log_cli = true
+log_cli_level = "INFO"
+log_cli_format = "%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)s)"
+log_cli_date_format = "%Y-%m-%d %H:%M:%S"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["packages"]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/__init__.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError"
 ]
 
 [tool.hatch.build.targets.wheel]

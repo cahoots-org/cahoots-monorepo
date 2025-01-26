@@ -4,7 +4,8 @@ import json
 import logging
 import uuid
 
-from src.models.task import Task
+from cahoots_core.models.task import Task
+from cahoots_core.models.story import Story
 
 class TaskManager:
     """Handles task breakdown and management."""
@@ -18,90 +19,88 @@ class TaskManager:
         self.agent = agent
         self.logger = logging.getLogger(__name__)
         
-    async def break_down_story(self, story: Dict[str, Any]) -> List[Task]:
+    async def break_down_story(
+        self,
+        story: Story,
+        *,
+        requirements: List[str] = None,
+        dependencies: List[str] = None
+    ) -> List[Task]:
         """Break down a user story into smaller technical tasks.
         
         Args:
-            story: Dictionary containing story details
+            story: Story object to break down
+            requirements: Optional list of specific requirements to consider
+            dependencies: Optional list of external dependencies to consider
             
         Returns:
             List[Task]: List of tasks to implement the story
+            
+        Raises:
+            ValueError: If task breakdown fails or response is invalid
         """
-        self.logger.info(f"Breaking down story: {story['title']}")
+        self.logger.info(f"Breaking down story: {story.title}")
         
-        prompt = f"""Break down this user story into tasks. For each task, provide a JSON object with these fields:
-        - title: task title
-        - description: detailed task description
-        - type: one of [setup, implementation, testing]
-        - complexity: number 1-5
-        - dependencies: list of task titles this task depends on
-        - required_skills: list of technical skills needed for this task
-        - risk_factors: list of potential risks (e.g., performance, security, reliability)
+        # Generate tasks using AI
+        prompt = f"""
+        Story Title: {story.title}
+        Description: {story.description}
+        Priority: {story.priority}
+        Status: {story.status}
+        Metadata: {story.metadata}
+        Requirements: {requirements or []}
+        Dependencies: {dependencies or []}
 
-        Story Title: {story['title']}
-        Story Description: {story['description']}
-
-        Return the tasks as a JSON array with format:
+        Break this story down into technical tasks that need to be implemented.
+        Return the tasks as a JSON array with the following structure for each task:
         {{
-            "tasks": [
-                {{"title": "...", "description": "...", "type": "...", "complexity": 1, "dependencies": [], "required_skills": [], "risk_factors": []}},
-                ...
-            ]
+            "id": "unique_id",
+            "title": "task title",
+            "description": "detailed description",
+            "requires_ux": boolean,
+            "metadata": {{
+                "dependencies": ["task_id1", "task_id2"],
+                "acceptance_criteria": ["criteria1", "criteria2"]
+            }}
         }}
         """
         
-        response = await self.agent.generate_response(prompt)
-        
         try:
-            # Try to clean up the response if it's not pure JSON
-            response = response.strip()
-            if response.startswith('```json'):
-                response = response.split('```json')[1]
-            if response.endswith('```'):
-                response = response.rsplit('```', 1)[0]
-            response = response.strip()
-            
-            tasks_data = json.loads(response)
-            if not isinstance(tasks_data, dict) or "tasks" not in tasks_data:
-                self.logger.error("LLM response is not a valid JSON object with tasks array")
-                return []
-                
+            response = await self.agent.generate_response(prompt)
+            try:
+                tasks_data = json.loads(response)
+            except json.JSONDecodeError:
+                raise ValueError("Failed to parse tasks from AI response")
+
+            if not tasks_data:
+                raise ValueError("No tasks generated")
+
             tasks = []
-            for task_data in tasks_data["tasks"]:
-                try:
-                    task = Task(
-                        id=str(uuid.uuid4()),
-                        title=task_data["title"], 
-                        description=task_data["description"],
-                        requires_ux=self.agent.focus == "frontend",
-                        metadata={
-                            "type": task_data["type"],
-                            "complexity": task_data["complexity"],
-                            "dependencies": task_data.get("dependencies", []),
-                            "required_skills": task_data.get("required_skills", ["python"]),
-                            "risk_factors": task_data.get("risk_factors", [])
-                        }
-                    )
-                    tasks.append(task)
-                except KeyError as e:
-                    self.logger.error(f"Missing required field in task data: {e}")
-                    self.logger.debug(f"Task data: {task_data}")
-                    continue
-                    
-            if not tasks:
-                self.logger.error("No valid tasks could be created from LLM response")
-                
-            self._validate_task_breakdown(tasks)
+            for task_data in tasks_data:
+                if "title" not in task_data or "description" not in task_data:
+                    raise ValueError("Invalid task format - missing required fields")
+
+                task = Task(
+                    id=task_data.get("id", str(uuid.uuid4())),
+                    title=task_data["title"],
+                    description=task_data["description"],
+                    requires_ux=task_data.get("requires_ux", False),
+                    metadata={
+                        **task_data.get("metadata", {}),
+                        "requirements": requirements or [],
+                        "dependencies": dependencies or []
+                    }
+                )
+                tasks.append(task)
+
             return tasks
-            
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse LLM response as JSON: {e}")
-            self.logger.debug(f"Response that failed to parse: {response}")
-            return []
+
+        except ValueError as e:
+            self.logger.error(f"Error breaking down story: {str(e)}")
+            raise
         except Exception as e:
-            self.logger.error(f"Unexpected error parsing tasks: {str(e)}")
-            self.logger.error("Stack trace:", exc_info=True)
-            return []
+            self.logger.error(f"Unexpected error breaking down story: {str(e)}")
+            raise ValueError("Failed to break down story into tasks")
             
     def _validate_task_breakdown(self, tasks: List[Task]) -> None:
         """Validate the task breakdown for completeness and consistency.

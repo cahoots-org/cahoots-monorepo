@@ -1,151 +1,182 @@
 """Trello service implementation."""
-from typing import Dict, Optional, List
-from src.utils.exceptions import ExternalServiceException
-from src.utils.async_base import AsyncContextManager
+from typing import AsyncContextManager, Optional, Dict, Any, List
+
+from cahoots_core.exceptions import ServiceError
 from .client import TrelloClient
 from .config import TrelloConfig
 
 class TrelloService(AsyncContextManager):
-    """Service for interacting with Trello API."""
+    """Service for interacting with Trello."""
     
-    def __init__(self, config: TrelloConfig) -> None:
-        """Initialize the Trello service.
+    def __init__(self, config: TrelloConfig):
+        """Initialize Trello service.
         
         Args:
-            config: TrelloConfig instance for Trello API configuration
+            config: Trello configuration
         """
-        super().__init__()
         self.config = config
-        self.client = TrelloClient(
-            api_key=config.api_key,
-            api_token=config.api_token,
-            base_url=config.base_url,
-            timeout=config.timeout
-        )
-        self._resource = self.client
+        self.client = TrelloClient(config)
         
-    async def create_board(
-        self,
-        name: str,
-        description: Optional[str] = None,
-        organization_id: Optional[str] = None
-    ) -> Dict[str, str]:
-        """Create a new board.
+    async def __aenter__(self):
+        """Enter async context."""
+        await self.client.__aenter__()
+        return self
+        
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit async context."""
+        await self.client.__aexit__(exc_type, exc_val, exc_tb)
+        
+    async def create_board(self, name: str, **kwargs) -> Dict[str, Any]:
+        """Create a new Trello board.
         
         Args:
             name: Board name
-            description: Board description
-            organization_id: Organization ID
+            **kwargs: Additional board parameters
             
         Returns:
-            Dict with board details including ID
+            Created board data
             
         Raises:
-            ExternalServiceException: If board creation fails
+            ServiceError: If board creation fails
         """
-        response = await self.client.request(
-            "POST",
-            "/boards",
-            json_data={
-                "name": name,
-                "desc": description or "",
-                "idOrganization": organization_id,
-                "defaultLists": False
-            }
-        )
-        return {
-            "id": response["id"],
-            "name": response["name"],
-            "url": response["url"]
-        }
+        try:
+            return await self.client.create_board(name, **kwargs)
+        except Exception as e:
+            raise ServiceError(f"Failed to create Trello board: {str(e)}")
+            
+    async def get_board(self, board_id: str) -> Dict[str, Any]:
+        """Get Trello board by ID.
         
-    async def create_list(
-        self,
-        board_id: str,
-        name: str,
-        position: str = "bottom"
-    ) -> Dict[str, str]:
-        """Create a new list in a board.
+        Args:
+            board_id: Board ID
+            
+        Returns:
+            Board data
+            
+        Raises:
+            ServiceError: If board retrieval fails
+        """
+        try:
+            return await self.client.get_board(board_id)
+        except Exception as e:
+            raise ServiceError(f"Failed to get Trello board: {str(e)}")
+            
+    async def create_list(self, board_id: str, name: str, **kwargs) -> Dict[str, Any]:
+        """Create a new list on a board.
         
         Args:
             board_id: Board ID
             name: List name
-            position: List position (top, bottom, or a positive number)
+            **kwargs: Additional list parameters
             
         Returns:
-            Dict with list details including ID
+            Created list data
             
         Raises:
-            ExternalServiceException: If list creation fails
+            ServiceError: If list creation fails
         """
-        response = await self.client.request(
-            "POST",
-            "/lists",
-            json_data={
-                "name": name,
-                "idBoard": board_id,
-                "pos": position
-            }
-        )
-        return {
-            "id": response["id"],
-            "name": response["name"]
-        }
-        
-    async def create_card(
-        self,
-        list_id: str,
-        name: str,
-        description: Optional[str] = None,
-        position: str = "bottom",
-        labels: Optional[List[str]] = None
-    ) -> Dict[str, str]:
+        try:
+            return await self.client.create_list(board_id, name, **kwargs)
+        except Exception as e:
+            raise ServiceError(f"Failed to create Trello list: {str(e)}")
+            
+    async def create_card(self, list_id: str, name: str, **kwargs) -> Dict[str, Any]:
         """Create a new card in a list.
         
         Args:
             list_id: List ID
             name: Card name
-            description: Card description
-            position: Card position (top, bottom, or a positive number)
-            labels: List of label IDs
+            **kwargs: Additional card parameters
             
         Returns:
-            Dict with card details including ID
+            Created card data
             
         Raises:
-            ExternalServiceException: If card creation fails
-        """
-        data = {
-            "name": name,
-            "desc": description or "",
-            "idList": list_id,
-            "pos": position
-        }
-        if labels:
-            data["idLabels"] = labels
-            
-        response = await self.client.request(
-            "POST",
-            "/cards",
-            json_data=data
-        )
-        return {
-            "id": response["id"],
-            "name": response["name"],
-            "url": response["url"]
-        }
-        
-    async def check_connection(self) -> bool:
-        """Check if we can connect to Trello API.
-        
-        Returns:
-            bool: True if connection successful
-            
-        Raises:
-            ExternalServiceException: If connection check fails
+            ServiceError: If card creation fails
         """
         try:
-            await self.client.request("GET", "/members/me")
-            return True
-        except ExternalServiceException:
-            return False 
+            return await self.client.create_card(list_id, name, **kwargs)
+        except Exception as e:
+            raise ServiceError(f"Failed to create Trello card: {str(e)}")
+            
+    async def get_cards(self, list_id: str) -> List[Dict[str, Any]]:
+        """Get all cards in a list.
+        
+        Args:
+            list_id: List ID
+            
+        Returns:
+            List of card data
+            
+        Raises:
+            ServiceError: If card retrieval fails
+        """
+        try:
+            return await self.client.get_cards(list_id)
+        except Exception as e:
+            raise ServiceError(f"Failed to get Trello cards: {str(e)}")
+            
+    async def update_card(self, card_id: str, **kwargs) -> Dict[str, Any]:
+        """Update a card.
+        
+        Args:
+            card_id: Card ID
+            **kwargs: Card fields to update
+            
+        Returns:
+            Updated card data
+            
+        Raises:
+            ServiceError: If card update fails
+        """
+        try:
+            return await self.client.update_card(card_id, **kwargs)
+        except Exception as e:
+            raise ServiceError(f"Failed to update Trello card: {str(e)}")
+            
+    async def delete_card(self, card_id: str) -> None:
+        """Delete a card.
+        
+        Args:
+            card_id: Card ID
+            
+        Raises:
+            ServiceError: If card deletion fails
+        """
+        try:
+            await self.client.delete_card(card_id)
+        except Exception as e:
+            raise ServiceError(f"Failed to delete Trello card: {str(e)}")
+            
+    async def create_webhook(self, callback_url: str, id_model: str, **kwargs) -> Dict[str, Any]:
+        """Create a webhook for a model.
+        
+        Args:
+            callback_url: Webhook callback URL
+            id_model: ID of model to watch (board, list, card etc)
+            **kwargs: Additional webhook parameters
+            
+        Returns:
+            Created webhook data
+            
+        Raises:
+            ServiceError: If webhook creation fails
+        """
+        try:
+            return await self.client.create_webhook(callback_url, id_model, **kwargs)
+        except Exception as e:
+            raise ServiceError(f"Failed to create Trello webhook: {str(e)}")
+            
+    async def delete_webhook(self, webhook_id: str) -> None:
+        """Delete a webhook.
+        
+        Args:
+            webhook_id: Webhook ID
+            
+        Raises:
+            ServiceError: If webhook deletion fails
+        """
+        try:
+            await self.client.delete_webhook(webhook_id)
+        except Exception as e:
+            raise ServiceError(f"Failed to delete Trello webhook: {str(e)}") 

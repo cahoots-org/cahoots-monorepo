@@ -1,21 +1,32 @@
 """Security middleware for FastAPI."""
 from typing import Optional, Callable, Dict, Any
+from cahoots_service.utils.security import SecurityManager
 from fastapi import Request
 from fastapi.responses import JSONResponse
-from src.utils.security import SecurityManager
 import logging
 
 class SecurityMiddleware:
     """Security middleware for FastAPI."""
 
     def __init__(self, app: Callable, security_manager: Optional[SecurityManager] = None):
-        """Initialize security middleware."""
+        """Initialize security middleware.
+        
+        Args:
+            app: FastAPI application
+            security_manager: Security manager instance
+        """
         self.app = app
         self.security_manager = security_manager
         self.logger = logging.getLogger(__name__)
 
     async def __call__(self, scope: Dict[str, Any], receive: Callable, send: Callable) -> None:
-        """Process request through security checks."""
+        """Process request through security checks.
+        
+        Args:
+            scope: ASGI scope
+            receive: ASGI receive function
+            send: ASGI send function
+        """
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return

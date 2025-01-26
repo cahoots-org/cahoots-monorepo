@@ -4,9 +4,9 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from src.core.dependencies import BaseDeps
+from cahoots_service.api.dependencies import ServiceDeps
 
-router = APIRouter(tags=["health"])
+router = APIRouter(prefix="/health", tags=["health"])
 
 class ServiceHealth(BaseModel):
     """Health status for an individual service."""
@@ -41,8 +41,8 @@ async def check_service(name: str, check_func: Any) -> ServiceHealth:
             details={"error": str(e)}
         )
 
-@router.get("")
-async def health_check(deps: BaseDeps = Depends()) -> HealthResponse:
+@router.get("/")
+async def health_check(deps: ServiceDeps = Depends(ServiceDeps)) -> HealthResponse:
     """Health check endpoint that verifies all critical services."""
     response = HealthResponse()
     
@@ -65,7 +65,7 @@ async def health_check(deps: BaseDeps = Depends()) -> HealthResponse:
     # Check event system
     event_health = await check_service(
         "event_system",
-        deps.event_system.verify_connection
+        deps.event_bus.verify_connection
     )
     response.services["event_system"] = event_health
     response.event_system = "connected" if event_health.status == "healthy" else "error"

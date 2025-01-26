@@ -1,8 +1,11 @@
 """Event models package."""
-from .events import Event, EventStatus, ContextEvent
+from .events import Event, ContextEvent
+from ..types import EventStatus, EventType, EventPriority
 
 __all__ = [
     "Event",
+    "ContextEvent",
     "EventStatus",
-    "ContextEvent"
+    "EventType",
+    "EventPriority"
 ]

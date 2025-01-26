@@ -1,30 +1,50 @@
-# src/services/github_service.py
+"""GitHub service implementation."""
 from github import Github, Auth
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Protocol
 import base64
 import os
 import subprocess
-from ..utils.config import Config
-from ..utils.logger import Logger
 import time
 from github.Repository import Repository
 import logging
 from github.GithubException import UnknownObjectException
+from ..utils.config import Config
+
+logger = logging.getLogger(__name__)
+
+class GitHubClient(Protocol):
+    """Protocol for GitHub client interface."""
+    def get_user(self): ...
+    def get_repo(self, full_name_or_id: str): ...
 
 class GitHubService:
     """Service for interacting with GitHub."""
     
-    def __init__(self, config):
+    def __init__(self, config: Config, github_client: Optional[GitHubClient] = None):
         """Initialize the GitHub service.
         
         Args:
             config: Configuration object containing GitHub settings
+            github_client: Optional GitHub client for testing
         """
         self.config = config
-        self.github = Github(auth=Auth.Token(config.api_key))
+        self.github = github_client or Github(auth=Auth.Token(config.api_key))
         self.logger = logging.getLogger(__name__)
         self.workspace_dir = config.workspace_dir
         self.repo_name = config.repo_name
+        
+    @classmethod
+    def create(cls, config: Config) -> 'GitHubService':
+        """Factory method to create a GitHubService instance.
+        
+        Args:
+            config: Configuration object containing GitHub settings
+            
+        Returns:
+            GitHubService: A new instance
+        """
+        github_client = Github(auth=Auth.Token(config.api_key))
+        return cls(config, github_client)
         
     def check_connection(self):
         """Test the GitHub connection"""
@@ -73,6 +93,7 @@ class GitHubService:
             )
         except Exception as e:
             self.logger.warning(f"Failed to configure branch protection: {str(e)}")
+            raise
         
     def create_branch(self, repo_name: str, branch_name: str, base: str = "main") -> str:
         """Create a new branch and return its ref"""

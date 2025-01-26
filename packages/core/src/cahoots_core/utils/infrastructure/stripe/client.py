@@ -2,7 +2,7 @@
 from typing import Optional, Dict, Any, List
 import logging
 import stripe
-from stripe.error import StripeError
+from stripe import StripeError
 
 logger = logging.getLogger(__name__)
 

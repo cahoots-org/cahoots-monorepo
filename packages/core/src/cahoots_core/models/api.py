@@ -66,7 +66,7 @@ class UsageQueryParams(BaseModel):
     @validator("end_time")
     def validate_time_range(cls, v, values):
         """Validate time range."""
-        if "start_time" in values and v < values["start_time"]:
+        if "start_time" in values and v < values.get("start_time"):
             raise ValueError("End time must be after start time")
         return v
 
@@ -89,6 +89,6 @@ class InvoiceQueryParams(BaseModel):
     @validator("end_date")
     def validate_date_range(cls, v, values):
         """Validate date range."""
-        if v and "start_date" in values and values["start_date"] and v < values["start_date"]:
+        if v and "start_date" in values and values.get("start_date") and v < values.get("start_date"):
             raise ValueError("End date must be after start date")
         return v 

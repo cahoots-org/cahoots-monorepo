@@ -1,19 +1,25 @@
-"""Redis namespace management."""
+"""Redis connection manager."""
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Set
 import json
 from redis.asyncio import Redis
 from redis.asyncio.client import PubSub
 
-from src.config import get_settings
-from src.utils.infrastructure import get_redis_client
+from cahoots_core.utils.config import Config
+from cahoots_core.utils.infrastructure.redis.client import get_redis_client
+from cahoots_core.exceptions import InfrastructureError
 
 class RedisManager:
-    """Manages project-specific Redis namespaces."""
-
-    def __init__(self):
-        """Initialize Redis manager."""
-        self.settings = get_settings()
-        self.redis = get_redis_client()
+    """Manager for Redis connections."""
+    
+    def __init__(self, config: Config):
+        """Initialize Redis manager.
+        
+        Args:
+            config: Configuration containing Redis settings
+        """
+        self.config = config
+        self._client: Optional[Redis] = None
         self._namespace_clients: Dict[str, Redis] = {}
         self._pubsub_clients: Dict[str, PubSub] = {}
 
@@ -41,12 +47,12 @@ class RedisManager:
             # Create namespace metadata
             namespace = f"project:{project_id}"
             metadata = {
-                "created_at": int(datetime.utcnow().timestamp()),
+                "created_at": int(datetime.now(timezone.UTC).timestamp()),
                 "status": "active"
             }
             
             # Store namespace metadata
-            await self.redis.set(
+            await self._client.set(
                 f"{namespace}:metadata",
                 json.dumps(metadata)
             )
@@ -77,7 +83,7 @@ class RedisManager:
             }
             
             # Use pipeline for atomic initialization
-            async with self.redis.pipeline(transaction=True) as pipe:
+            async with self._client.pipeline(transaction=True) as pipe:
                 for key, value in defaults.items():
                     pipe.set(key, value, nx=True)
                 await pipe.execute()
@@ -100,11 +106,11 @@ class RedisManager:
         try:
             # Get all keys in namespace
             pattern = self._get_namespace_pattern(project_id)
-            keys = await self.redis.keys(pattern)
+            keys = await self._client.keys(pattern)
             
             if keys:
                 # Delete all keys in namespace
-                await self.redis.delete(*keys)
+                await self._client.delete(*keys)
             
             # Remove cached clients
             namespace = f"project:{project_id}"
@@ -121,33 +127,23 @@ class RedisManager:
             print(f"Error cleaning up namespace: {e}")
             return False
 
-    async def get_client(self, project_id: str) -> Redis:
-        """Get Redis client for project namespace.
+    async def get_client(self) -> Redis:
+        """Get Redis client.
         
-        Args:
-            project_id: Project ID
-            
         Returns:
-            Redis client configured for project namespace
+            Redis: Configured Redis client
+            
+        Raises:
+            InfrastructureError: If connection fails
         """
-        namespace = f"project:{project_id}"
-        
-        # Return cached client if exists
-        if namespace in self._namespace_clients:
-            return self._namespace_clients[namespace]
-        
-        # Create new client with namespace
-        client = Redis(
-            host=self.settings.redis_host,
-            port=self.settings.redis_port,
-            password=self.settings.redis_password,
-            db=self.settings.redis_db,
-            encoding="utf-8",
-            decode_responses=True
-        )
-        
-        self._namespace_clients[namespace] = client
-        return client
+        if not self._client:
+            try:
+                self._client = get_redis_client()
+                await self._client.ping()  # Verify connection
+            except Exception as e:
+                raise InfrastructureError(f"Failed to connect to Redis: {str(e)}")
+                
+        return self._client
 
     async def get_pubsub(self, project_id: str) -> PubSub:
         """Get PubSub client for project namespace.
@@ -165,7 +161,7 @@ class RedisManager:
             return self._pubsub_clients[namespace]
         
         # Create new PubSub client
-        client = await self.get_client(project_id)
+        client = await self.get_client()
         pubsub = client.pubsub()
         
         self._pubsub_clients[namespace] = pubsub
@@ -181,7 +177,7 @@ class RedisManager:
             List of keys in namespace
         """
         pattern = self._get_namespace_pattern(project_id)
-        return await self.redis.keys(pattern)
+        return await self._client.keys(pattern)
 
     async def get_size(self, project_id: str) -> int:
         """Get size of project namespace in bytes.
@@ -199,7 +195,7 @@ class RedisManager:
         # Get memory usage for all keys
         total = 0
         for key in keys:
-            memory = await self.redis.memory_usage(key)
+            memory = await self._client.memory_usage(key)
             if memory:
                 total += memory
                 
@@ -215,7 +211,7 @@ class RedisManager:
             Set of active channel names
         """
         namespace = f"project:{project_id}"
-        pubsub_channels = await self.redis.pubsub_channels(f"{namespace}:*")
+        pubsub_channels = await self._client.pubsub_channels(f"{namespace}:*")
         return {channel.decode() for channel in pubsub_channels}
 
     async def cleanup(self):
@@ -228,4 +224,10 @@ class RedisManager:
         # Close all pubsub clients
         for pubsub in self._pubsub_clients.values():
             await pubsub.close()
-        self._pubsub_clients.clear() 
+        self._pubsub_clients.clear()
+
+    async def close(self) -> None:
+        """Close Redis connection."""
+        if self._client:
+            await self._client.close()
+            self._client = None 

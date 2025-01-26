@@ -10,23 +10,28 @@ class EventError(CahootsError):
     def __init__(
         self,
         message: str,
+        *args: Any,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
+        category: ErrorCategory = ErrorCategory.BUSINESS,
         details: Optional[Dict[str, Any]] = None,
-        category: ErrorCategory = ErrorCategory.DOMAIN,
-        severity: ErrorSeverity = ErrorSeverity.ERROR
+        cause: Optional[Exception] = None
     ):
         """Initialize event error.
         
         Args:
             message: Error message
-            details: Additional error details
-            category: Error category
             severity: Error severity
+            category: Error category
+            details: Additional error details
+            cause: Optional exception that caused the error
         """
         super().__init__(
-            message=message,
-            details=details,
+            message,
+            *args,
+            severity=severity,
             category=category,
-            severity=severity
+            details=details,
+            cause=cause
         )
 
 

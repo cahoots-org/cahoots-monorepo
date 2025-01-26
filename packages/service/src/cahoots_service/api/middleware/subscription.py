@@ -1,7 +1,7 @@
 """Subscription validation middleware."""
 from typing import Optional, Dict
 from fastapi import Request, HTTPException
-from src.services.subscription_service import SubscriptionService, get_subscription_service
+from stripe import SubscriptionService
 
 class SubscriptionValidator:
     """Subscription validation middleware."""
@@ -15,7 +15,7 @@ class SubscriptionValidator:
         Args:
             subscription_service: Service for checking subscriptions
         """
-        self.subscription_service = subscription_service or get_subscription_service()
+        self.subscription_service = subscription_service
         
         # Define tier limits
         self.tier_limits = {

@@ -1,360 +1,115 @@
-# Cahoots API
+# Cahoots
 
-An AI-powered development team that automates software development tasks through a RESTful API.
+An AI-powered development team that collaborates to build software solutions through microservices.
 
-## Features
+## Services
 
-- Project Management
-- Task Automation
-- Code Generation
-- Code Review
-- Testing
-- Continuous Integration/Deployment
+- **Master**: Orchestrates and coordinates the Cahoots AI services
+- **Project Manager**: Handles project planning and task management
+- **Developer**: Implements code changes and reviews
+- **UX Designer**: Handles UI/UX related tasks
+- **Tester**: Manages testing and quality assurance
+- **Context Manager**: Maintains project context and documentation
 
-## Quick Start
+## Tech Stack
 
-### Prerequisites
-
-- Python 3.10+
+- Python 3.11+
+- FastAPI
+- PostgreSQL
 - Redis
-- Docker (optional)
-- Kubernetes (optional)
+- AWS (ECS, ECR, RDS)
+- Terraform
+- GitHub Actions
 
-### Local Development
+## Development Setup
 
-1. Clone the repository:
+1. Install dependencies:
 ```bash
-git clone https://github.com/yourusername/cahoots.git
-cd cahoots
+python -m pip install -r requirements.txt
 ```
 
-2. Create and activate a virtual environment:
+2. Install development dependencies:
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/macOS
-.\venv\Scripts\activate   # Windows
+python -m pip install -e ".[test]"
 ```
 
-3. Install dependencies:
+3. Set up environment variables:
 ```bash
-pip install -r requirements.txt
+export ENV=development
+export REDIS_HOST=localhost
+export REDIS_PORT=6379
 ```
 
-4. Set up environment variables:
+## Testing
+
+Run the test suite:
 ```bash
-cp .env.example .env
-# Edit .env with your configuration
+pytest --cov=packages --cov-report=term-missing
 ```
 
-5. Run the development server:
-```bash
-uvicorn src.api.main:app --reload
-```
+## Infrastructure
 
-The API will be available at http://localhost:8000
+Cahoots uses Terraform to manage infrastructure across three environments:
+- Development
+- Staging
+- Production
 
-### Docker Deployment
+### Environment Configuration
 
-Build and run using Docker:
+Each environment has its own configuration:
+- `.tfvars` file for environment-specific variables
+- `.tfbackend` file for state management
+- Separate VPC and networking setup
+- Scaled resources appropriate for each environment
 
-```bash
-docker build -t cahoots .
-docker run -p 8000:8000 --env-file .env cahoots
-```
+## CI/CD Pipeline
 
-### Kubernetes Deployment
+Cahoots uses GitHub Actions for CI/CD with the following stages:
 
-1. Create the necessary secrets:
-```bash
-kubectl create secret generic cahoots-secrets \
-  --from-file=.env
-```
+1. **Test**
+   - Runs Python tests
+   - Uploads coverage reports
+   - Uses Redis service container
 
-2. Deploy the application:
-```bash
-kubectl apply -f k8s/
-```
+2. **Lint**
+   - Ruff for linting
+   - MyPy for type checking
 
-## API Documentation
+3. **Security**
+   - Bandit security scanner
+   - Safety dependency checker
 
-API documentation is available at:
-- Swagger UI: `/docs`
-- ReDoc: `/redoc`
-- OpenAPI Spec: `/openapi.json`
+4. **Build**
+   - Builds Docker images for all services
+   - Pushes to Amazon ECR
 
-### Authentication
+5. **Deploy**
+   - Staging deployment with Terraform
+   - Production deployment after staging success
+   - Updates ECS services
 
-All API endpoints require authentication using an API key header:
-
-```http
-X-API-Key: your-api-key
-```
-
-### Example Request
-
-Create a new project:
-
-```bash
-curl -X POST http://localhost:8000/projects \
-  -H "X-API-Key: your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "id": "project-123",
-    "name": "My Project",
-    "description": "A new project"
-  }'
-```
-
-## Configuration
-
-Configuration is managed through:
-1. Environment variables
-2. YAML configuration files in `config/`
-3. Command-line arguments
-
-See `.env.example` for available environment variables.
-
-## Architecture
-
-### Components
-
-- FastAPI web server
-- Redis message broker
-- Prometheus metrics
-- Kubernetes deployment
-- GitHub integration
-- Trello integration
-
-### Directory Structure
+## Project Structure
 
 ```
 .
-├── config/             # Configuration files
-├── k8s/               # Kubernetes manifests
-├── scripts/           # Utility scripts
-├── packages/          # Monorepo packages
-│   ├── core/         # Core functionality
-│   ├── service/      # Shared services
-│   ├── agent_qa/     # QA Tester agent
-│   ├── agent_pm/     # Project Manager agent
-│   ├── agent_ux/     # UX Designer agent
-│   └── agent_developer/ # Developer agent
-└── tests/            # Test suite
+├── packages/
+│   ├── core/       # Core functionality
+│   ├── events/     # Event handling
+│   ├── context/    # Context management
+│   ├── service/    # Service implementations
+│   └── agents/     # AI agent implementations
+├── tests/          # Test suites
+├── terraform/      # Infrastructure as code
+└── docker/         # Dockerfiles for services
 ```
-
-## Development
-
-### Testing
-
-Run tests with pytest:
-
-```bash
-pytest
-```
-
-With coverage:
-
-```bash
-pytest --cov=src --cov-report=html
-```
-
-### Code Quality
-
-Run linters and type checks:
-
-```bash
-ruff check .
-mypy src tests
-```
-
-### CI/CD
-
-The project uses GitHub Actions for:
-1. Running tests
-2. Code quality checks
-3. Security scanning
-4. Building Docker images
-5. Deploying to staging/production
-
-## Monitoring
-
-### Metrics
-
-Prometheus metrics are available at `/metrics`, including:
-- Request counts
-- Request latency
-- Redis operations
-- Custom business metrics
-
-### Logging
-
-Structured JSON logging is configured for production with:
-- Request tracking
-- Error tracking
-- Performance monitoring
-
-## Security
-
-- API key authentication
-- Rate limiting
-- Input validation
-- CORS protection
-- Security headers
-- Non-root containers
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
+1. Create a feature branch from `main`
+2. Make your changes
+3. Run tests and linting
+4. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License.
-## Stripe Integration
-
-### Local Development Setup
-
-1. Install required tools:
-```bash
-brew install stripe/stripe-cli/stripe
-brew install ngrok
-```
-
-2. Configure environment variables in `.env`:
-```
-STRIPE_SECRET_KEY=sk_test_your_test_key
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
-```
-
-3. Start your local development server:
-```bash
-source venv/bin/activate
-python -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-4. Create a tunnel to your local server:
-```bash
-ngrok http 8000
-```
-
-5. Configure webhook in Stripe Dashboard:
-   - Go to Developers > Webhooks
-   - Add endpoint: `https://your-ngrok-url/webhook/stripe`
-   - Select events:
-     - customer.subscription.created
-     - customer.subscription.updated
-     - customer.subscription.deleted
-     - invoice.paid
-     - invoice.payment_failed
-     - payment_intent.succeeded
-     - payment_intent.payment_failed
-
-6. Test webhooks using Stripe CLI:
-```bash
-# Login to Stripe
-stripe login
-
-# Test specific events
-stripe trigger customer.subscription.created
-stripe trigger invoice.paid
-stripe trigger invoice.payment_failed
-```
-
-### Production Deployment
-
-1. Configure environment variables on your production server:
-```
-STRIPE_SECRET_KEY=sk_live_your_live_key
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
-```
-
-2. Configure webhook in Stripe Dashboard:
-   - Go to Developers > Webhooks
-   - Add endpoint: `https://your-production-domain/webhook/stripe`
-   - Select the same events as in development
-   - Store the webhook signing secret securely
-   - Update your deployment configuration with the new secret
-
-3. Security considerations:
-   - Always use HTTPS for webhook endpoints
-   - Keep webhook signing secrets secure
-   - Rotate secrets periodically
-   - Monitor webhook events in Stripe Dashboard
-   - Set up retry rules for failed webhook deliveries
-
-4. Monitoring and logging:
-   - Monitor webhook delivery in Stripe Dashboard
-   - Check application logs for webhook processing
-   - Set up alerts for webhook failures
-   - Monitor subscription and payment events
-
-### Testing Webhook Integration
-
-1. Local testing:
-```bash
-# Start local server
-python -m uvicorn src.api.main:app --reload --host 0.0.0.0 --port 8000
-
-# In another terminal, start ngrok
-ngrok http 8000
-
-# In another terminal, trigger test events
-stripe trigger customer.subscription.created
-```
-
-2. Webhook event types for testing:
-```bash
-# Subscription events
-stripe trigger customer.subscription.created
-stripe trigger customer.subscription.updated
-stripe trigger customer.subscription.deleted
-
-# Payment events
-stripe trigger invoice.paid
-stripe trigger invoice.payment_failed
-stripe trigger payment_intent.succeeded
-stripe trigger payment_intent.payment_failed
-```
-
-3. Verify webhook processing:
-   - Check application logs
-   - Verify database updates
-   - Check Stripe Dashboard events
-   - Monitor event system messages
-
-### Troubleshooting
-
-1. Webhook failures:
-   - Verify webhook signing secret
-   - Check endpoint URL configuration
-   - Ensure server is accessible
-   - Check application logs
-   - Verify event handling logic
-
-2. Common issues:
-   - Invalid webhook signatures
-   - Server not accessible
-   - Missing event handlers
-   - Database connection issues
-   - Redis connection issues
-
-3. Debug tools:
-   - Stripe CLI logs
-   - Application logs
-   - Stripe Dashboard webhook logs
-   - Database transaction logs
-
-## System Requirements
-
-### Redis Configuration
-For Redis to function properly, memory overcommit must be enabled. Add the following to `/etc/sysctl.conf`:
-
-```bash
-vm.overcommit_memory = 1
-```
-
-Then apply the changes:
-```bash
-sudo sysctl -p
-```
-
-This configuration is required to prevent background save or replication failures in Redis.
+[Add your license here]

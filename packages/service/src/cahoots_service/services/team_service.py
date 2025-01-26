@@ -1,121 +1,267 @@
-"""Team service."""
-from typing import Dict, List, Optional
-from datetime import datetime
-import asyncio
+"""Team management service."""
+from typing import Optional, List
+from uuid import UUID
 import logging
+from fastapi import HTTPException
 
 from cahoots_core.models.team_config import TeamConfig, ServiceRole, RoleConfig, ProjectLimits
-from cahoots_core.utils.k8s import KubernetesClient
-from cahoots_core.utils.dependencies import ServiceDeps
+from cahoots_core.utils.infrastructure.k8s.client import KubernetesClient
+from cahoots_service.api.dependencies import ServiceDeps
+
+logger = logging.getLogger(__name__)
 
 class TeamService:
-    """Service for managing team configurations."""
+    """Service for managing teams."""
     
-    def __init__(self, deps: ServiceDeps, project_id: str):
+    def __init__(self, deps: ServiceDeps):
         """Initialize team service.
         
         Args:
             deps: Service dependencies
-            project_id: Project ID
         """
-        self.db = deps.db
-        self.redis = deps.redis
-        self.k8s = deps.k8s
-        self.project_id = project_id
+        self.deps = deps
         
-    async def get_team_config(self) -> TeamConfig:
-        """Retrieve the current team configuration."""
-        config_key = f"team_config:{self.project_id}"
-        cached_config = await self.redis.get(config_key)
+    async def create_team(
+        self,
+        name: str,
+        description: Optional[str] = None,
+        roles: Optional[dict] = None,
+        limits: Optional[dict] = None
+    ) -> TeamConfig:
+        """Create a new team.
         
-        if cached_config:
-            return TeamConfig.model_validate_json(cached_config)
+        Args:
+            name: Team name
+            description: Team description
+            roles: Team roles configuration
+            limits: Team resource limits
             
-        # If not in cache, load from database
-        config = await self.load_config_from_db()
-        if not config:
-            # Create default configuration
-            config = TeamConfig(project_id=self.project_id)
+        Returns:
+            Created team configuration
+        """
+        try:
+            # Generate team ID
+            team_id = str(UUID())
             
-        await self.redis.set(config_key, config.model_dump_json())
-        return config
-    
-    async def update_team_config(self, new_config: TeamConfig) -> TeamConfig:
-        """Update the team configuration."""
-        # Validate against project limits
-        limits = await self.get_project_limits()
-        self.validate_config_against_limits(new_config, limits)
+            # Set default roles if none provided
+            if not roles:
+                roles = {
+                    "admin": RoleConfig(
+                        role=ServiceRole.ADMIN,
+                        permissions={
+                            "manage_team": True,
+                            "manage_projects": True,
+                            "manage_members": True
+                        }
+                    ),
+                    "member": RoleConfig(
+                        role=ServiceRole.MEMBER,
+                        permissions={
+                            "manage_projects": True,
+                            "manage_members": False
+                        }
+                    ),
+                    "viewer": RoleConfig(
+                        role=ServiceRole.VIEWER,
+                        permissions={
+                            "view_only": True
+                        }
+                    )
+                }
+            
+            # Set default limits if none provided
+            if not limits:
+                limits = ProjectLimits()
+            
+            # Create team config
+            team_config = TeamConfig(
+                team_id=team_id,
+                name=name,
+                description=description,
+                roles=roles,
+                limits=limits,
+                is_active=True
+            )
+            
+            # Store in database
+            await self.deps.db_manager.create_team(team_config)
+            
+            return team_config
+            
+        except Exception as e:
+            logger.error(f"Failed to create team: {str(e)}")
+            raise
+            
+    async def get_team(self, team_id: str) -> Optional[TeamConfig]:
+        """Get team configuration.
         
-        # Update configuration
-        config_key = f"team_config:{self.project_id}"
-        await self.redis.set(config_key, new_config.model_dump_json())
-        await self.save_config_to_db(new_config)
+        Args:
+            team_id: Team ID
+            
+        Returns:
+            Team configuration if found
+        """
+        try:
+            # Try to get from cache first
+            cached = await self.deps.redis.get(f"team:{team_id}")
+            if cached:
+                return TeamConfig.model_validate_json(cached)
+            
+            # Get from database
+            team = await self.deps.db_manager.get_team(team_id)
+            if team:
+                # Cache the result
+                await self.deps.redis.set(
+                    f"team:{team_id}",
+                    team.model_dump_json(),
+                    expire=3600
+                )
+            return team
+        except Exception as e:
+            logger.error(f"Failed to get team: {e}")
+            raise
+            
+    async def update_team(
+        self,
+        team_id: str,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        roles: Optional[dict] = None,
+        limits: Optional[dict] = None
+    ) -> Optional[TeamConfig]:
+        """Update team configuration.
         
-        return new_config
-    
-    async def update_role_config(self, role: ServiceRole, config: RoleConfig) -> TeamConfig:
+        Args:
+            team_id: Team ID
+            name: New team name
+            description: New team description
+            roles: New team roles
+            limits: New resource limits
+            
+        Returns:
+            Updated team configuration
+        """
+        try:
+            team = await self.get_team(team_id)
+            if not team:
+                return None
+                
+            if name:
+                team.name = name
+            if description:
+                team.description = description
+            if roles:
+                team.roles = roles
+            if limits:
+                team.limits = limits
+                
+            await self.deps.db_manager.update_team(team)
+            return team
+            
+        except Exception as e:
+            logger.error(f"Failed to update team: {str(e)}")
+            raise
+            
+    async def delete_team(self, team_id: str) -> bool:
+        """Delete a team.
+        
+        Args:
+            team_id: Team ID
+            
+        Returns:
+            True if deleted successfully
+        """
+        try:
+            return await self.deps.db_manager.delete_team(team_id)
+        except Exception as e:
+            logger.error(f"Failed to delete team: {str(e)}")
+            raise
+
+    async def update_team_config(self, config: TeamConfig) -> TeamConfig:
+        """Update team configuration."""
+        try:
+            # Validate limits
+            project_limits = await self._get_project_limits()
+            if not self._validate_limits(config.limits, project_limits):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Team configuration exceeds project limits"
+                )
+            
+            # Update in database
+            updated = await self.deps.db_manager.update_team(config)
+            
+            # Update cache
+            await self.deps.redis.set(
+                f"team:{config.team_id}",
+                updated.model_dump_json(),
+                expire=3600
+            )
+            
+            return updated
+        except Exception as e:
+            logger.error(f"Failed to update team config: {e}")
+            raise
+
+    async def update_role_config(
+        self,
+        role: ServiceRole,
+        config: RoleConfig,
+        team_id: str
+    ) -> TeamConfig:
         """Update configuration for a specific role."""
-        team_config = await self.get_team_config()
-        team_config.roles[role] = config
-        return await self.update_team_config(team_config)
-    
-    async def load_config_from_db(self) -> Optional[TeamConfig]:
-        """Load team configuration from database."""
-        result = await self.db.execute(
-            "SELECT config FROM team_configurations WHERE project_id = :project_id",
-            {"project_id": self.project_id}
-        )
-        row = await result.first()
-        if row:
-            config_data = row[0]
-            if isinstance(config_data, dict):
-                config_data["project_id"] = self.project_id
-            return TeamConfig.model_validate(config_data)
-        return None
-
-    async def get_project_limits(self) -> ProjectLimits:
-        """Get the project's service limits based on subscription/tier."""
-        # TODO: Implement actual limit retrieval based on subscription
-        return ProjectLimits()
-    
-    def validate_config_against_limits(self, config: TeamConfig, limits: ProjectLimits):
-        """Validate configuration against project limits."""
-        if len(config.roles) > limits.max_roles:
-            raise HTTPException(status_code=400, detail=f"Exceeds maximum allowed roles ({limits.max_roles})")
+        try:
+            team = await self.get_team(team_id)
+            if not team:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Team not found"
+                )
             
-        total_instances = sum(role.instances for role in config.roles.values())
-        if total_instances > limits.max_total_instances:
-            raise HTTPException(status_code=400, 
-                              detail=f"Exceeds maximum total instances ({limits.max_total_instances})")
-            
-        for role, role_config in config.roles.items():
-            if role not in limits.allowed_roles:
-                raise HTTPException(status_code=400, detail=f"Role {role} not allowed for this project")
-            if role_config.instances > limits.max_instances_per_role:
-                raise HTTPException(status_code=400, 
-                                  detail=f"Exceeds maximum instances for role {role}")
-            if role_config.tier not in limits.allowed_tiers:
-                raise HTTPException(status_code=400, 
-                                  detail=f"Service tier {role_config.tier} not allowed for {role}")
+            team.roles[role] = config
+            return await self.update_team_config(team)
+        except Exception as e:
+            logger.error(f"Failed to update role config: {e}")
+            raise
 
-    async def save_config_to_db(self, config: TeamConfig):
-        """Save team configuration to database."""
-        await self.db.execute(
-            """
-            INSERT INTO team_configurations (project_id, config, created_at, updated_at)
-            VALUES (:project_id, :config, :timestamp, :timestamp)
-            ON CONFLICT (project_id) 
-            DO UPDATE SET config = :config, updated_at = :timestamp
-            """,
-            {
-                "project_id": self.project_id,
-                "config": config.model_dump(),
-                "timestamp": int(time.time())
-            }
-        )
-        await self.db.commit()
-        
-    async def scale_role_instances(self, role: ServiceRole, instances: int):
+    async def scale_role_instances(
+        self,
+        role: ServiceRole,
+        instances: int
+    ) -> None:
         """Scale the number of instances for a role."""
-        deployment_name = f"{role}-{self.project_id}"
-        await self.k8s.scale_deployment(deployment_name=deployment_name, replicas=instances) 
+        try:
+            # Get current deployment
+            deployment = await self.deps.k8s.get_deployment(role.value)
+            
+            # Update replicas
+            await self.deps.k8s.scale_deployment(
+                deployment.metadata.name,
+                instances
+            )
+        except Exception as e:
+            logger.error(f"Failed to scale role instances: {e}")
+            raise
+
+    def _validate_limits(
+        self,
+        team_limits: ProjectLimits,
+        project_limits: ProjectLimits
+    ) -> bool:
+        """Validate team limits against project limits."""
+        return (
+            team_limits.max_projects <= project_limits.max_projects and
+            team_limits.max_users <= project_limits.max_users and
+            team_limits.max_storage_gb <= project_limits.max_storage_gb and
+            team_limits.max_compute_units <= project_limits.max_compute_units
+        )
+
+    async def _get_project_limits(self) -> ProjectLimits:
+        """Get project-wide limits."""
+        # This would typically come from a configuration or database
+        return ProjectLimits(
+            max_projects=100,
+            max_users=500,
+            max_storage_gb=1000,
+            max_compute_units=10000
+        ) 

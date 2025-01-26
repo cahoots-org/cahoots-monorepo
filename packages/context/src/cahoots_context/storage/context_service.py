@@ -2,24 +2,19 @@
 from datetime import datetime
 from typing import Dict, List, Optional
 import json
-from uuid import UUID
+from uuid import UUID, uuid4
 import sys
-import asyncio
 from asyncio import Lock
 import logging
 
+from cahoots_core.utils.infrastructure.database.client import get_db_client
+from cahoots_core.utils.infrastructure.redis.client import get_redis_client
+from cahoots_core.utils.version_vector import VersionVector
 from fastapi import HTTPException
-from redis import Redis
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from cahoots_core.models.project import Project
 from cahoots_events.models import ContextEvent
-from cahoots_core.utils.redis import get_redis_client
-from cahoots_core.utils.version_vector import VersionVector
 from cahoots_core.utils.caching import CacheManager
-from cahoots_core.utils.dependencies import BaseDeps
 from cahoots_core.exceptions import ValidationError, StorageError, ContextLimitError
 
 logger = logging.getLogger(__name__)
@@ -30,9 +25,9 @@ class ContextEventService:
     MAX_ITEMS = 100
     MAX_SIZE_BYTES = 1024 * 1024  # 1MB limit per context section
     
-    def __init__(self, deps: BaseDeps):
-        self.db = deps.db
-        self.redis = deps.redis
+    def __init__(self):
+        self.db = get_db_client()
+        self.redis = get_redis_client()
         self.cache_manager = CacheManager(self.redis)
         self._init_locks = {}  # Per-context initialization locks
         
@@ -62,7 +57,12 @@ class ContextEventService:
         
         context["code_changes"].append(event_data)
         if len(context["code_changes"]) > self.MAX_ITEMS:
-            context["code_changes"] = context["code_changes"][-self.MAX_ITEMS:]
+            # Keep only the most recent items up to the limit
+            context["code_changes"] = sorted(
+                context["code_changes"],
+                key=lambda x: x.get("timestamp", ""),
+                reverse=True
+            )[:self.MAX_ITEMS]
 
     async def apply_architectural_decision(self, context: Dict, event_data: Dict) -> None:
         """Apply an architectural decision event to the context."""
@@ -177,6 +177,13 @@ class ContextEventService:
             current_vector = await self.get_version_vector(project_id)
             if not current_vector.compatible_with(version_vector):
                 raise HTTPException(status_code=409, detail="Version conflict detected")
+            # Merge and increment the vector
+            current_vector.merge(version_vector)
+            current_vector.increment()
+        else:
+            # Get current vector and increment
+            current_vector = await self.get_version_vector(project_id)
+            current_vector.increment()
 
         # Create and store new event
         event = ContextEvent(
@@ -184,11 +191,12 @@ class ContextEventService:
             project_id=project_id,
             event_type=event_type,
             event_data=event_data,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow(),
+            version_vector=current_vector.versions
         )
         self.db.add(event)
         self.db.commit()
-
+        
         # Invalidate caches
         await self.invalidate_caches(project_id)
         

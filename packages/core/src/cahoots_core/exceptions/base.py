@@ -1,6 +1,7 @@
-"""Base exceptions for the Cahoots system."""
+"""Base exception classes for the Cahoots system."""
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Optional, Dict, Any
+from datetime import datetime
 
 
 class ErrorSeverity(str, Enum):
@@ -13,28 +14,110 @@ class ErrorSeverity(str, Enum):
 
 
 class ErrorCategory(str, Enum):
-    """Categories of errors for classification."""
+    """Categories of errors."""
     VALIDATION = "validation"
-    AUTHENTICATION = "authentication"
-    AUTHORIZATION = "authorization"
     INFRASTRUCTURE = "infrastructure"
-    DOMAIN = "domain"
+    BUSINESS = "business"
+    SECURITY = "security"
+    SYSTEM = "system"
     API = "api"
     UNKNOWN = "unknown"
 
 
-class CahootsError(Exception):
-    """Base exception for all Cahoots errors.
+class ErrorContext:
+    """Context information for errors."""
     
-    All custom exceptions should inherit from this class to ensure
-    consistent error handling and logging across the system.
+    def __init__(
+        self,
+        message: str,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
+        category: ErrorCategory = ErrorCategory.UNKNOWN,
+        details: Optional[Dict[str, Any]] = None,
+        timestamp: Optional[datetime] = None
+    ):
+        self.message = message
+        self.severity = severity
+        self.category = category
+        self.details = details or {}
+        self.timestamp = timestamp or datetime.utcnow()
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert context to dictionary."""
+        return {
+            "message": self.message,
+            "severity": self.severity.value,
+            "category": self.category.value,
+            "details": self.details,
+            "timestamp": self.timestamp.isoformat()
+        }
+
+
+class CahootsError(Exception):
+    """Base exception class for all Cahoots errors.
+    
+    Provides rich error context and standardized error handling.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        *args: Any,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
+        category: ErrorCategory = ErrorCategory.UNKNOWN,
+        details: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
+    ):
+        """Initialize error with context.
+        
+        Args:
+            message: Error message
+            severity: Error severity level
+            category: Error category
+            details: Additional error details
+            cause: Original exception that caused this error
+        """
+        super().__init__(message, *args)
+        self.context = ErrorContext(
+            message=message,
+            severity=severity,
+            category=category,
+            details=details
+        )
+        self.cause = cause
+        
+    @property
+    def message(self) -> str:
+        """Get error message."""
+        return self.context.message
+        
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert error to dictionary."""
+        error_dict = self.context.to_dict()
+        if self.cause:
+            error_dict["cause"] = {
+                "type": type(self.cause).__name__,
+                "message": str(self.cause)
+            }
+        return error_dict
+        
+    def __str__(self) -> str:
+        """Get string representation."""
+        return f"{type(self).__name__}: {self.message}"
+
+
+class AIDTException(CahootsError):
+    """Base exception for AI Development Team errors.
+    
+    This is a specialized version of CahootsError for the AI Development Team
+    subsystem. It provides the same functionality but with a distinct type
+    for more specific error handling.
     """
     
     def __init__(
         self,
         message: str,
         *,
-        code: str = "UNKNOWN_ERROR",
+        code: str = "AIDT_ERROR",
         severity: ErrorSeverity = ErrorSeverity.ERROR,
         category: ErrorCategory = ErrorCategory.UNKNOWN,
         details: Optional[Dict[str, Any]] = None,
@@ -50,28 +133,11 @@ class CahootsError(Exception):
             details: Additional error details/context
             cause: Original exception that caused this error
         """
-        super().__init__(message)
-        self.message = message
-        self.code = code
-        self.severity = severity
-        self.category = category
-        self.details = details or {}
-        self.cause = cause
-        
-    def __str__(self) -> str:
-        """Return string representation of the error."""
-        return f"{self.code}: {self.message}"
-        
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert error to dictionary format.
-        
-        Useful for logging and API responses.
-        """
-        return {
-            "code": self.code,
-            "message": self.message,
-            "severity": self.severity,
-            "category": self.category,
-            "details": self.details,
-            "cause": str(self.cause) if self.cause else None
-        } 
+        super().__init__(
+            message,
+            code=code,
+            severity=severity,
+            category=category,
+            details=details,
+            cause=cause
+        ) 

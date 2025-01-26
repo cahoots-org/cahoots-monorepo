@@ -1,11 +1,11 @@
 """Rate limiting middleware."""
+from logging import Logger
 from typing import Callable, Dict, Optional, Any
 from fastapi import Request, Response
 from starlette.types import ASGIApp, Scope, Receive, Send, Message
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
-from src.utils.logger import Logger
 from cahoots_core.exceptions import RateLimitError
 
 logger = Logger("Rate-Limit")

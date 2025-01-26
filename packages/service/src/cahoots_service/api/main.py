@@ -1,53 +1,58 @@
-"""Main FastAPI application."""
-from fastapi import FastAPI, Request, Response, Depends
+"""Main application router."""
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from redis.asyncio import Redis
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException
 
-from src.core.config import get_settings, SecurityConfig
-from src.core.dependencies import get_security_manager
-from src.utils.redis import create_redis_client
-from .middleware.request_tracking import add_request_id
-from .middleware.security import SecurityMiddleware
-from .auth import router as auth_router
-from .health import router as health_router
-from .metrics import router as metrics_router
-from .organizations import router as organizations_router
-from .projects import router as projects_router
-from .webhook import router as webhook_router
-from .billing import router as billing_router
-
-app = FastAPI(title="Cahoots API")
-
-# Add middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+from cahoots_service.api.error_handlers import (
+    http_exception_handler,
+    validation_exception_handler,
+    service_error_handler
 )
+from cahoots_service.api.auth import router as auth_router
+from cahoots_service.api.projects import router as projects_router
+from cahoots_service.api.billing import router as billing_router
+from cahoots_service.api.metrics import router as metrics_router
+from cahoots_service.api.health import router as health_router
+from cahoots_service.utils.config import get_settings
+from cahoots_core.exceptions import ServiceError
 
-app.middleware("http")(add_request_id)
+def create_app() -> FastAPI:
+    """Create FastAPI application.
+    
+    Returns:
+        FastAPI: Application instance
+    """
+    settings = get_settings()
+    
+    app = FastAPI(
+        title="Cahoots Service",
+        description="API for Cahoots service",
+        version="0.1.0"
+    )
 
-# Initialize security middleware
-security_manager = None
+    # Configure CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
+    )
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize app dependencies on startup."""
-    global security_manager
-    redis = await create_redis_client()
-    security_manager = await get_security_manager(redis=redis, config=SecurityConfig())
+    # Register error handlers
+    app.add_exception_handler(HTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    app.add_exception_handler(ServiceError, service_error_handler)
 
-# Add security middleware with placeholder manager
-app.add_middleware(SecurityMiddleware, security_manager=None)
+    # Register routers
+    app.include_router(auth_router)
+    app.include_router(projects_router)
+    app.include_router(billing_router)
+    app.include_router(metrics_router)
+    app.include_router(health_router)
 
-# Add routers
-app.include_router(auth_router, prefix="/auth")
-app.include_router(health_router, prefix="/health")
-app.include_router(metrics_router, prefix="/metrics")
-app.include_router(organizations_router, prefix="/api/organizations")
-app.include_router(projects_router, prefix="/api/projects")
-app.include_router(webhook_router, prefix="/webhooks")
-app.include_router(billing_router, prefix="/billing")
+    return app
+
+app = create_app()

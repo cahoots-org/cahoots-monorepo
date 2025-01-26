@@ -1,8 +1,7 @@
-"""Infrastructure exceptions for the Cahoots system."""
-from typing import Any, Dict, Optional
+"""Infrastructure-related exceptions."""
+from typing import Optional, Dict, Any
 
-from .base import CahootsError, ErrorCategory, ErrorSeverity
-
+from .base import CahootsError, ErrorSeverity, ErrorCategory
 
 class InfrastructureError(CahootsError):
     """Base class for infrastructure-related errors."""
@@ -10,137 +9,117 @@ class InfrastructureError(CahootsError):
     def __init__(
         self,
         message: str,
-        *,
-        service: Optional[str] = None,
-        **kwargs
+        *args: Any,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
+        details: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
     ):
-        """Initialize infrastructure error.
-        
-        Args:
-            message: Error message
-            service: Name of the infrastructure service
-            **kwargs: Additional arguments passed to CahootsError
-        """
         super().__init__(
             message,
+            *args,
+            severity=severity,
             category=ErrorCategory.INFRASTRUCTURE,
-            details={"service": service, **(kwargs.pop("details", {}) or {})},
-            **kwargs
+            details=details,
+            cause=cause
         )
 
+class ClientError(InfrastructureError):
+    """Base class for client-related errors."""
+    pass
 
-class DatabaseError(InfrastructureError):
+class DatabaseError(ClientError):
     """Database-related errors."""
-    
-    def __init__(
-        self,
-        message: str,
-        operation: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(
-            message,
-            code="DATABASE_ERROR",
-            service="database",
-            severity=ErrorSeverity.ERROR,
-            details={"operation": operation, **(kwargs.pop("details", {}) or {})},
-            **kwargs
-        )
+    pass
 
-
-class CacheError(InfrastructureError):
+class CacheError(ClientError):
     """Cache-related errors."""
-    
-    def __init__(
-        self,
-        message: str,
-        operation: Optional[str] = None,
-        key: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(
-            message,
-            code="CACHE_ERROR",
-            service="cache",
-            severity=ErrorSeverity.WARNING,
-            details={
-                "operation": operation,
-                "key": key,
-                **(kwargs.pop("details", {}) or {})
-            },
-            **kwargs
-        )
+    pass
 
+class QueueError(ClientError):
+    """Message queue-related errors."""
+    pass
 
-class QueueError(InfrastructureError):
-    """Queue-related errors."""
-    
-    def __init__(
-        self,
-        message: str,
-        queue_name: Optional[str] = None,
-        operation: Optional[str] = None,
-        **kwargs
-    ):
-        super().__init__(
-            message,
-            code="QUEUE_ERROR",
-            service="queue",
-            severity=ErrorSeverity.ERROR,
-            details={
-                "queue_name": queue_name,
-                "operation": operation,
-                **(kwargs.pop("details", {}) or {})
-            },
-            **kwargs
-        )
-
-
-class StorageError(InfrastructureError):
+class StorageError(ClientError):
     """Storage-related errors."""
     
     def __init__(
         self,
         message: str,
-        storage_type: Optional[str] = None,
-        operation: Optional[str] = None,
-        path: Optional[str] = None,
-        **kwargs
+        *args: Any,
+        operation: str,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
+        details: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
     ):
+        """Initialize storage error.
+        
+        Args:
+            message: Error message
+            operation: Storage operation that failed
+            severity: Error severity
+            details: Additional error details
+            cause: Optional exception that caused the error
+        """
+        if details is None:
+            details = {}
+        details["operation"] = operation
         super().__init__(
             message,
-            code="STORAGE_ERROR",
-            service="storage",
-            severity=ErrorSeverity.ERROR,
-            details={
-                "storage_type": storage_type,
-                "operation": operation,
-                "path": path,
-                **(kwargs.pop("details", {}) or {})
-            },
-            **kwargs
+            *args,
+            severity=severity,
+            details=details,
+            cause=cause
         )
-
 
 class NetworkError(InfrastructureError):
     """Network-related errors."""
-    
+    pass
+
+class ConnectionError(NetworkError):
+    """Connection-related errors."""
+    pass
+
+class TimeoutError(NetworkError):
+    """Timeout-related errors."""
+    pass
+
+class ConfigurationError(InfrastructureError):
+    """Configuration-related errors."""
+    pass
+
+class ResourceError(InfrastructureError):
+    """Resource-related errors."""
+    pass
+
+class ResourceNotFoundError(ResourceError):
+    """Resource not found errors."""
+    pass
+
+class ResourceExistsError(ResourceError):
+    """Resource already exists errors."""
+    pass
+
+class ExternalServiceError(InfrastructureError):
+    """External service integration errors."""
+    pass
+
+class ExternalServiceException(InfrastructureError):
+    """Exception raised when an external service call fails."""
     def __init__(
         self,
         message: str,
-        host: Optional[str] = None,
-        port: Optional[int] = None,
-        **kwargs
+        *,
+        service: str,
+        operation: str,
+        details: Optional[Dict[str, Any]] = None,
+        cause: Optional[Exception] = None
     ):
         super().__init__(
             message,
-            code="NETWORK_ERROR",
-            service="network",
-            severity=ErrorSeverity.ERROR,
             details={
-                "host": host,
-                "port": port,
-                **(kwargs.pop("details", {}) or {})
+                "service": service,
+                "operation": operation,
+                **(details or {})
             },
-            **kwargs
+            cause=cause
         ) 

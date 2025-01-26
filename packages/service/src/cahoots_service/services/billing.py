@@ -1,24 +1,53 @@
 """Billing service."""
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Optional, Dict, Any, TypedDict, List, cast
 from uuid import UUID
+import logging
+from datetime import datetime
+from decimal import Decimal
 
-from cahoots_core.models.billing import SubscriptionTier, Invoice, UsageRecord
+from cahoots_core.exceptions.api import APIError
+from cahoots_core.exceptions.domain import DomainError
+from cahoots_core.exceptions.infrastructure import InfrastructureError
 from cahoots_core.models.db_models import Organization
-from cahoots_core.utils.infrastructure import StripeClient
-from cahoots_core.utils.dependencies import ServiceDeps
+from cahoots_core.models.subscription import Subscription
+from cahoots_core.models.billing import Invoice, UsageRecord, SubscriptionTier
+from cahoots_core.models.billing import (
+    BillingInfo,
+    SubscriptionPlan,
+    SubscriptionStatus,
+    PaymentMethod,
+    PaymentStatus
+)
+from cahoots_core.utils.infrastructure.stripe.client import StripeClient
+from cahoots_service.utils.config import ServiceConfig
+from cahoots_service.api.dependencies import ServiceDeps
+from sqlalchemy import select
+
+logger = logging.getLogger(__name__)
+
+class StripeSubscriptionItem(TypedDict):
+    id: str
+    price: Dict[str, Any]
+
+class StripeSubscriptionData(TypedDict):
+    data: List[StripeSubscriptionItem]
+
+class StripeSubscription(TypedDict):
+    id: str
+    status: str
+    current_period_end: int
+    items: StripeSubscriptionData
 
 class BillingService:
-    """Service for managing subscriptions and payments."""
+    """Service for managing billing and subscriptions."""
     
-    def __init__(self, deps: ServiceDeps):
+    def __init__(self, deps: ServiceConfig):
         """Initialize billing service.
         
         Args:
-            deps: Service dependencies including database and Stripe client
+            deps: Service dependencies
         """
-        self.db = deps.db
-        self.stripe = deps.stripe
+        self.deps = deps
         
     async def create_subscription(
         self,
@@ -48,22 +77,26 @@ class BillingService:
             raise ValueError(f"Invalid subscription tier: {tier_id}")
         
         # Create Stripe subscription
-        subscription = await self.stripe.create_subscription(
+        subscription = cast(StripeSubscription, await self.stripe.create_subscription(
             customer_id=organization.customer_id,
             payment_method_id=payment_method_id,
             price_id=tier.price_yearly if is_yearly else tier.price_monthly
-        )
+        ))
         
         # Update organization subscription
         organization_model = await self.db.get(
-            OrganizationModel,
+            Organization,
             organization.id
         )
         if organization_model:
             organization_model.subscription_tier = tier_id
             organization_model.subscription_status = subscription["status"]
             organization_model.subscription_id = subscription["id"]
-            organization_model.subscription_item_id = subscription["items"]["data"][0]["id"]
+            
+            # Safely get subscription item ID
+            items = subscription["items"]["data"]
+            organization_model.subscription_item_id = items[0]["id"] if items else "unknown"
+            
             await self.db.commit()
         
         return {
@@ -99,8 +132,8 @@ class BillingService:
         )
         
         return {
-            "payment_method_id": payment_method["id"],
-            "type": payment_method["type"],
+            "payment_method_id": payment_method.get("id", "unknown"),
+            "type": payment_method.get("type", "unknown"),
             "card": payment_method.get("card", {})
         }
     
@@ -112,9 +145,9 @@ class BillingService:
         """List organization invoices."""
         # Build query
         query = (
-            select(InvoiceModel)
-            .where(InvoiceModel.organization_id == organization.id)
-            .order_by(InvoiceModel.created.desc())
+            select(Invoice)
+            .where(Invoice.organization_id == organization.id)
+            .order_by(Invoice.created.desc())
             .limit(limit)
         )
         
@@ -145,19 +178,19 @@ class BillingService:
     ) -> List[UsageRecord]:
         """Get organization usage records."""
         # Build base query
-        query = select(UsageRecordModel).where(
-            UsageRecordModel.organization_id == organization.id,
-            UsageRecordModel.metric == metric
+        query = select(UsageRecord).where(
+            UsageRecord.organization_id == organization.id,
+            UsageRecord.metric == metric
         )
         
         # Add time filters
         if start_time:
-            query = query.where(UsageRecordModel.timestamp >= start_time)
+            query = query.where(UsageRecord.timestamp >= start_time)
         if end_time:
-            query = query.where(UsageRecordModel.timestamp <= end_time)
+            query = query.where(UsageRecord.timestamp <= end_time)
             
         # Add ordering
-        query = query.order_by(UsageRecordModel.timestamp.desc())
+        query = query.order_by(UsageRecord.timestamp.desc())
             
         # Execute query
         result = await self.db.execute(query)

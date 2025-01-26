@@ -1,4 +1,5 @@
 """Metrics endpoints."""
+from cahoots_service.api.auth import verify_api_key
 from fastapi import APIRouter, Response, Depends
 from prometheus_client import (
     generate_latest,
@@ -6,14 +7,12 @@ from prometheus_client import (
 )
 import logging
 
-from src.api.auth.verify import verify_api_key
-
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-router = APIRouter(tags=["metrics"])
+router = APIRouter(prefix="/metrics", tags=["metrics"])
 
-@router.get("")
+@router.get("/")
 async def get_metrics(organization_id: str = Depends(verify_api_key)) -> Response:
     """Generate Prometheus metrics response.
     
