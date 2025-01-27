@@ -68,4 +68,20 @@ class ContextError(AIDTException):
 
 class ContextLimitExceeded(ContextError):
     """Raised when context limit is exceeded."""
+    pass
+
+class ServiceError(AIDTException):
+    """Base class for service-related errors."""
+    pass
+
+class ServiceConfigError(ServiceError):
+    """Raised when service configuration is invalid."""
+    pass
+
+class ServiceConnectionError(ServiceError):
+    """Raised when service connection fails."""
+    pass
+
+class ServiceOperationError(ServiceError):
+    """Raised when service operation fails."""
     pass 

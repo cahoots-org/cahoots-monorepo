@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import sys
 from asyncio import Lock
 import logging
+from sqlalchemy import Column
 
 from cahoots_core.utils.infrastructure.database.client import get_db_client
 from cahoots_core.utils.infrastructure.redis.client import get_redis_client
@@ -13,9 +14,11 @@ from cahoots_core.utils.version_vector import VersionVector
 from fastapi import HTTPException
 
 from cahoots_core.models.project import Project
-from cahoots_events.models import ContextEvent
+from cahoots_events.models.events import ContextEventModel
 from cahoots_core.utils.caching import CacheManager
 from cahoots_core.exceptions import ValidationError, StorageError, ContextLimitError
+from cahoots_core.exceptions import CahootsError
+from cahoots_core.exceptions.base import ErrorCategory, ErrorSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +42,25 @@ class ContextEventService:
         
     def _check_memory_limit(self, data: Dict) -> None:
         """Check if data exceeds memory limits."""
-        size = sys.getsizeof(json.dumps(data))
+        size = len(json.dumps(data))
         if size > self.MAX_SIZE_BYTES:
-            raise ContextLimitError(f"Data size {size} exceeds limit {self.MAX_SIZE_BYTES}")
+            raise ContextLimitError(
+                message=f"Data size {size} exceeds limit {self.MAX_SIZE_BYTES}",
+                severity=ErrorSeverity.ERROR,
+                category=ErrorCategory.RESOURCE_LIMIT
+            )
             
+    def _ensure_initialized(self, context: Dict, key: str) -> None:
+        """Ensure context has required key initialized."""
+        if key not in context:
+            context[key] = []
+        if len(context[key]) >= self.MAX_ITEMS:
+            raise ContextLimitError(
+                message=f"{key} exceed limit {self.MAX_ITEMS}",
+                severity=ErrorSeverity.ERROR,
+                category=ErrorCategory.RESOURCE_LIMIT
+            )
+    
     async def _ensure_initialized(self, context: Dict, key: str, factory=list) -> None:
         """Safely initialize a context key if not present."""
         if key not in context:
@@ -70,7 +88,11 @@ class ContextEventService:
         await self._ensure_initialized(context, "architectural_decisions")
         
         if len(context["architectural_decisions"]) >= self.MAX_ITEMS:
-            raise ContextLimitError(f"Architectural decisions exceed limit {self.MAX_ITEMS}")
+            raise ContextLimitError(
+                message=f"Architectural decisions exceed limit {self.MAX_ITEMS}",
+                severity=ErrorSeverity.ERROR,
+                category=ErrorCategory.RESOURCE_LIMIT
+            )
             
         context["architectural_decisions"].append(event_data)
 
@@ -82,7 +104,7 @@ class ContextEventService:
         # Clean update to prevent memory leaks
         context["standards"] = event_data.copy()
 
-    async def apply_event_to_context(self, context: Dict, event: ContextEvent) -> Dict:
+    async def apply_event_to_context(self, context: Dict, event: ContextEventModel) -> Dict:
         """Apply a single event to a context state."""
         # Deep copy context to prevent mutations
         new_context = json.loads(json.dumps(context))
@@ -116,14 +138,14 @@ class ContextEventService:
             return cached_context
 
         # Build context from event store
-        events = self.db.query(ContextEvent)\
-            .filter(ContextEvent.project_id == project_id)\
-            .order_by(ContextEvent.timestamp.asc())\
+        events = self.db.query(ContextEventModel)\
+            .filter(ContextEventModel.project_id == str(project_id))\
+            .order_by(ContextEventModel.timestamp.asc())\
             .all()
             
         if not events:
             # Only verify project exists if no events found
-            project = self.db.query(Project).filter(Project.id == project_id).first()
+            project = self.db.query(Project).filter(Column("id") == project_id).first()
             if not project:
                 raise HTTPException(status_code=404, detail="Project not found")
             return {}
@@ -145,13 +167,13 @@ class ContextEventService:
             return cached_vector
 
         # Get latest event
-        latest_event = self.db.query(ContextEvent)\
-            .filter(ContextEvent.project_id == project_id)\
-            .order_by(ContextEvent.timestamp.desc())\
+        latest_event = self.db.query(ContextEventModel)\
+            .filter(ContextEventModel.project_id == str(project_id))\
+            .order_by(ContextEventModel.timestamp.desc())\
             .first()
             
         vector = VersionVector.new() if not latest_event else \
-                 VersionVector.from_event(latest_event)
+                 VersionVector(versions=latest_event.version_vector)
                  
         # Cache the result
         await self.cache_manager.set(cache_key, vector)
@@ -163,12 +185,12 @@ class ContextEventService:
         event_type: str,
         event_data: Dict,
         version_vector: Optional[VersionVector] = None
-    ) -> ContextEvent:
+    ) -> ContextEventModel:
         """
         Append a new event to the project's context history with optimistic concurrency control.
         """
         # Verify project exists
-        project = self.db.query(Project).filter(Project.id == project_id).first()
+        project = self.db.query(Project).filter(Column("id") == project_id).first()
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
 
@@ -186,9 +208,9 @@ class ContextEventService:
             current_vector.increment()
 
         # Create and store new event
-        event = ContextEvent(
-            id=uuid4(),
-            project_id=project_id,
+        event = ContextEventModel(
+            id=str(uuid4()),
+            project_id=str(project_id),
             event_type=event_type,
             event_data=event_data,
             timestamp=datetime.utcnow(),
@@ -202,7 +224,7 @@ class ContextEventService:
         
         return event
 
-    async def build_context_from_events(self, events: List[ContextEvent]) -> Dict:
+    async def build_context_from_events(self, events: List[ContextEventModel]) -> Dict:
         """Build a complete context state from a sequence of events."""
         context = {}
         for event in events:

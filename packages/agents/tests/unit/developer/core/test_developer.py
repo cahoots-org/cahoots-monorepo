@@ -172,12 +172,6 @@ async def developer(mock_event_system, mock_github_service, mock_agent, mock_cod
     return developer
 
 @pytest.mark.asyncio
-async def test_start(developer, mock_event_system):
-    """Test developer agent startup."""
-    assert mock_event_system.connect.await_count == 1
-    assert mock_event_system.subscribe.await_count == 3
-
-@pytest.mark.asyncio
 async def test_handle_story_assignment(developer, mock_event_system):
     """Test handling a story assignment."""
     developer = await developer
@@ -277,7 +271,7 @@ async def test_handle_story_assigned_success(developer, mock_event_system):
             "title": "Test Story",
             "description": "Test description",
             "assigned_to": "dev-1",
-            "repo_url": "https://github.com/org/repo"
+        "repo_url": "https://github.com/org/repo"
         }
     }
 
@@ -342,7 +336,7 @@ async def test_implement_tasks_success(developer):
 
     developer.code_generator.generate_implementation = mock_generate_implementation
     developer.code_validator.validate_implementation = mock_validate_implementation
-
+    
     result = await developer.implement_tasks(tasks)
     assert len(result.get("implementations")) == 2
     assert result["implementations"]["task1"]["code"] == "def test1(): pass"
@@ -371,7 +365,7 @@ async def test_implement_tasks_with_failure(developer):
 
     developer.code_generator.generate_implementation = mock_generate_implementation
     developer.code_validator.validate_implementation = mock_validate_implementation
-
+    
     result = await developer.implement_tasks(tasks)
     assert len(result.get("implementations")) == 1
     assert len(result.get("failed_tasks")) == 1

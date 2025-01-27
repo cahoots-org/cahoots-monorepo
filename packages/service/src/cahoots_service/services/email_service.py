@@ -1,7 +1,7 @@
 """Email service for user communications."""
 from typing import Optional
 from pydantic import EmailStr
-from jinja2 import Environment, PackageLoader
+from jinja2 import Environment, PackageLoader, select_autoescape
 
 from cahoots_service.utils.config import ServiceConfig
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
@@ -22,7 +22,9 @@ class EmailService:
         )
         self.fastmail = FastMail(self.config)
         self.templates = Environment(
-            loader=PackageLoader('src', 'templates/email')
+            loader=PackageLoader('src', 'templates/email'),
+            autoescape=True,
+            extensions=['jinja2.ext.autoescape']
         )
     
     async def send_verification_email(self, email: EmailStr, token: str):

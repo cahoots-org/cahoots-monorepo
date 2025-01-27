@@ -43,8 +43,6 @@ class ProjectContext:
             await self._db_client.close()
         if self._redis_client:
             await self._redis_client.close()
-        if self._event_client:
-            await self._event_client.close()
 
     @property
     def db(self) -> DatabaseClient:

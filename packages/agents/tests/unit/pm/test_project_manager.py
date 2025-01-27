@@ -63,7 +63,7 @@ async def test_create_story_success(project_manager, sample_story):
     """Test successful story creation."""
     expected_response = {
         "status": "success",
-        "story": sample_story.dict(),
+        "story": sample_story.model_dump(),
         "tasks": [
             {
                 "id": "task1",
@@ -107,7 +107,7 @@ async def test_assign_story_success(project_manager):
 async def test_review_story_completion_success(project_manager, sample_story):
     """Test successful story completion review."""
     completion_data = {
-        "story": sample_story.dict(),
+        "story": sample_story.model_dump(),
         "tasks": [
             {
                 "id": "task1",
@@ -134,7 +134,7 @@ async def test_review_story_completion_success(project_manager, sample_story):
 async def test_review_story_completion_needs_changes(project_manager, sample_story):
     """Test story completion review requiring changes."""
     completion_data = {
-        "story": sample_story.dict(),
+        "story": sample_story.model_dump(),
         "tasks": [
             {
                 "id": "task1",

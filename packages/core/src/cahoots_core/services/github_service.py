@@ -9,6 +9,9 @@ from github.Repository import Repository
 import logging
 from github.GithubException import UnknownObjectException
 from ..utils.config import Config
+import shutil
+from ..exceptions.base import ErrorCategory
+from ..utils.exceptions import ServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -323,10 +326,14 @@ This PR was automatically created by the AI development team.
             repo_path = os.path.join(self.workspace_dir, repo_name)
             
             # Add authentication to the URL
-            auth_url = repo_url.replace("https://", f"https://robmillersoftware:{self.config.github_api_key}@")
+            auth_url = repo_url.replace("https://", f"https://robmillersoftware:{self.github_api_key}@")
             
+            git_path = shutil.which("git")
+            if not git_path:
+                raise EnvironmentError("Git executable not found in PATH")
+
             self.logger.info(f"Cloning {repo_url} to {repo_path}")
-            subprocess.run(['git', 'clone', auth_url, repo_path], check=True)
+            subprocess.run([git_path, 'clone', auth_url, repo_path], check=True)
             
             return repo_path
         except subprocess.CalledProcessError as e:
@@ -335,3 +342,43 @@ This PR was automatically created by the AI development team.
         except Exception as e:
             self.logger.error(f"Failed to clone repository: {str(e)}")
             raise
+
+    @property
+    def github_api_key(self) -> str:
+        """Get GitHub API key."""
+        return self.config.github_api_key
+
+    async def update_pr_status(self, pr_number: int, status: str) -> None:
+        """Update PR status.
+        
+        Args:
+            pr_number: PR number
+            status: New status
+        """
+        try:
+            repo = self.github.get_repo(f"{self.github.get_user().login}/{self.repo_name}")
+            pr = repo.get_pull(pr_number)
+            pr.edit(state=status)
+        except Exception as e:
+            raise ServiceError(
+                message=f"Failed to update PR status: {e}",
+                category=ErrorCategory.API
+            )
+
+    async def get_repository_info(self, repo_name: str) -> Dict[str, str]:
+        """Get repository information.
+        
+        Args:
+            repo_name: Repository name
+            
+        Returns:
+            Repository information
+        """
+        try:
+            repo = self.github.get_repo(repo_name)
+            return {
+                "clone_url": repo.clone_url,
+                "default_branch": repo.default_branch
+            }
+        except Exception as e:
+            raise ServiceError(f"Failed to get repository info: {e}")

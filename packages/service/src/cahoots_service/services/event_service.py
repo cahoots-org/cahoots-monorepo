@@ -11,9 +11,6 @@ from cahoots_core.exceptions.base import ErrorCategory, ErrorSeverity
 from cahoots_events.exceptions.events import EventSizeLimitExceeded
 from cahoots_events.bus.types import EventStatus
 from cahoots_events.config import EventConfig
-from sqlalchemy.orm import Session
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from redis import Redis
 from fastapi import HTTPException
 
@@ -40,12 +37,14 @@ class EventService:
         self,
         config: EventConfig,
         redis: Redis,
-        db: Session
+        db: Any
     ):
         """Initialize event service."""
         self.config = config
         self.redis = redis
         self.db = db
+        self.cleanup_lock = asyncio.Lock()
+        self.MAX_EVENT_SIZE_BYTES = config.max_event_size
         self.cleanup_task = None
         
     def _check_event_size(self, event: Event) -> None:
@@ -71,16 +70,13 @@ class EventService:
         """Release distributed cleanup lock."""
         await self.redis.delete(self.CLEANUP_LOCK_KEY)
         
-    async def save_event(self, event: Event, commit: bool = True) -> None:
+    async def save_event(self, event: Event) -> None:
         """Save event to database and cache."""
         try:
             self._check_event_size(event)
             
             # Save to database
-            self.db.add(event)
-            await self.db.execute()
-            if commit:
-                await self.db.commit()
+            await self.db.add(event)
             
             # Cache event with TTL
             event_json = event.model_dump_json()
@@ -107,7 +103,7 @@ class EventService:
             return Event.parse_raw(cached)
         
         # Fallback to database
-        event = self.db.query(Event).filter(Event.id == event_id).first()
+        event = await self.db.get_event(event_id)
         if event:
             # Update cache
             event_json = event.model_dump_json()
@@ -124,112 +120,48 @@ class EventService:
         status: Optional[EventStatus] = None
     ) -> List[Event]:
         """Get all events for a project."""
-        query = self.db.query(Event).filter(Event.project_id == project_id)
+        events = await self.db.get_project_events(project_id)
         if status:
-            query = query.filter(Event.status == status)
-        return query.order_by(Event.created_at.asc()).all()
-        
-    async def get_active_events(self, project_id: UUID) -> List[Event]:
-        """Get active (non-expired) events for a project."""
-        cutoff = datetime.utcnow() - timedelta(hours=self.config.retention_hours)
-        return self.db.query(Event)\
-            .filter(Event.project_id == project_id)\
-            .filter(Event.created_at > cutoff)\
-            .all()
+            events = [e for e in events if e.status == status]
+        return events
             
-    async def cleanup_expired_events(self):
-        """Clean up expired events from database and cache."""
-        lock_acquired = False
+    async def cleanup_expired_events(self) -> None:
+        """Clean up expired events."""
         try:
-            # Acquire lock with timeout
-            lock_acquired = await self.redis.set(
-                "cleanup_lock", "1",
-                ex=60,
-                nx=True
-            )
-            
-            if not lock_acquired:
-                logger.info("Cleanup already in progress, skipping")
-                return
-            
-            # Calculate cutoff time
-            cutoff = datetime.utcnow() - timedelta(hours=self.config.retention_hours)
-            
-            # Get expired events
-            expired = self.db.query(Event).filter(
-                Event.created_at < cutoff
-            ).all()
-            
-            if expired:
-                # Delete from DB
-                for event in expired:
-                    self.db.delete(event)
-                
-                # Commit changes
-                await self.db.commit()
-                logger.info(f"Deleted {len(expired)} expired events from database")
-                
-                # Clear from cache
-                for event in expired:
-                    await self.redis.delete(f"event:{event.id}")
-                logger.info(f"Cleared {len(expired)} expired events from cache")
-                
+            async with self.cleanup_lock:
+                cutoff = datetime.utcnow() - timedelta(hours=self.config.retention_hours)
+                events = await self.db.get_project_events(None)  # Get all events
+                expired_events = [e for e in events if e.created_at <= cutoff]
+
+                for event in expired_events:
+                    await self.db.delete(event)
+                    await self.clear_cache(event.id)
         except Exception as e:
             logger.error(f"Error in cleanup task: {str(e)}")
-            if lock_acquired:
-                await self.db.rollback()
-        finally:
-            if lock_acquired:
-                await self.redis.delete("cleanup_lock")
-                
-    async def enforce_storage_limits(self, project_id: UUID) -> None:
-        """Enforce storage limits by cleaning low priority events."""
-        # Get events sorted by priority
-        events = self.db.query(Event)\
-            .filter(Event.project_id == project_id)\
-            .order_by(Event.priority.asc())\
-            .all()
-            
-        if not events:
-            return
-            
-        # Calculate total size
-        total_size = sum(len(event.model_dump_json().encode()) for event in events)
-        
-        # Remove oldest low priority events until under limit
-        while total_size > self.config.max_storage_bytes and events:
-            event = events.pop(0)  # Remove oldest low priority event
-            self.db.delete(event)
-            await self.redis.delete(f"event:{event.id}")
-            total_size -= len(event.model_dump_json().encode())
-            
-        await self.db.commit()
-        
+
     async def retry_failed_events(self) -> None:
         """Retry failed events that haven't exceeded retry limit."""
-        failed_events = self.db.query(Event)\
-            .filter(Event.status == EventStatus.FAILED)\
-            .filter(Event.retry_count < self.config.max_retry_count)\
-            .all()
-            
+        events = await self.db.get_project_events(None)  # Get all events
+        failed_events = [
+            e for e in events 
+            if e.status == EventStatus.FAILED and e.retry_count < self.config.max_retry_count
+        ]
+
         for event in failed_events:
-            event.status = EventStatus.PENDING
-            event.retry_count += 1
-            
-        await self.db.commit()
+            # Create a new event with updated status and retry count
+            updated_event = Event(
+                id=event.id,
+                project_id=event.project_id,
+                type=event.type,
+                status=EventStatus.PENDING,
+                retry_count=event.retry_count + 1,
+                priority=event.priority,
+                data=event.data,
+                created_at=event.created_at,
+                updated_at=datetime.utcnow()
+            )
+            await self.save_event(updated_event)
         
-    async def clear_cache(self) -> None:
-        """Clear all cached events."""
-        pattern = "event:*"
-        keys = await self.redis.keys(pattern)
-        if keys:
-            await self.redis.delete(*keys)
-            
-    async def start_cleanup_task(self):
-        """Start background cleanup task."""
-        while True:
-            try:
-                await self.cleanup_expired_events()
-            except Exception as e:
-                logger.error(f"Error in cleanup task: {str(e)}")
-            await asyncio.sleep(self.config.processing_interval * 60) 
+    async def clear_cache(self, event_id: UUID) -> None:
+        """Clear cached event."""
+        await self.redis.delete(f"event:{event_id}") 

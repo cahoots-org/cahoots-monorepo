@@ -1,14 +1,14 @@
 """Context selection service."""
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict, List, Optional
 import json
-from business_rules import run_all
+from business_rules.engine import run_all
 from business_rules.variables import BaseVariables, numeric_rule_variable, string_rule_variable
 from business_rules.actions import BaseActions, rule_action
 from business_rules.fields import FIELD_NUMERIC, FIELD_TEXT
 from pathlib import Path
 
-from src.cahoots_context.storage.context_service import ContextEventService
+from cahoots_context.storage.context_service import ContextEventService
 
 class ContextVariables(BaseVariables):
     """Variables for context selection rules."""
@@ -55,6 +55,13 @@ class ContextActions(BaseActions):
     def get_score(self) -> int:
         """Get the current score."""
         return self.score
+
+    def get_results(self) -> Dict:
+        """Get the results of rule execution."""
+        return {
+            "success": True,
+            "score": self.score
+        }
 
 class ContextAgent:
     """Represents an agent that processes context"""
@@ -130,11 +137,13 @@ class ContextRuleEngine:
         """Run rules engine with facts."""
         variables = ContextVariables(facts)
         actions = ContextActions()
-        run_all(rule_list=self.rules,
-                variables=variables,
-                actions=actions,
-                stop_on_first_trigger=False)
-        return {"score": actions.get_score(), "success": True}
+        run_all(
+            rule_list=self.rules,
+            defined_variables=variables,
+            defined_actions=actions,
+            stop_on_first_trigger=False
+        )
+        return actions.get_results()
     
     def _create_default_config(self):
         """Create default configuration if none exists"""

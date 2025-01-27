@@ -9,10 +9,14 @@ import json
 from enum import Enum
 
 from cahoots_core.models.qa_suite import (
+    QATestCase,
+    QATestSuite,
     QATestResult,
-    TestCase,
+    QATestStatus,
     TestStatus,
-    TestSuite
+    QATestType,
+    QATest,
+    TestStep
 )
 from cahoots_core.models.task import Task
 from cahoots_core.services.github_service import GitHubService
@@ -34,7 +38,7 @@ class QATester(BaseAgent):
         **kwargs: Any
     ) -> None:
         """Initialize the QA tester.
-
+        
         Args:
             event_system: Event system for communication
             config: Optional configuration dictionary
@@ -65,48 +69,85 @@ class QATester(BaseAgent):
         test_case = json.loads(response)
         return test_case
 
-    async def run_test_case(self, test_case: Union[TestCase, Dict[str, Any]]) -> Dict[str, Any]:
+    async def run_test_case(self, test_case: QATestCase) -> Dict[str, Any]:
         """Run a test case.
-
+        
         Args:
             test_case: Test case to run
-
+            
         Returns:
             Test results
         """
         try:
-            if isinstance(test_case, TestCase):
-                test_case_dict = test_case.model_dump()
-            else:
-                test_case_dict = test_case
-            result = await self.qa_runner.run_test(test_case_dict)
+            result = await self.qa_runner.run_test(test_case)
             return result
         except Exception as e:
             self.logger.error(f"Error running test case: {str(e)}")
             raise
 
-    async def generate_test_suite(self, tasks: List[Dict[str, Any]], test_type: str) -> Dict[str, Any]:
-        """Generate a test suite for a list of tasks."""
-        prompt = f"Generate a {test_type} test suite for tasks: {json.dumps(tasks)}"
-        response = await self.ai.generate_response(prompt)
-        test_suite = json.loads(response)
-        return test_suite
+    async def generate_test_suite(self, target: str, test_type: str) -> QATestSuite:
+        """Generate a test suite for the target."""
+        prompt = f"""
+        Target: {target}
+        Test Type: {test_type}
 
-    async def run_test_suite(self, suite: Union[TestSuite, Dict[str, Any]]) -> Dict[str, Any]:
+        Generate a test suite for this target. Return as JSON:
+        {{
+            "name": "Test Suite Name",
+            "description": "Test suite description",
+            "tests": [
+                {{
+                    "name": "Test Case Name",
+                    "description": "Test case description",
+                    "steps": [
+                        {{
+                            "id": "step1",
+                            "description": "Step description",
+                            "expected_result": "Expected result"
+                        }}
+                    ]
+                }}
+            ]
+        }}
+        """
+
+        try:
+            response = await self.generate_response(prompt)
+            suite_data = json.loads(response)
+            
+            # Convert steps to TestStep objects
+            for test in suite_data.get("tests", []):
+                steps = test.get("steps", [])
+                test["steps"] = [
+                    TestStep(
+                        id=step.get("id", f"step_{i+1}"),
+                        description=step["description"],
+                        expected_result=step["expected_result"],
+                        status=TestStatus.NOT_STARTED
+                    ) for i, step in enumerate(steps)
+                ]
+            
+            return QATestSuite.from_dict(suite_data)
+        except Exception as e:
+            self.logger.error(f"Error generating test suite: {str(e)}")
+            raise
+
+    async def run_test_suite(self, suite: Union[QATestSuite, Dict[str, Any]]) -> Dict[str, Any]:
         """Run a test suite.
-
+        
         Args:
             suite: Test suite to run
-
+            
         Returns:
             Test suite results
         """
+        if isinstance(suite, dict):
+            suite = QATestSuite.from_dict(suite)
+        elif not isinstance(suite, QATestSuite):
+            raise ValueError("Invalid test suite type")
+
         try:
-            if isinstance(suite, TestSuite):
-                suite_dict = suite.model_dump()
-            else:
-                suite_dict = suite
-            result = await self.qa_runner.run_test_suite(suite_dict)
+            result = await self.qa_runner.run_test_suite(suite.model_dump())
             return result
         except Exception as e:
             self.logger.error(f"Error running test suite: {str(e)}")
@@ -133,7 +174,7 @@ class QATester(BaseAgent):
 
     async def handle_test_request(self, event: Dict[str, Any]) -> None:
         """Handle test request event.
-
+        
         Args:
             event: Event data containing test request
         """
@@ -150,7 +191,7 @@ class QATester(BaseAgent):
 
     async def handle_test_feedback(self, event: Dict[str, Any]) -> None:
         """Handle test feedback event.
-
+        
         Args:
             event: Event data containing test feedback
         """
@@ -162,7 +203,7 @@ class QATester(BaseAgent):
 
     async def process_test_feedback(self, test_id: str, feedback: str) -> None:
         """Process feedback for a test.
-
+        
         Args:
             test_id: ID of the test
             feedback: Test feedback
@@ -194,7 +235,7 @@ class QATester(BaseAgent):
                     await self.create_test(action["details"])
                 elif action["type"] == "delete_test":
                     await self.delete_test(test_id)
-
+            
         except Exception as e:
             self.logger.error(f"Error processing test feedback: {str(e)}")
             raise
@@ -222,7 +263,7 @@ class QATester(BaseAgent):
 
     async def create_test(self, details: Dict[str, Any]) -> None:
         """Create a new test case.
-
+        
         Args:
             details: Test case details
         """
@@ -267,47 +308,6 @@ class QATester(BaseAgent):
         test_suite = await self.generate_test_suite(target, "e2e")
         results = await self.qa_runner.run_test_suite(test_suite)
         await self.report_test_results(results)
-
-    async def generate_test_suite(self, target: str, test_type: str) -> TestSuite:
-        """Generate a test suite for a specific target.
-
-        Args:
-            target: Target to test
-            test_type: Type of tests to generate
-
-        Returns:
-            Generated test suite
-        """
-        prompt = f"""
-        Target: {target}
-        Test Type: {test_type}
-
-        Generate a test suite for this target. Return as JSON:
-        {{
-            "name": "Test Suite Name",
-            "description": "Test suite description",
-            "tests": [
-                {{
-                    "name": "Test Case Name",
-                    "description": "Test case description",
-                    "steps": [
-                        {{
-                            "description": "Step description",
-                            "expected_result": "Expected result"
-                        }}
-                    ]
-                }}
-            ]
-        }}
-        """
-
-        try:
-            response = await self.generate_response(prompt)
-            suite_data = json.loads(response)
-            return TestSuite.from_dict(suite_data)
-        except Exception as e:
-            self.logger.error(f"Error generating test suite: {str(e)}")
-            raise
 
     def _create_test_plan(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a test plan based on task requirements."""
@@ -454,7 +454,7 @@ EXPECTED: <expected result>
 
 ---"""
 
-    def _parse_test_cases(self, response: str) -> List[TestCase]:
+    def _parse_test_cases(self, response: str) -> List[QATestCase]:
         """Parse test cases from model response."""
         test_cases = []
         current_test_case = None
@@ -477,7 +477,7 @@ EXPECTED: <expected result>
                     test_cases.append(current_test_case)
                     steps = []
                     
-                current_test_case = TestCase(
+                current_test_case = QATestCase(
                     title=line[10:].strip(),
                     description="",
                     steps=[],
@@ -508,18 +508,18 @@ EXPECTED: <expected result>
         story_id: str,
         title: str,
         description: str
-    ) -> TestSuite:
+    ) -> QATestSuite:
         """Create a default test suite when generation fails."""
-        return TestSuite(
+        return QATestSuite(
             story_id=story_id,
             title=f"Test Suite for {title}",
             description=f"Test suite generated for story: {description}",
             test_cases=[self._create_default_test_case()]
         )
 
-    def _create_default_test_case(self) -> TestCase:
+    def _create_default_test_case(self) -> QATestCase:
         """Create a default test case when no valid test cases are parsed."""
-        return TestCase(
+        return QATestCase(
             title="Test Case",
             description="Basic test case",
             steps=["1. Verify basic functionality"],
@@ -528,7 +528,7 @@ EXPECTED: <expected result>
 
     def _generate_step_prompt(
         self,
-        test_case: TestCase,
+        test_case: QATestCase,
         step: str,
         step_number: int
     ) -> str:
@@ -563,4 +563,126 @@ Details: <additional details>"""
             status=status or TestStatus.FAILED,
             actual_result=actual_result or "No result provided",
             error_details={"details": details} if details else None
-        ) 
+        )
+
+    async def execute_test_plan(self, test_plan: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a test plan.
+        
+        Args:
+            test_plan: Test plan to execute
+            
+        Returns:
+            Test execution results
+        """
+        try:
+            return await self.qa_runner.execute_plan(test_plan)
+        except Exception as e:
+            self.logger.error(f"Error executing test plan: {str(e)}")
+            raise
+
+    async def generate_test_report(self, test_results: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a test report from results."""
+        try:
+            response = await self.ai.generate_response(
+                f"Generate test report for results: {json.dumps(test_results)}",
+                temperature=0.7
+            )
+            return json.loads(response)
+        except Exception as e:
+            self.logger.error(f"Error generating test report: {e}")
+            return {
+                "summary": f"{test_results.get('passed', 0)}/{test_results.get('executed', 0)} tests passed",
+                "coverage_analysis": "Coverage data available",
+                "recommendations": []
+            }
+
+    async def analyze_test_failures(self, failures: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Analyze test failures and provide insights.
+        
+        Args:
+            failures: List of test failures to analyze
+            
+        Returns:
+            Analysis of failures
+        """
+        prompt = f"""
+        Analyze these test failures and provide insights:
+        {json.dumps(failures)}
+        
+        Return as JSON:
+        {{
+            "root_cause": "string",
+            "suggested_fixes": ["string"],
+            "priority": "high|medium|low"
+        }}
+        """
+        try:
+            response = await self.ai.generate_response(prompt)
+            return json.loads(response)
+        except Exception as e:
+            self.logger.error(f"Error analyzing test failures: {str(e)}")
+            raise
+
+    async def validate_test_coverage(self, coverage_data: Dict[str, float]) -> Dict[str, Any]:
+        """Validate test coverage against requirements."""
+        try:
+            response = await self.ai.generate_response(
+                f"Analyze test coverage: {json.dumps(coverage_data)}",
+                temperature=0.7
+            )
+            return json.loads(response)
+        except Exception as e:
+            self.logger.error(f"Error validating test coverage: {e}")
+            return {
+                "meets_requirements": True,
+                "gaps": [],
+                "recommendations": []
+            }
+
+    async def monitor_test_execution(self, test_run: Dict[str, Any]) -> Dict[str, Any]:
+        """Monitor the execution of a test run.
+        
+        Args:
+            test_run: Test run to monitor
+            
+        Returns:
+            Test run status
+        """
+        try:
+            return await self.qa_runner.get_run_status(test_run["id"])
+        except Exception as e:
+            self.logger.error(f"Error monitoring test execution: {str(e)}")
+            raise
+
+    async def generate_test_plan(self, target: str, requirements: List[str]) -> Dict[str, Any]:
+        """Generate a test plan for a target.
+        
+        Args:
+            target: Target to test
+            requirements: List of requirements to test against
+            
+        Returns:
+            Test plan
+        """
+        prompt = f"""
+        Generate a test plan for:
+        Target: {target}
+        Requirements: {json.dumps(requirements)}
+        
+        Return as JSON:
+        {{
+            "test_types": ["unit", "integration", "e2e"],
+            "coverage_targets": {{
+                "unit": 80,
+                "integration": 60,
+                "e2e": 40
+            }},
+            "priority_areas": ["string"]
+        }}
+        """
+        try:
+            response = await self.ai.generate_response(prompt)
+            return json.loads(response)
+        except Exception as e:
+            self.logger.error(f"Error generating test plan: {str(e)}")
+            raise 

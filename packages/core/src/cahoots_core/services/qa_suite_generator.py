@@ -9,6 +9,10 @@ from cahoots_core.models.qa_suite import (
     QATest,
     QATestSuite,
     QATestType,
+    QATestResult,
+    QATestStatus,
+    TestStatus,
+    TestStep
 )
 
 logger = logging.getLogger(__name__)

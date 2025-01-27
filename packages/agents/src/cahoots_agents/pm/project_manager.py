@@ -36,7 +36,7 @@ class ProjectManager(BaseAgent):
         **kwargs: Any
     ) -> None:
         """Initialize the project manager.
-
+        
         Args:
             event_system: Event system for communication
             config: Optional configuration dictionary
@@ -436,7 +436,7 @@ Format the response as a JSON object with:
 - milestones: List of milestone objects
 - tasks: List of task objects
 - dependencies: List of dependency objects
-- estimates: Dictionary of task estimates"""
+- estimates: Dictionary of task estimates""" 
 
     async def create_story(self, story: Story) -> Dict[str, Any]:
         """Create a new story.

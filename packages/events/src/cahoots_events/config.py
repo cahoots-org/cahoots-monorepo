@@ -39,4 +39,19 @@ class EventConfig(BaseModel):
     batch_size: int = Field(
         default=100,
         description="Maximum number of events to process in a batch"
+    )
+
+    retention_hours: int = Field(
+        default=24,
+        description="Number of hours to retain events before cleanup"
+    )
+
+    cache_ttl_seconds: int = Field(
+        default=300,  # 5 minutes
+        description="Time to live for cached events in seconds"
+    )
+
+    max_retry_count: int = Field(
+        default=3,
+        description="Maximum number of retries for failed events"
     ) 

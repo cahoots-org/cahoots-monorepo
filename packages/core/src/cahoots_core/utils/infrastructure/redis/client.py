@@ -140,8 +140,8 @@ class RedisClient(BaseClient[RedisConfig]):
         """
         await self.retry_operation(
             self.client.set,
-            key,
-            value,
+                key,
+                value,
             ex=expire,
             retry_on=(RedisError,),
             operation_name=f"set:{key}"
@@ -358,10 +358,10 @@ def get_redis_client(
     if _redis_client is None:
         _redis_client = RedisClient(
             RedisConfig(
-                host=host,
-                port=port,
-                db=db,
-                password=password
+            host=host,
+            port=port,
+            db=db,
+            password=password
             )
         )
     return _redis_client 

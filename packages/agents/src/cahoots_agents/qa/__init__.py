@@ -2,10 +2,13 @@
 
 from .qa_tester import QATester
 from cahoots_core.models.qa_suite import (
-    QAResult,
-    TestCase,
-    TestSuite,
-    TestStatus
+    QATestSuite,
+    QATestResult,
+    QATestStatus,
+    TestStatus,
+    QATestType,
+    QATest,
+    TestStep
 )
 
 __all__ = [
@@ -13,8 +16,11 @@ __all__ = [
     "QATester",
     
     # Models
-    "QAResult",
-    "TestCase",
-    "TestSuite",
-    "TestStatus"
+    "QATestSuite",
+    "QATestResult",
+    "QATestStatus",
+    "TestStatus",
+    "QATestType",
+    "QATest",
+    "TestStep"
 ] 

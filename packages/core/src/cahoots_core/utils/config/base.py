@@ -39,6 +39,7 @@ class ServiceConfig(BaseModel):
     retry_attempts: int = Field(default=3, description="Number of retry attempts")
     retry_delay: int = Field(default=1, description="Delay between retries in seconds")
     api_key: Optional[str] = Field(default=None, description="API key for service authentication")
+    github_api_key: Optional[str] = Field(default=None, description="GitHub API key for authentication")
     workspace_dir: str = Field(default_factory=lambda: tempfile.gettempdir(), description="Workspace directory for service")
     repo_name: Optional[str] = Field(default=None, description="Repository name for service")
     

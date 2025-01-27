@@ -42,7 +42,6 @@ addopts = [
     "--cov=packages",
     "--cov-report=term-missing"
 ]
-randomly_seed = 1234
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",

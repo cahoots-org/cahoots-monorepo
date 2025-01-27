@@ -29,3 +29,5 @@ class Project(ProjectBase):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     status: str = Field(default="active")
+
+    model_config = ConfigDict(from_attributes=True)

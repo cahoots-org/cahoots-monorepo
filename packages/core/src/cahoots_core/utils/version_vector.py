@@ -26,15 +26,15 @@ class VersionVector:
         """Check if this vector is compatible with another vector.
         
         Two vectors are compatible if they have the same branches and
-        this vector's versions are greater than or equal to the other's.
+        the other vector's versions are greater than or equal to this vector's.
         """
         if not other:
             return True
             
-        for branch, version in other.versions.items():
-            if branch not in self.versions:
+        for branch, version in self.versions.items():
+            if branch not in other.versions:
                 return False
-            if self.versions[branch] < version:
+            if other.versions[branch] < version:
                 return False
         return True
     

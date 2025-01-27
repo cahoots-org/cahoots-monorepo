@@ -15,6 +15,16 @@ from src.cahoots_agents.ux.accessibility.accessibility import AccessibilityCheck
 from src.cahoots_agents.ux.design.design_system import DesignSystem
 from src.cahoots_agents.ux.patterns.pattern_library import PatternLibrary
 
+class DesignType(str, Enum):
+    """Types of design tasks."""
+    UI = "ui"
+    UX = "ux"
+    INTERACTION = "interaction"
+    RESPONSIVE = "responsive"
+    ACCESSIBILITY = "accessibility"
+    COMPONENT = "component"
+    SYSTEM = "system"
+
 class DesignPriority(str, Enum):
     """Priority levels for design tasks."""
     HIGH = "high"
@@ -414,4 +424,8 @@ Format the response as a JSON object with these sections.
         """
         prompt = f"Generate interaction states for component: {json.dumps(component)}"
         response = await self.agent.generate_response(prompt)
-        return json.loads(response) 
+        return json.loads(response)
+
+    async def initialize(self):
+        """Initialize the agent."""
+        await self.setup_events() 
