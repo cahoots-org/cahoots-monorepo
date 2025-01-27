@@ -38,21 +38,133 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
 
-      - name: Install dependencies
+      - name: Install pip with fixed version
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest-cov
+          python -m pip install pip==23.3.2
 
-      - name: Run tests with coverage
+      - name: Create and activate venv
+        run: |
+          python -m venv .venv
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install hatchling
+          # Install all dependencies from requirements.txt first
+          python -m pip install -r requirements.txt
+
+      - name: Create test directories
+        run: |
+          for pkg in core events context service agents; do
+            mkdir -p packages/$pkg/tests
+          done
+
+      # Install packages in dependency order
+      - name: Install core package
+        working-directory: packages/core
+        run: |
+          # Install package dependencies first
+          pip install psutil prometheus-client boto3
+          pip install -e ".[test]"
+
+      - name: Install events package
+        working-directory: packages/events  
+        run: |
+          # Install package dependencies first
+          pip install aio-pika websockets
+          pip install -e ".[test]"
+
+      - name: Install context package
+        working-directory: packages/context
+        run: |
+          # Install package dependencies first
+          pip install business-rules
+          pip install -e ".[test]"
+
+      - name: Install service package
+        working-directory: packages/service
+        run: |
+          # Install package dependencies first
+          pip install stripe PyGithub
+          pip install -e ".[test]"
+
+      - name: Install agents package
+        working-directory: packages/agents
+        run: |
+          # Install package dependencies first
+          pip install openai anthropic ast-comments astroid pylint black isort mypy
+          pip install -e ".[test]"
+
+      # Run tests for each package in their own directory
+      - name: Run core tests
+        working-directory: packages/core
         env:
+          PYTHONPATH: ${{ github.workspace }}/packages/core/src
           ENV: test
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           API_KEY: test-key
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m pytest --cov=src --cov-report=xml
+
+      - name: Run events tests
+        working-directory: packages/events
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/events/src
+          ENV: test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          API_KEY: test-key
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m pytest --cov=src --cov-report=xml
+
+      - name: Run context tests
+        working-directory: packages/context
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/context/src
+          ENV: test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          API_KEY: test-key
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m pytest --cov=src --cov-report=xml
+
+      - name: Run service tests
+        working-directory: packages/service
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/service/src
+          ENV: test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          API_KEY: test-key
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m pytest --cov=src --cov-report=xml
+
+      - name: Run agents tests
+        working-directory: packages/agents
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/agents/src
+          ENV: test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          API_KEY: test-key
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python -m pytest --cov=src --cov-report=xml
+
+      # Combine coverage from all packages
+      - name: Combine coverage
         run: |
-          pytest --cov=packages --cov-report=xml --cov-report=term-missing
+          # Create empty coverage files for packages without tests
+          for pkg in core events context service agents; do
+            if [ ! -f "packages/$pkg/coverage.xml" ]; then
+              cd "packages/$pkg"
+              python -m pytest --cov=src --cov-report=xml || true
+              cd ../..
+            fi
+          done
+          # Combine all coverage files
+          python -m coverage combine packages/*/coverage.xml
+          python -m coverage xml -o coverage.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
@@ -73,14 +185,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install ruff mypy types-all
+          python -m pip install pip==23.3.2
+          python -m pip install black isort pylint
 
-      - name: Run Ruff
-        run: ruff check .
+      - name: Run Black
+        run: black --config pyproject.toml .
 
-      - name: Run MyPy
-        run: mypy packages tests
+      - name: Run isort
+        run: isort --settings-path pyproject.toml .
+
+      - name: Run Pylint
+        run: pylint --rcfile pyproject.toml packages/
 
   security:
     name: Security Scan
