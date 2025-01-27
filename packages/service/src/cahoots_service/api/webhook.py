@@ -1,12 +1,10 @@
 """Webhook endpoints."""
 from typing import Dict, Any
+from cahoots_events.bus.system import EventSystem
+from cahoots_service.api.billing import get_stripe_client
+from cahoots_service.api.dependencies import get_verified_event_system
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
-
-from src.core.config import get_settings
-from src.services.stripe_service import get_stripe_client
-from src.utils.event_system import EventSystem
-from src.api.dependencies import get_verified_event_system
 
 router = APIRouter(tags=["webhooks"])
 

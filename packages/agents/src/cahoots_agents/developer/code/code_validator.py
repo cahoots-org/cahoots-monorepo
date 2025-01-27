@@ -1,14 +1,29 @@
 """Code validation functionality for the developer agent."""
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
 import json
 import ast
+from dataclasses import dataclass
+from typing import List
 
-from src.models.task import Task
-from src.utils.metrics import MetricsCollector
-from src.validation.policy_chain import ValidationChain, ValidationContext
-from src.validation.rule_validator import create_default_validator, RuleContext
-from src.recognition.pattern_detector import create_default_recognizer
+from cahoots_core.models.task import Task
+from cahoots_core.utils.metrics.base import MetricsCollector
+from cahoots_core.utils.exceptions import ValidationError
+
+@dataclass
+class ValidationWarning:
+    """Warning raised during code validation."""
+    code: str
+    message: str
+    details: Optional[Dict[str, Any]] = None
+
+@dataclass
+class ValidationResult:
+    """Result of code validation."""
+    valid: bool
+    errors: List[str]
+    warnings: List[ValidationWarning]
+    metrics: Dict[str, Any]
 
 class CodeValidator:
     """Handles code validation."""
@@ -21,11 +36,6 @@ class CodeValidator:
         """
         self.agent = agent
         self.logger = logging.getLogger(__name__)
-        
-        # Initialize validation components
-        self.validation_chain = ValidationChain.create_default_chain()
-        self.rule_validator = create_default_validator()
-        self.pattern_recognizer = create_default_recognizer()
         self.metrics_collector = MetricsCollector()
         
     async def validate_implementation(self, code: str, task: Task) -> Dict[str, Any]:
@@ -43,7 +53,6 @@ class CodeValidator:
             "errors": [],
             "warnings": [],
             "metrics": {},
-            "patterns": []
         }
         
         # Track validation time
@@ -53,7 +62,6 @@ class CodeValidator:
             results["errors"].extend(automated_results["errors"])
             results["warnings"].extend(automated_results["warnings"])
             results["metrics"].update(automated_results["metrics"])
-            results["patterns"].extend(automated_results["patterns"])
             
             # Run LLM validation for higher-level checks
             llm_results = await self._run_llm_validation(code, task)
@@ -75,67 +83,33 @@ class CodeValidator:
         return results
         
     def _run_automated_validation(self, code: str, task: Task) -> Dict[str, Any]:
-        """Run automated validation checks.
+        """Run automated code validation checks.
         
         Args:
             code: Code to validate
             task: Task being implemented
             
         Returns:
-            Dict[str, Any]: Validation results
+            Validation results
         """
         results = {
+            "valid": True,
             "errors": [],
             "warnings": [],
-            "metrics": {},
-            "patterns": []
+            "metrics": {}
         }
         
+        # Check syntax
         try:
-            # Basic syntax check
             ast.parse(code)
-            
-            # Run validation chain
-            validation_context = ValidationContext(
-                code=code,
-                file_path=task.file_path if hasattr(task, 'file_path') else "",
-                language="python",
-                metadata={"task_id": task.id, "requirements": task.requirements}
-            )
-            chain_issues = self.validation_chain.validate(validation_context)
-            results["warnings"].extend(chain_issues)
-            
-            # Run rule validation
-            rule_context = RuleContext(
-                code=code,
-                file_path=task.file_path if hasattr(task, 'file_path') else "",
-                metadata={"task_id": task.id}
-            )
-            rule_issues = self.rule_validator.validate(rule_context)
-            for issue in rule_issues:
-                if issue.startswith("error:"):
-                    results["errors"].append(issue)
-                else:
-                    results["warnings"].append(issue)
-                    
-            # Detect patterns
-            patterns = self.pattern_recognizer.analyze(code, task.file_path if hasattr(task, 'file_path') else "")
-            results["patterns"] = [
-                {
-                    "name": p.name,
-                    "description": p.description,
-                    "confidence": p.confidence,
-                    "location": p.location
-                }
-                for p in patterns
-            ]
-            
-            # Calculate metrics
-            results["metrics"] = self._calculate_metrics(code)
-            
         except SyntaxError as e:
+            results["valid"] = False
             results["errors"].append(f"Syntax error: {str(e)}")
-            
+            return results
+
+        # Calculate metrics if syntax is valid
+        results["metrics"] = self._calculate_metrics(code)
+        
         return results
         
     async def _run_llm_validation(self, code: str, task: Task) -> Dict[str, Any]:

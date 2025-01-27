@@ -1,63 +1,49 @@
-"""Login functionality."""
-from typing import Dict, Any, Annotated
-from fastapi import Depends, APIRouter, HTTPException, Request
-from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel, Field
-from typing import Optional
+"""Login endpoint implementation."""
+from cahoots_service.api.dependencies import get_db
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.dependencies import get_security_manager
-from src.core.config import SecurityConfig
-from src.utils.security import SecurityManager
+from cahoots_service.schemas.auth import LoginRequest, TokenResponse
+from cahoots_service.services.auth_service import AuthService
 
-router = APIRouter(
-    prefix="/auth",
-    tags=["auth"]
-)
+router = APIRouter(prefix="/auth", tags=["auth"])
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-class LoginForm(BaseModel):
-    """Form for handling login requests."""
-    username: str
-    password: str
-    grant_type: str = "password"
-    scope: str = ""
-    client_id: Optional[str] = None
-    client_secret: Optional[str] = None
-
-@router.post("/token")
+@router.post("/login", response_model=TokenResponse)
 async def login(
-    request: Request,
-    security_config: SecurityConfig = Depends(),
-    security_manager: SecurityManager = Depends(get_security_manager)
-) -> dict:
-    """Login endpoint that returns an access token.
+    request: LoginRequest,
+    db: AsyncSession = Depends(get_db)
+) -> TokenResponse:
+    """Login with email and password.
     
     Args:
-        request: The request object containing form data
-        security_config: Security configuration
-        security_manager: Security manager instance
+        request: Login credentials
+        db: Database session
         
     Returns:
-        dict: Access token response
+        Access and refresh tokens
         
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: If login fails
     """
-    form_data = await request.form()
-    login_data = LoginForm(
-        username=form_data.get("username"),
-        password=form_data.get("password"),
-        grant_type=form_data.get("grant_type", "password"),
-        scope=form_data.get("scope", ""),
-        client_id=form_data.get("client_id"),
-        client_secret=form_data.get("client_secret")
-    )
+    auth_service = AuthService(db)
     
-    scopes = login_data.scope.split()
-    access_token = await security_manager.authenticate_user(
-        login_data.username,
-        login_data.password,
-        scopes
-    )
-    return {"access_token": access_token, "token_type": "bearer"} 
+    try:
+        user, access_token, refresh_token = await auth_service.authenticate_user(
+            email=request.email,
+            password=request.password
+        )
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            expires_in=auth_service.settings.access_token_expire_minutes * 60
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        ) 

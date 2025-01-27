@@ -15,9 +15,14 @@ from .feedback.feedback_manager import (
 )
 from .file.file_manager import FileManager, FileOperation, FileStatus
 from .pr.pr_manager import PRManager, PRStatus, PRReviewStatus
-from .task.task_manager import TaskManager, TaskStatus, TaskPriority
+from cahoots_core.models.task import Task, TaskStatus
+from .task.task_manager import TaskManager
+from .core.developer import Developer
 
 __all__ = [
+    # Core Developer
+    "Developer",
+    
     # Code Management
     "CodeGenerator",
     "CodeValidator",
@@ -44,5 +49,4 @@ __all__ = [
     # Task Management
     "TaskManager",
     "TaskStatus",
-    "TaskPriority",
 ] 

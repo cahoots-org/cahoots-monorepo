@@ -1,31 +1,26 @@
-"""Domain-specific exceptions."""
+"""Domain-related exceptions."""
 from typing import Optional, Dict, Any
 
 from .base import CahootsError, ErrorCategory, ErrorSeverity
 
 class DomainError(CahootsError):
-    """Base class for domain-specific errors."""
+    """Base class for domain-related errors."""
     
     def __init__(
         self,
         message: str,
+        *args: Any,
+        severity: ErrorSeverity = ErrorSeverity.ERROR,
         details: Optional[Dict[str, Any]] = None,
-        category: ErrorCategory = ErrorCategory.DOMAIN,
-        severity: ErrorSeverity = ErrorSeverity.ERROR
+        cause: Optional[Exception] = None
     ):
-        """Initialize domain error.
-        
-        Args:
-            message: Error message
-            details: Additional error details
-            category: Error category
-            severity: Error severity
-        """
         super().__init__(
-            message=message,
+            message,
+            *args,
+            severity=severity,
+            category=ErrorCategory.BUSINESS,
             details=details,
-            category=category,
-            severity=severity
+            cause=cause
         )
 
 class BusinessRuleError(DomainError):
@@ -63,7 +58,6 @@ class EntityNotFoundError(DomainError):
         super().__init__(
             message=message,
             details=details,
-            category=ErrorCategory.DOMAIN,
             severity=ErrorSeverity.WARNING
         )
 
@@ -94,6 +88,5 @@ class DuplicateEntityError(DomainError):
         super().__init__(
             message=message,
             details=details,
-            category=ErrorCategory.DOMAIN,
             severity=ErrorSeverity.ERROR
         ) 

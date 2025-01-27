@@ -5,83 +5,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 from pydantic import BaseModel, Field, ConfigDict
 
-class EventType(Enum):
-    """Event types with versioning support."""
-    # Task events
-    TASK_CREATED = ("task.created", 1)
-    TASK_UPDATED = ("task.updated", 1)
-    TASK_DELETED = ("task.deleted", 1)
-    TASK_ASSIGNED = ("task.assigned", 1)
-    TASK_COMPLETED = ("task.completed", 1)
-    
-    # User events
-    USER_CREATED = ("user.created", 1)
-    USER_UPDATED = ("user.updated", 1)
-    USER_DELETED = ("user.deleted", 1)
-    
-    # System events
-    SYSTEM_ERROR = ("system.error", 1)
-    SYSTEM_WARNING = ("system.warning", 1)
-    SYSTEM_INFO = ("system.info", 1)
-    
-    # Service events
-    SERVICE_STARTED = ("service.started", 1)
-    SERVICE_STOPPED = ("service.stopped", 1)
-    SERVICE_ERROR = ("service.error", 1)
-    
-    def __init__(self, event_name: str, version: int):
-        """Initialize event type with name and version."""
-        self.event_name = event_name
-        self.version = version
-    
-    @property
-    def full_name(self) -> str:
-        """Get the full event name including version."""
-        return f"{self.event_name}.v{self.version}"
-    
-    @classmethod
-    def from_string(cls, event_str: str) -> "EventType":
-        """Create EventType from string representation."""
-        for event_type in cls:
-            if event_type.event_name == event_str:
-                return event_type
-        raise ValueError(f"Invalid event type: {event_str}")
-
-class EventPriority(Enum):
-    """Event priority levels with numeric values."""
-    LOW = 0
-    NORMAL = 1
-    HIGH = 2
-    CRITICAL = 3
-    
-    @property
-    def description(self) -> str:
-        """Get human-readable description of priority level."""
-        return {
-            self.LOW: "Low priority, non-urgent processing",
-            self.NORMAL: "Normal priority, standard processing",
-            self.HIGH: "High priority, expedited processing",
-            self.CRITICAL: "Critical priority, immediate processing"
-        }[self]
-
-class EventStatus(Enum):
-    """Event processing status values."""
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-    RETRYING = "retrying"
-    
-    @property
-    def is_terminal(self) -> bool:
-        """Check if status is terminal (no further processing expected)."""
-        return self in {self.COMPLETED, self.FAILED, self.CANCELLED}
-    
-    @property
-    def is_active(self) -> bool:
-        """Check if status indicates active processing."""
-        return self in {self.PROCESSING, self.RETRYING}
+from ..types import EventType, EventStatus, EventPriority, BaseEvent
 
 class CommunicationPattern(Enum):
     """Communication patterns for event distribution."""
@@ -126,32 +50,11 @@ class EventError(Exception):
             "original_error": str(self.original_error) if self.original_error else None
         }
 
-class EventSchema(BaseModel):
-    """Schema for events in the system."""
-    event_type: EventType
-    event_data: Dict[str, Any]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    error: Optional[Union[str, EventError]] = None
-    pattern: CommunicationPattern = Field(default=CommunicationPattern.BROADCAST)
-    source: Optional[str] = None
-    target: Optional[str] = None
-    correlation_id: UUID = Field(default_factory=uuid4)
-    causation_id: Optional[UUID] = None
+class EventSchema(BaseEvent):
+    """Schema for events in the bus system."""
+    pattern: CommunicationPattern = CommunicationPattern.BROADCAST
     reply_to: Optional[str] = None
-    priority: EventPriority = Field(default=EventPriority.NORMAL)
-    status: EventStatus = Field(default=EventStatus.PENDING)
-    
-    model_config = ConfigDict(
-        arbitrary_types_allowed=True,
-        json_encoders={
-            datetime: lambda dt: dt.isoformat(),
-            UUID: str,
-            EventType: lambda et: et.event_name,
-            EventPriority: lambda ep: ep.value,
-            EventStatus: lambda es: es.value,
-            CommunicationPattern: lambda cp: cp.value
-        }
-    )
+    service_name: Optional[str] = None
     
     def validate_pattern(self) -> None:
         """Validate pattern-specific requirements."""
@@ -174,34 +77,6 @@ class EventSchema(BaseModel):
             correlation_id=self.correlation_id,
             causation_id=self.correlation_id,
             priority=self.priority
-        )
-
-class EventContext:
-    """Context for event correlation and tracking."""
-    def __init__(
-        self,
-        correlation_id: Optional[UUID] = None,
-        causation_id: Optional[UUID] = None,
-        source: Optional[str] = None,
-        target: Optional[str] = None,
-        reply_to: Optional[str] = None
-    ):
-        """Initialize event context."""
-        self.correlation_id = correlation_id or uuid4()
-        self.causation_id = causation_id
-        self.source = source
-        self.target = target
-        self.reply_to = reply_to
-        self.timestamp = datetime.utcnow()
-    
-    def create_child_context(self, target: Optional[str] = None) -> "EventContext":
-        """Create child context inheriting correlation."""
-        return EventContext(
-            correlation_id=self.correlation_id,
-            causation_id=self.correlation_id,
-            source=self.target or self.source,
-            target=target,
-            reply_to=self.reply_to
         )
 
 class EventContext(BaseModel):

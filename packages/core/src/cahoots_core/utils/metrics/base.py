@@ -20,14 +20,15 @@ class MetricValue:
 class MetricsCollector:
     """Collector for application metrics."""
     
-    def __init__(self, service_name: str):
-        """Initialize metrics collector.
+    def __init__(self, service_name: Optional[str] = None) -> None:
+        """Initialize the metrics collector.
         
         Args:
-            service_name: Name of service for metric namespacing
+            service_name: Optional name of the service for metric labels
         """
-        self.service_name = service_name
-        self.logger = logging.getLogger(__name__)
+        self.service_name = service_name or "default"
+        self.local_metrics: Dict[str, MetricValue] = {}
+        self.prometheus_metrics: Dict[str, Union[Counter, Gauge, Histogram, Summary]] = {}
         
         # Local metric storage
         self._counters: Dict[str, List[MetricValue]] = {}
@@ -44,6 +45,107 @@ class MetricsCollector:
     def _get_metric_name(self, name: str) -> str:
         """Get full metric name with service prefix."""
         return f"{self.service_name}_{name}"
+        
+    def counter(self, name: str, description: str = "", labels: Optional[Dict[str, str]] = None) -> Counter:
+        """Get or create a counter metric.
+        
+        Args:
+            name: Name of the metric
+            description: Description of the metric
+            labels: Optional labels for the metric
+        
+        Returns:
+            Counter metric
+        """
+        key = f"counter_{name}"
+        if key not in self.prometheus_metrics:
+            self.prometheus_metrics[key] = Counter(
+                name=name,
+                documentation=description,
+                labelnames=list(labels.keys()) if labels else []
+            )
+        return self.prometheus_metrics[key]
+
+    def gauge(self, name: str, description: str = "", labels: Optional[Dict[str, str]] = None) -> Gauge:
+        """Get or create a gauge metric.
+        
+        Args:
+            name: Name of the metric
+            description: Description of the metric
+            labels: Optional labels for the metric
+        
+        Returns:
+            Gauge metric
+        """
+        key = f"gauge_{name}"
+        if key not in self.prometheus_metrics:
+            self.prometheus_metrics[key] = Gauge(
+                name=name,
+                documentation=description,
+                labelnames=list(labels.keys()) if labels else []
+            )
+        return self.prometheus_metrics[key]
+
+    def histogram(self, name: str, description: str = "", labels: Optional[Dict[str, str]] = None, buckets: Optional[List[float]] = None) -> Histogram:
+        """Get or create a histogram metric.
+        
+        Args:
+            name: Name of the metric
+            description: Description of the metric
+            labels: Optional labels for the metric
+            buckets: Optional histogram buckets
+        
+        Returns:
+            Histogram metric
+        """
+        key = f"histogram_{name}"
+        if key not in self.prometheus_metrics:
+            self.prometheus_metrics[key] = Histogram(
+                name=name,
+                documentation=description,
+                labelnames=list(labels.keys()) if labels else [],
+                buckets=buckets or Histogram.DEFAULT_BUCKETS
+            )
+        return self.prometheus_metrics[key]
+
+    def summary(self, name: str, description: str = "", labels: Optional[Dict[str, str]] = None) -> Summary:
+        """Get or create a summary metric.
+        
+        Args:
+            name: Name of the metric
+            description: Description of the metric
+            labels: Optional labels for the metric
+        
+        Returns:
+            Summary metric
+        """
+        key = f"summary_{name}"
+        if key not in self.prometheus_metrics:
+            self.prometheus_metrics[key] = Summary(
+                name=name,
+                documentation=description,
+                labelnames=list(labels.keys()) if labels else []
+            )
+        return self.prometheus_metrics[key]
+
+    def get_metric(self, name: str) -> Optional[MetricValue]:
+        """Get a metric value by name.
+        
+        Args:
+            name: Name of the metric
+        
+        Returns:
+            Metric value if found, None otherwise
+        """
+        return self.local_metrics.get(name)
+
+    def get_all_metrics(self) -> Dict[str, MetricValue]:
+        """Get all metric values.
+        
+        Returns:
+            Dictionary of metric values
+        """
+        return self.local_metrics.copy()
         
     def counter(
         self,

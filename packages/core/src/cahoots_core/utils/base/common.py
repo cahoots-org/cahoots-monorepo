@@ -6,8 +6,9 @@ import re
 import asyncio
 from functools import wraps
 import time
-from .logger import Logger
-from .error_handler import error_handler, ErrorContext, ValidationError
+import logging
+
+from cahoots_core.exceptions.api import ValidationError
 
 T = TypeVar('T')
 
@@ -242,4 +243,4 @@ def deep_update(target: Dict[str, Any], source: Dict[str, Any]) -> Dict[str, Any
             target[key] = value
     return target
 
-logger = Logger("CommonUtils") 
+logger = logging.getLogger(__name__) 

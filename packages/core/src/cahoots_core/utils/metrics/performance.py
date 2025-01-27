@@ -2,9 +2,11 @@
 import os
 import psutil
 import logging
-from typing import Dict, Any, Optional, List
+import time
+from typing import Dict, Any, Generator, Optional, List, ContextManager
 from datetime import datetime, timedelta
 from dataclasses import dataclass
+from contextlib import contextmanager
 from .base import MetricsCollector
 
 logger = logging.getLogger(__name__)
@@ -17,6 +19,63 @@ class SystemMetrics:
     disk_usage_percent: float
     network_io_counters: Dict[str, int]
     timestamp: datetime = datetime.utcnow()
+
+class PerformanceMetrics:
+    """Performance metrics collector."""
+    
+    def __init__(self, metrics: Optional[MetricsCollector] = None):
+        """Initialize performance metrics.
+        
+        Args:
+            metrics: Optional metrics collector instance
+        """
+        self.metrics = metrics or MetricsCollector("performance")
+        
+    def increment(self, metric_name: str, value: float = 1.0, labels: Optional[Dict[str, str]] = None):
+        """Increment a counter metric.
+        
+        Args:
+            metric_name: Name of the metric to increment
+            value: Value to increment by
+            labels: Optional labels to attach
+        """
+        self.metrics.counter(metric_name, value, labels=labels)
+        
+    def record(self, metric_name: str, value: float, labels: Optional[Dict[str, str]] = None):
+        """Record a gauge metric value.
+        
+        Args:
+            metric_name: Name of the metric to record
+            value: Value to record
+            labels: Optional labels to attach
+        """
+        self.metrics.gauge(metric_name, value, labels=labels)
+        
+    @contextmanager
+    def measure_time(self, metric_name: str, labels: Optional[Dict[str, str]] = None) -> Generator[ContextManager[None], None, None]:
+        """Measure execution time of a code block.
+        
+        Args:
+            metric_name: Name of the timing metric
+            labels: Optional labels to attach
+            
+        Returns:
+            Context manager that measures execution time
+        """
+        start_time = time.perf_counter()
+        try:
+            yield
+        finally:
+            duration = time.perf_counter() - start_time
+            self.metrics.histogram(f"{metric_name}.duration", duration, labels=labels)
+            
+    def current_time(self) -> float:
+        """Get current time in seconds.
+        
+        Returns:
+            Current time from high resolution counter
+        """
+        return time.perf_counter()
 
 class PerformanceAnalyzer:
     """Analyzer for system and application performance metrics."""

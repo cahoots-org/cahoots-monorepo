@@ -1,30 +1,53 @@
-# src/services/github_service.py
+"""GitHub service implementation."""
 from github import Github, Auth
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Protocol
 import base64
 import os
 import subprocess
-from ..utils.config import Config
-from ..utils.logger import Logger
 import time
 from github.Repository import Repository
 import logging
 from github.GithubException import UnknownObjectException
+from ..utils.config import Config
+import shutil
+from ..exceptions.base import ErrorCategory
+from ..utils.exceptions import ServiceError
+
+logger = logging.getLogger(__name__)
+
+class GitHubClient(Protocol):
+    """Protocol for GitHub client interface."""
+    def get_user(self): ...
+    def get_repo(self, full_name_or_id: str): ...
 
 class GitHubService:
     """Service for interacting with GitHub."""
     
-    def __init__(self, config):
+    def __init__(self, config: Config, github_client: Optional[GitHubClient] = None):
         """Initialize the GitHub service.
         
         Args:
             config: Configuration object containing GitHub settings
+            github_client: Optional GitHub client for testing
         """
         self.config = config
-        self.github = Github(auth=Auth.Token(config.api_key))
+        self.github = github_client or Github(auth=Auth.Token(config.api_key))
         self.logger = logging.getLogger(__name__)
         self.workspace_dir = config.workspace_dir
         self.repo_name = config.repo_name
+        
+    @classmethod
+    def create(cls, config: Config) -> 'GitHubService':
+        """Factory method to create a GitHubService instance.
+        
+        Args:
+            config: Configuration object containing GitHub settings
+            
+        Returns:
+            GitHubService: A new instance
+        """
+        github_client = Github(auth=Auth.Token(config.api_key))
+        return cls(config, github_client)
         
     def check_connection(self):
         """Test the GitHub connection"""
@@ -73,6 +96,7 @@ class GitHubService:
             )
         except Exception as e:
             self.logger.warning(f"Failed to configure branch protection: {str(e)}")
+            raise
         
     def create_branch(self, repo_name: str, branch_name: str, base: str = "main") -> str:
         """Create a new branch and return its ref"""
@@ -302,10 +326,14 @@ This PR was automatically created by the AI development team.
             repo_path = os.path.join(self.workspace_dir, repo_name)
             
             # Add authentication to the URL
-            auth_url = repo_url.replace("https://", f"https://robmillersoftware:{self.config.github_api_key}@")
+            auth_url = repo_url.replace("https://", f"https://robmillersoftware:{self.github_api_key}@")
             
+            git_path = shutil.which("git")
+            if not git_path:
+                raise EnvironmentError("Git executable not found in PATH")
+
             self.logger.info(f"Cloning {repo_url} to {repo_path}")
-            subprocess.run(['git', 'clone', auth_url, repo_path], check=True)
+            subprocess.run([git_path, 'clone', auth_url, repo_path], check=True)
             
             return repo_path
         except subprocess.CalledProcessError as e:
@@ -314,3 +342,43 @@ This PR was automatically created by the AI development team.
         except Exception as e:
             self.logger.error(f"Failed to clone repository: {str(e)}")
             raise
+
+    @property
+    def github_api_key(self) -> str:
+        """Get GitHub API key."""
+        return self.config.github_api_key
+
+    async def update_pr_status(self, pr_number: int, status: str) -> None:
+        """Update PR status.
+        
+        Args:
+            pr_number: PR number
+            status: New status
+        """
+        try:
+            repo = self.github.get_repo(f"{self.github.get_user().login}/{self.repo_name}")
+            pr = repo.get_pull(pr_number)
+            pr.edit(state=status)
+        except Exception as e:
+            raise ServiceError(
+                message=f"Failed to update PR status: {e}",
+                category=ErrorCategory.API
+            )
+
+    async def get_repository_info(self, repo_name: str) -> Dict[str, str]:
+        """Get repository information.
+        
+        Args:
+            repo_name: Repository name
+            
+        Returns:
+            Repository information
+        """
+        try:
+            repo = self.github.get_repo(repo_name)
+            return {
+                "clone_url": repo.clone_url,
+                "default_branch": repo.default_branch
+            }
+        except Exception as e:
+            raise ServiceError(f"Failed to get repository info: {e}")

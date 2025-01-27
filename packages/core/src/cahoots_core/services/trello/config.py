@@ -1,10 +1,10 @@
 """Trello service configuration."""
 from typing import Optional
+from cahoots_core.utils.errors.exceptions import ConfigurationError
 from pydantic import Field, field_validator, ValidationError
-from src.utils.config import ServiceConfig
-from cahoots_core.exceptions import ConfigurationError
+from cahoots_core.utils.config import Config
 
-class TrelloConfig(ServiceConfig):
+class TrelloConfig(Config):
     """Trello service configuration."""
     
     name: str = "trello"
@@ -13,6 +13,7 @@ class TrelloConfig(ServiceConfig):
     timeout: int = 30
     retry_attempts: int = 3
     retry_delay: int = 1
+    webhook_url: Optional[str] = None
     
     # Required fields
     api_key: str = Field(..., description="Trello API key")

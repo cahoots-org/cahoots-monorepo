@@ -1,17 +1,17 @@
-from typing import Dict, List
+"""Context router for managing project context."""
+from typing import Dict
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-
-from cahoots_core.utils.dependencies import get_db
-from cahoots_context.storage.context_service import ContextEventService
-from src.utils.version_vector import VersionVector
-from src.schemas.context import (
+from cahoots_core.utils.version_vector import VersionVector
+from cahoots_service.api.dependencies import get_db
+from cahoots_service.schemas.context import (
     ContextEventCreate,
     ContextEventResponse,
     ContextResponse,
     VersionVectorResponse
 )
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from src.cahoots_context.storage.context_service import ContextEventService
 
 router = APIRouter(prefix="/api/context", tags=["context"])
 
@@ -23,6 +23,14 @@ async def append_event(
 ):
     """
     Append a new event to the project's context history.
+    
+    Args:
+        project_id: The project identifier
+        event: The event to append
+        db: Database session
+        
+    Returns:
+        The created context event
     """
     context_service = ContextEventService(db)
     vector = VersionVector(event.version_vector) if event.version_vector else None
@@ -47,6 +55,13 @@ async def get_context(
 ):
     """
     Get the current context for a project.
+    
+    Args:
+        project_id: The project identifier
+        db: Database session
+        
+    Returns:
+        The current context state and version vector
     """
     context_service = ContextEventService(db)
     
@@ -55,7 +70,7 @@ async def get_context(
         vector = await context_service.get_version_vector(project_id)
         return ContextResponse(
             context=context,
-            version_vector=vector.vector
+            version_vector=vector.versions
         )
     except HTTPException as e:
         raise e
@@ -69,13 +84,20 @@ async def get_version_vector(
 ):
     """
     Get the current version vector for a project.
+    
+    Args:
+        project_id: The project identifier
+        db: Database session
+        
+    Returns:
+        The current version vector and timestamp
     """
     context_service = ContextEventService(db)
     
     try:
         vector = await context_service.get_version_vector(project_id)
         return VersionVectorResponse(
-            version_vector=vector.vector,
+            version_vector=vector.versions,
             timestamp=vector.timestamp
         )
     except HTTPException as e:

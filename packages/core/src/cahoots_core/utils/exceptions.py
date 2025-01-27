@@ -60,4 +60,28 @@ class TestExecutionError(TestError):
 
 class TestTimeoutError(TestError):
     """Raised when test execution times out."""
+    pass
+
+class ContextError(AIDTException):
+    """Base class for context-related errors."""
+    pass
+
+class ContextLimitExceeded(ContextError):
+    """Raised when context limit is exceeded."""
+    pass
+
+class ServiceError(AIDTException):
+    """Base class for service-related errors."""
+    pass
+
+class ServiceConfigError(ServiceError):
+    """Raised when service configuration is invalid."""
+    pass
+
+class ServiceConnectionError(ServiceError):
+    """Raised when service connection fails."""
+    pass
+
+class ServiceOperationError(ServiceError):
+    """Raised when service operation fails."""
     pass 

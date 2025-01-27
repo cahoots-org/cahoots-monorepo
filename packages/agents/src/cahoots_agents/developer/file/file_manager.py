@@ -1,22 +1,130 @@
 """File management functionality for the developer agent."""
-from typing import Dict, Any
 import logging
 import os
+from enum import Enum
+from typing import List, Optional
 
-from src.models.task import Task
+from cahoots_core.models.task import Task
+
+class FileOperation(Enum):
+    """Enum for file operations."""
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    READ = "read"
+
+class FileStatus(Enum):
+    """Enum for file status."""
+    NEW = "new"
+    EXISTING = "existing"
+    DELETED = "deleted"
+    ERROR = "error"
 
 class FileManager:
     """Handles file paths and implementation context."""
     
-    def __init__(self, agent):
+    def __init__(self, agent, workspace_dir: str):
         """Initialize the file manager.
         
         Args:
             agent: The developer agent instance
+            workspace_dir: Path to the workspace directory
         """
         self.agent = agent
+        self.workspace_dir = workspace_dir
         self.logger = logging.getLogger(__name__)
         
+    def create_file(self, file_path: str, content: str) -> None:
+        """Create a new file with content.
+        
+        Args:
+            file_path: Path to the file relative to workspace
+            content: Content to write to the file
+        """
+        full_path = os.path.join(self.workspace_dir, file_path)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, 'w') as f:
+            f.write(content)
+            
+    def read_file(self, file_path: str) -> str:
+        """Read content from a file.
+        
+        Args:
+            file_path: Path to the file relative to workspace
+            
+        Returns:
+            str: Content of the file
+            
+        Raises:
+            FileNotFoundError: If file does not exist
+        """
+        full_path = os.path.join(self.workspace_dir, file_path)
+        with open(full_path, 'r') as f:
+            return f.read()
+            
+    def update_file(self, file_path: str, content: str) -> None:
+        """Update an existing file with new content.
+        
+        Args:
+            file_path: Path to the file relative to workspace
+            content: New content for the file
+            
+        Raises:
+            FileNotFoundError: If file does not exist
+        """
+        full_path = os.path.join(self.workspace_dir, file_path)
+        with open(full_path, 'w') as f:
+            f.write(content)
+            
+    def delete_file(self, file_path: str) -> None:
+        """Delete a file.
+        
+        Args:
+            file_path: Path to the file relative to workspace
+            
+        Raises:
+            FileNotFoundError: If file does not exist
+        """
+        full_path = os.path.join(self.workspace_dir, file_path)
+        os.remove(full_path)
+            
+    def list_files(self, pattern: Optional[str] = None) -> List[str]:
+        """List files in the workspace.
+        
+        Args:
+            pattern: Optional glob pattern to filter files
+            
+        Returns:
+            List[str]: List of file paths relative to workspace
+        """
+        result = []
+        for root, _, files in os.walk(self.workspace_dir):
+            for file in files:
+                if pattern is None or file.endswith(pattern.replace('*', '')):
+                    rel_path = os.path.relpath(os.path.join(root, file), self.workspace_dir)
+                    result.append(rel_path)
+        return result
+        
+    def create_directory(self, dir_path: str) -> None:
+        """Create a directory.
+        
+        Args:
+            dir_path: Path to the directory relative to workspace
+        """
+        full_path = os.path.join(self.workspace_dir, dir_path)
+        os.makedirs(full_path, exist_ok=True)
+        
+    def delete_directory(self, dir_path: str) -> None:
+        """Delete a directory and its contents.
+        
+        Args:
+            dir_path: Path to the directory relative to workspace
+        """
+        full_path = os.path.join(self.workspace_dir, dir_path)
+        if os.path.exists(full_path):
+            import shutil
+            shutil.rmtree(full_path)
+            
     def determine_file_path(self, task: Task) -> str:
         """Determine the appropriate file path for a task.
         
@@ -55,7 +163,8 @@ class FileManager:
         
         # Add existing file content if it exists
         try:
-            with open(file_path, 'r') as f:
+            full_path = os.path.join(self.workspace_dir, file_path)
+            with open(full_path, 'r') as f:
                 existing_code = f.read()
                 context_parts.append(f"Existing file content:\n{existing_code}")
         except FileNotFoundError:

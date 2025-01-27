@@ -33,6 +33,8 @@ from .database.client import (
     get_db_client,
     Base
 )
+from .database.manager import DatabaseManager
+from .redis import RateLimiter, get_redis_client, RedisManager
 
 __all__ = [
     # Kubernetes
@@ -68,4 +70,10 @@ __all__ = [
     "DBOperationError",
     "get_db_client",
     "Base",
+    "DatabaseManager",
+    
+    # Redis utilities
+    "RateLimiter",
+    "get_redis_client",
+    "RedisManager"
 ] 

@@ -4,16 +4,33 @@ import random
 from typing import Any, Dict, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel, ConfigDict
-from ..utils.config import ServiceConfig
-from ..utils.logger import Logger
-from ..utils.metrics import (
-    SERVICE_REQUEST_COUNTER,
-    SERVICE_REQUEST_TIME,
-    SERVICE_ERROR_COUNTER,
-    CIRCUIT_BREAKER_STATE,
-    CIRCUIT_BREAKER_FAILURES,
-    track_time
+from cahoots_service.utils.config import ServiceConfig
+from cahoots_service.utils.logger import Logger
+from cahoots_service.utils.metrics import (
+    Counter as SERVICE_REQUEST_COUNTER,
+    Histogram as SERVICE_REQUEST_TIME,
+    Counter as SERVICE_ERROR_COUNTER,
+    Gauge as CIRCUIT_BREAKER_STATE,
+    Counter as CIRCUIT_BREAKER_FAILURES,
+    MetricsCollector
 )
+
+def track_time(metric, labels=None):
+    """Time tracking decorator."""
+    def decorator(func):
+        async def wrapper(*args, **kwargs):
+            start = datetime.utcnow()
+            try:
+                result = await func(*args, **kwargs)
+                duration = (datetime.utcnow() - start).total_seconds()
+                metric.labels(**labels).observe(duration)
+                return result
+            except Exception as e:
+                duration = (datetime.utcnow() - start).total_seconds()
+                metric.labels(**labels).observe(duration)
+                raise
+        return wrapper
+    return decorator
 
 class CircuitBreakerState:
     """Circuit breaker state tracking with thread-safe operations"""

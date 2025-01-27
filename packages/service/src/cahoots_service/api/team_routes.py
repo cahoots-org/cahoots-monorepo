@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends
-from typing import Dict, List
+from cahoots_service.schemas.teams import RoleConfig, ServiceRole, TeamConfig
+from cahoots_service.services.team_service import TeamService
+from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Dict, List, Optional
 
-from src.models.team_config import TeamConfig, ServiceRole, RoleConfig, ServiceTier
-from src.services.team_service import TeamService
-from src.dependencies import TeamServiceDeps
+from cahoots_core.models.service import ServiceTier
 
 router = APIRouter(prefix="/team", tags=["team"])
 
@@ -23,7 +23,7 @@ async def update_team_configuration(
     return await team_service.update_team_config(config)
 
 @router.put("/roles/{role}")
-async def update_role_configuration(
+async def SeRoleConfigconfiguration(
     role: ServiceRole,
     config: RoleConfig,
     team_service: TeamService = Depends()

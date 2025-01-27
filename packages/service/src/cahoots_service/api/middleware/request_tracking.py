@@ -28,7 +28,7 @@ class RequestTrackingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # Add request ID to response headers
-        response.headers["X-Request-ID"] = request_id
+        response.headers.append("X-Request-ID", request_id)
         
         return response
 

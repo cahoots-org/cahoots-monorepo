@@ -6,6 +6,11 @@ from datetime import datetime, timedelta
 import redis.asyncio as redis
 from redis.asyncio.connection import ConnectionPool
 from redis.exceptions import RedisError
+from redis.asyncio import Redis, from_url as redis_from_url
+from dataclasses import dataclass
+
+from ..base import BaseConfig, BaseClient
+from ...metrics.timing import track_time
 
 logger = logging.getLogger(__name__)
 
@@ -21,325 +26,313 @@ class OperationError(RedisClientError):
     """Exception raised for Redis operation errors."""
     pass
 
-class RedisClient:
-    """Client for interacting with Redis."""
+@dataclass
+class RedisConfig(BaseConfig):
+    """Redis client configuration."""
+    url: Optional[str] = None
+    host: str = "localhost"
+    port: int = 6379
+    db: int = 0
+    password: Optional[str] = None
+    ssl: bool = False
+    encoding: str = "utf-8"
+
+class RedisClient(BaseClient[RedisConfig]):
+    """Redis client implementation."""
     
-    def __init__(
-        self,
-        host: str = "localhost",
-        port: int = 6379,
-        db: int = 0,
-        password: Optional[str] = None,
-        socket_timeout: int = 5,
-        socket_connect_timeout: int = 5,
-        retry_on_timeout: bool = True,
-        max_connections: int = 10,
-        encoding: str = "utf-8"
-    ):
-        """Initialize the Redis client.
+    def __init__(self, config: RedisConfig):
+        """Initialize Redis client.
         
         Args:
-            host: Redis host
-            port: Redis port
-            db: Redis database number
-            password: Optional Redis password
-            socket_timeout: Socket timeout in seconds
-            socket_connect_timeout: Socket connect timeout in seconds
-            retry_on_timeout: Whether to retry on timeout
-            max_connections: Maximum number of connections
-            encoding: Character encoding
+            config: Redis configuration
         """
-        self.pool = ConnectionPool(
-            host=host,
-            port=port,
-            db=db,
-            password=password,
-            socket_timeout=socket_timeout,
-            socket_connect_timeout=socket_connect_timeout,
-            retry_on_timeout=retry_on_timeout,
-            max_connections=max_connections,
-            encoding=encoding,
-            decode_responses=True
+        super().__init__(config)
+        self._client: Optional[Redis] = None
+        
+    @property
+    def client(self) -> Redis:
+        """Get Redis client instance."""
+        if not self._client:
+            raise ConnectionError("Redis client not initialized")
+        return self._client
+        
+    @track_time(metric="redis_connect")
+    async def connect(self) -> None:
+        """Establish Redis connection."""
+        try:
+            if self.config.url:
+                self._client = redis_from_url(
+                    self.config.url,
+                    encoding=self.config.encoding,
+                    decode_responses=True,
+                    ssl=self.config.ssl,
+                    socket_timeout=self.config.timeout
+                )
+            else:
+                self._client = Redis(
+                    host=self.config.host,
+                    port=self.config.port,
+                    db=self.config.db,
+                    password=self.config.password,
+                    encoding=self.config.encoding,
+                    decode_responses=True,
+                    ssl=self.config.ssl,
+                    socket_timeout=self.config.timeout
+                )
+            
+            # Verify connection
+            await self.verify_connection()
+            self._connected = True
+            
+        except Exception as e:
+            self._handle_error(e, "connect")
+            
+    async def disconnect(self) -> None:
+        """Close Redis connection."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+            self._connected = False
+            
+    @track_time(metric="redis_ping")
+    async def verify_connection(self) -> bool:
+        """Verify Redis connection is active."""
+        try:
+            if not self._client:
+                return False
+                
+            await self._client.ping()
+            return True
+            
+        except Exception as e:
+            self._handle_error(e, "verify_connection")
+            
+    @track_time(metric="redis_get")
+    async def get(self, key: str) -> Any:
+        """Get value from Redis.
+        
+        Args:
+            key: Key to get
+            
+        Returns:
+            Value if found, None otherwise
+        """
+        return await self.retry_operation(
+            self.client.get,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"get:{key}"
         )
-        self.client = redis.Redis(connection_pool=self.pool)
-        
-    async def ping(self) -> bool:
-        """Test connection to Redis.
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        try:
-            return await self.client.ping()
-        except RedisError as e:
-            logger.error(f"Redis ping failed: {str(e)}")
-            return False
             
-    async def close(self):
-        """Close Redis connection pool."""
-        try:
-            await self.client.close()
-            await self.pool.disconnect()
-        except RedisError as e:
-            logger.error(f"Error closing Redis connections: {str(e)}")
-            raise ConnectionError(f"Failed to close Redis connections: {str(e)}")
-            
-    async def get(self, key: str) -> Optional[str]:
-        """Get value for key.
-        
-        Args:
-            key: Redis key
-            
-        Returns:
-            Value if found, None if not found
-            
-        Raises:
-            OperationError: If Redis operation fails
-        """
-        try:
-            return await self.client.get(key)
-        except RedisError as e:
-            logger.error(f"Redis get failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to get key {key}: {str(e)}")
-            
+    @track_time(metric="redis_set")
     async def set(
         self,
         key: str,
-        value: Union[str, bytes, int, float],
-        ex: Optional[int] = None,
-        px: Optional[int] = None,
-        nx: bool = False,
-        xx: bool = False
-    ) -> bool:
-        """Set key to value.
+        value: Any,
+        expire: Optional[int] = None
+    ) -> None:
+        """Set value in Redis.
         
         Args:
-            key: Redis key
+            key: Key to set
             value: Value to set
-            ex: Expiry time in seconds
-            px: Expiry time in milliseconds
-            nx: Only set if key does not exist
-            xx: Only set if key exists
-            
-        Returns:
-            True if set successful, False otherwise
-            
-        Raises:
-            OperationError: If Redis operation fails
+            expire: Optional expiration in seconds
         """
-        try:
-            return await self.client.set(
+        await self.retry_operation(
+            self.client.set,
                 key,
                 value,
-                ex=ex,
-                px=px,
-                nx=nx,
-                xx=xx
-            )
-        except RedisError as e:
-            logger.error(f"Redis set failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to set key {key}: {str(e)}")
+            ex=expire,
+            retry_on=(RedisError,),
+            operation_name=f"set:{key}"
+        )
             
-    async def delete(self, key: str) -> bool:
-        """Delete key.
+    @track_time(metric="redis_delete")
+    async def delete(self, key: str) -> None:
+        """Delete key from Redis.
         
         Args:
-            key: Redis key
-            
-        Returns:
-            True if deleted, False if key did not exist
-            
-        Raises:
-            OperationError: If Redis operation fails
+            key: Key to delete
         """
-        try:
-            return bool(await self.client.delete(key))
-        except RedisError as e:
-            logger.error(f"Redis delete failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to delete key {key}: {str(e)}")
+        await self.retry_operation(
+            self.client.delete,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"delete:{key}"
+        )
             
     async def exists(self, key: str) -> bool:
         """Check if key exists.
         
         Args:
-            key: Redis key
+            key: Key to check
             
         Returns:
-            True if key exists, False otherwise
-            
-        Raises:
-            OperationError: If Redis operation fails
+            True if exists, False otherwise
         """
-        try:
-            return bool(await self.client.exists(key))
-        except RedisError as e:
-            logger.error(f"Redis exists failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to check existence of key {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.exists,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"exists:{key}"
+        )
             
     async def expire(self, key: str, seconds: int) -> bool:
-        """Set key expiry time.
+        """Set key expiration.
         
         Args:
-            key: Redis key
-            seconds: Expiry time in seconds
+            key: Key to set expiration for
+            seconds: Expiration in seconds
             
         Returns:
-            True if expiry set, False if key does not exist
-            
-        Raises:
-            OperationError: If Redis operation fails
+            True if expiration was set, False if key doesn't exist
         """
-        try:
-            return await self.client.expire(key, seconds)
-        except RedisError as e:
-            logger.error(f"Redis expire failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to set expiry for key {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.expire,
+            key,
+            seconds,
+            retry_on=(RedisError,),
+            operation_name=f"expire:{key}"
+        )
             
     async def ttl(self, key: str) -> int:
         """Get key time to live.
         
         Args:
-            key: Redis key
+            key: Key to get TTL for
             
         Returns:
-            TTL in seconds, -2 if key does not exist, -1 if no expiry
-            
-        Raises:
-            OperationError: If Redis operation fails
+            TTL in seconds, -2 if key doesn't exist, -1 if no expiry
         """
-        try:
-            return await self.client.ttl(key)
-        except RedisError as e:
-            logger.error(f"Redis ttl failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to get TTL for key {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.ttl,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"ttl:{key}"
+        )
             
+    @track_time(metric="redis_incr")
     async def incr(self, key: str) -> int:
-        """Increment integer value.
+        """Increment key value.
         
         Args:
-            key: Redis key
+            key: Key to increment
             
         Returns:
-            New value
-            
-        Raises:
-            OperationError: If Redis operation fails
+            New value after increment
         """
-        try:
-            return await self.client.incr(key)
-        except RedisError as e:
-            logger.error(f"Redis incr failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to increment key {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.incr,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"incr:{key}"
+        )
             
+    @track_time(metric="redis_decr")
     async def decr(self, key: str) -> int:
-        """Decrement integer value.
+        """Decrement key value.
         
         Args:
-            key: Redis key
+            key: Key to decrement
             
         Returns:
-            New value
-            
-        Raises:
-            OperationError: If Redis operation fails
+            New value after decrement
         """
-        try:
-            return await self.client.decr(key)
-        except RedisError as e:
-            logger.error(f"Redis decr failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to decrement key {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.decr,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"decr:{key}"
+        )
             
+    @track_time(metric="redis_lpush")
     async def lpush(self, key: str, *values: Any) -> int:
-        """Push values to start of list.
+        """Push values to the head of a list.
         
         Args:
-            key: Redis key
-            values: One or more values to push
+            key: List key
+            values: Values to push
             
         Returns:
             Length of list after push
-            
-        Raises:
-            OperationError: If Redis operation fails
         """
-        try:
-            return await self.client.lpush(key, *values)
-        except RedisError as e:
-            logger.error(f"Redis lpush failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to push to list {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.lpush,
+            key,
+            *values,
+            retry_on=(RedisError,),
+            operation_name=f"lpush:{key}"
+        )
             
+    @track_time(metric="redis_rpush")
     async def rpush(self, key: str, *values: Any) -> int:
-        """Push values to end of list.
+        """Push values to the tail of a list.
         
         Args:
-            key: Redis key
-            values: One or more values to push
+            key: List key
+            values: Values to push
             
         Returns:
             Length of list after push
-            
-        Raises:
-            OperationError: If Redis operation fails
         """
-        try:
-            return await self.client.rpush(key, *values)
-        except RedisError as e:
-            logger.error(f"Redis rpush failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to push to list {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.rpush,
+            key,
+            *values,
+            retry_on=(RedisError,),
+            operation_name=f"rpush:{key}"
+        )
             
+    @track_time(metric="redis_lpop")
     async def lpop(self, key: str) -> Optional[str]:
-        """Pop value from start of list.
+        """Pop value from the head of a list.
         
         Args:
-            key: Redis key
+            key: List key
             
         Returns:
-            Value if list not empty, None otherwise
-            
-        Raises:
-            OperationError: If Redis operation fails
+            Value if list exists and not empty, None otherwise
         """
-        try:
-            return await self.client.lpop(key)
-        except RedisError as e:
-            logger.error(f"Redis lpop failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to pop from list {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.lpop,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"lpop:{key}"
+        )
             
+    @track_time(metric="redis_rpop")
     async def rpop(self, key: str) -> Optional[str]:
-        """Pop value from end of list.
+        """Pop value from the tail of a list.
         
         Args:
-            key: Redis key
+            key: List key
             
         Returns:
-            Value if list not empty, None otherwise
-            
-        Raises:
-            OperationError: If Redis operation fails
+            Value if list exists and not empty, None otherwise
         """
-        try:
-            return await self.client.rpop(key)
-        except RedisError as e:
-            logger.error(f"Redis rpop failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to pop from list {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.rpop,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"rpop:{key}"
+        )
             
+    @track_time(metric="redis_llen")
     async def llen(self, key: str) -> int:
-        """Get length of list.
+        """Get length of a list.
         
         Args:
-            key: Redis key
+            key: List key
             
         Returns:
-            Length of list
-            
-        Raises:
-            OperationError: If Redis operation fails
+            Length of list, 0 if key doesn't exist
         """
-        try:
-            return await self.client.llen(key)
-        except RedisError as e:
-            logger.error(f"Redis llen failed for key {key}: {str(e)}")
-            raise OperationError(f"Failed to get length of list {key}: {str(e)}")
+        return await self.retry_operation(
+            self.client.llen,
+            key,
+            retry_on=(RedisError,),
+            operation_name=f"llen:{key}"
+        )
 
 # Global client instance
 _redis_client: Optional[RedisClient] = None
@@ -364,9 +357,11 @@ def get_redis_client(
     global _redis_client
     if _redis_client is None:
         _redis_client = RedisClient(
+            RedisConfig(
             host=host,
             port=port,
             db=db,
             password=password
+            )
         )
     return _redis_client 

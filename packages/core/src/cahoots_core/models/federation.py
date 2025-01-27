@@ -34,6 +34,9 @@ class FederatedIdentityMapping(Base):
         """String representation."""
         return f"<FederatedIdentityMapping {self.external_id}>"
 
+# Alias for backward compatibility
+FederatedIdentity = FederatedIdentityMapping
+
 class TrustRelationship(Base):
     """Federation trust relationship model."""
     
@@ -77,4 +80,29 @@ class AttributeMapping(Base):
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"<AttributeMapping {self.source_attribute} -> {self.target_attribute}>" 
+        return f"<AttributeMapping {self.source_attribute} -> {self.target_attribute}>"
+
+class TrustChain(Base):
+    """Federation trust chain model."""
+    
+    __tablename__ = "trust_chains"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    source_provider_id = Column(UUID(as_uuid=True), ForeignKey('identity_providers.id'), nullable=False)
+    target_provider_id = Column(UUID(as_uuid=True), ForeignKey('identity_providers.id'), nullable=False)
+    chain = Column(JSON, nullable=False)  # List of provider IDs in the trust chain
+    trust_level = Column(String, nullable=False)  # direct, transitive
+    chain_metadata = Column(JSON, nullable=False, default=dict)
+    is_active = Column(Boolean, default=True)
+    valid_from = Column(DateTime, nullable=False)
+    valid_until = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    source_provider = relationship("IdentityProvider", foreign_keys=[source_provider_id])
+    target_provider = relationship("IdentityProvider", foreign_keys=[target_provider_id])
+
+    def __repr__(self) -> str:
+        """String representation."""
+        return f"<TrustChain {self.source_provider_id} -> {self.target_provider_id}>" 

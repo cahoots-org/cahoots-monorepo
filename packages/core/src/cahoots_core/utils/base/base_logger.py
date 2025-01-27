@@ -1,52 +1,51 @@
-"""Base logger implementation for consistent logging across the application."""
+"""Logging utilities."""
 import logging
-import sys
-from typing import Optional
-from ...config import settings
+from typing import Any, Dict, Optional
 
-class BaseLogger:
-    """Base logger class providing consistent logging functionality."""
+def setup_logger(
+    name: str,
+    level: int = logging.INFO,
+    format_str: Optional[str] = None
+) -> logging.Logger:
+    """Set up a logger with the given name and configuration.
     
-    def __init__(self, name: str, level: Optional[str] = None):
-        """Initialize logger with name and optional level override."""
-        self.logger = logging.getLogger(name)
-        self.level = level or settings.LOG_LEVEL
-        self._configure_logger()
-    
-    def _configure_logger(self) -> None:
-        """Configure logger with consistent formatting and handlers."""
-        self.logger.setLevel(self.level)
+    Args:
+        name: Logger name
+        level: Logging level
+        format_str: Optional format string
         
-        # Create console handler if none exists
-        if not self.logger.handlers:
-            handler = logging.StreamHandler(sys.stdout)
-            handler.setLevel(self.level)
-            
-            # Create formatter
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            handler.setFormatter(formatter)
-            
-            # Add handler to logger
-            self.logger.addHandler(handler)
+    Returns:
+        logging.Logger: Configured logger
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
     
-    def debug(self, msg: str) -> None:
-        """Log debug message."""
-        self.logger.debug(msg)
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setLevel(level)
+        
+        formatter = logging.Formatter(
+            format_str or '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        handler.setFormatter(formatter)
+        
+        logger.addHandler(handler)
+        
+    return logger
     
-    def info(self, msg: str) -> None:
-        """Log info message."""
-        self.logger.info(msg)
+def log_error(
+    logger: logging.Logger,
+    error: Exception,
+    context: Optional[Dict[str, Any]] = None
+) -> None:
+    """Log an error with optional context.
     
-    def warning(self, msg: str) -> None:
-        """Log warning message."""
-        self.logger.warning(msg)
-    
-    def error(self, msg: str) -> None:
-        """Log error message."""
-        self.logger.error(msg)
-    
-    def critical(self, msg: str) -> None:
-        """Log critical message."""
-        self.logger.critical(msg) 
+    Args:
+        logger: Logger instance
+        error: Exception to log
+        context: Optional context dictionary
+    """
+    msg = f"Error: {str(error)}"
+    if context:
+        msg = f"{msg} Context: {context}"
+    logger.error(msg, exc_info=True) 

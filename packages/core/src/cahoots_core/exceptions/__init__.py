@@ -1,6 +1,6 @@
 """Cahoots exception handling system."""
 
-from .base import CahootsError, ErrorCategory, ErrorSeverity
+from .base import CahootsError, ErrorCategory, ErrorSeverity, AIDTException
 from .api import (
     APIError,
     NotFoundError,
@@ -8,6 +8,7 @@ from .api import (
     ConflictError,
     RateLimitError,
     ServerError,
+    ServiceError,
 )
 from .auth import (
     AuthError,
@@ -23,6 +24,7 @@ from .infrastructure import (
     QueueError,
     StorageError,
     NetworkError,
+    ExternalServiceException,
 )
 from .domain import (
     DomainError,
@@ -39,6 +41,10 @@ from .validation import (
     FormatValidationError,
 )
 
+class ContextLimitError(AIDTException):
+    """Raised when context limits are exceeded."""
+    pass
+
 __all__ = [
     # Base
     "CahootsError",
@@ -52,6 +58,7 @@ __all__ = [
     "ConflictError",
     "RateLimitError",
     "ServerError",
+    "ServiceError",
     
     # Auth
     "AuthError",
@@ -67,6 +74,7 @@ __all__ = [
     "QueueError",
     "StorageError",
     "NetworkError",
+    "ExternalServiceException",
     
     # Domain
     "DomainError",
@@ -81,4 +89,5 @@ __all__ = [
     "SchemaValidationError",
     "TypeValidationError",
     "FormatValidationError",
+    "ContextLimitError"
 ] 

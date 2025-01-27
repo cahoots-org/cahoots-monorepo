@@ -1,37 +1,34 @@
 """Project management endpoints."""
-from typing import Dict, Any
+from typing import Dict, Any, List
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, constr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
 
-from src.api.dependencies import get_db, get_verified_event_system
-from src.database.models import Project, Organization
-from src.utils.models import ProjectResponse
-from src.api.auth import verify_api_key
-from src.services.project_service import ProjectService
-from src.core.dependencies import BaseDeps
-from src.utils.config import get_settings
+from cahoots_core.models.project import ProjectCreate, Project
+from cahoots_core.models.db_models import Organization
+from cahoots_service.api.dependencies import ServiceDeps, get_db, get_event_bus
+from cahoots_service.schemas.project import ProjectResponse
+from cahoots_service.api.auth import verify_api_key
+from cahoots_service.services.project_service import ProjectService
+from cahoots_service.utils.config import get_settings
+from cahoots_core.exceptions.domain import DomainError
+from cahoots_core.exceptions.infrastructure import InfrastructureError
 
-router = APIRouter(prefix="/projects", tags=["projects"])
-
-class ProjectCreate(BaseModel):
-    """Project creation request model."""
-    name: constr(min_length=1, max_length=100)
-    description: str
+router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     project: ProjectCreate,
-    deps: BaseDeps = Depends(BaseDeps),
+    deps: ServiceDeps = Depends(ServiceDeps),
     organization_id: str = Depends(verify_api_key)
 ) -> Dict[str, Any]:
     """Create a new project.
     
     Args:
         project: Project details
-        deps: Base dependencies
+        deps: Service dependencies
         organization_id: Organization ID from API key
         
     Returns:
@@ -70,7 +67,9 @@ async def create_project(
         new_project = await project_service.create_project(
             name=project.name,
             description=project.description,
-            organization_id=organization_id
+            organization_id=organization_id,
+            agent_config=project.agent_config,
+            resource_limits=project.resource_limits
         )
         
         # Commit changes
@@ -81,7 +80,9 @@ async def create_project(
             "name": new_project.name,
             "description": new_project.description,
             "created_at": new_project.created_at.isoformat(),
-            "status": new_project.status
+            "status": new_project.status,
+            "agent_config": new_project.agent_config,
+            "resource_limits": new_project.resource_limits
         }
             
     except HTTPException:

@@ -1,42 +1,59 @@
 """Project management API endpoints."""
-from typing import List
+from typing import Dict, List, Any
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 
-from src.services.project_service import ProjectService
-from src.schemas.projects import (
+from cahoots_core.models.project import (
     ProjectCreate,
     ProjectUpdate,
+    Project as ProjectModel
+)
+from cahoots_service.api.dependencies import (
+    get_project_service,
+    get_current_organization,
+    ServiceDeps
+)
+from cahoots_service.schemas.project import (
     ProjectResponse,
     ProjectsResponse,
-    AgentDeployment,
-    AgentConfig
+    AgentConfig,
+    AgentDeployment
 )
-from src.api.deps import get_current_organization, get_project_service
-from src.utils.monitoring import monitor_project_creation
+from cahoots_service.services.project_service import ProjectService
+from cahoots_service.utils.monitoring import monitor_project_creation
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
-@router.post("/", response_model=ProjectResponse, status_code=201)
+@router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 async def create_project(
     project_data: ProjectCreate,
     background_tasks: BackgroundTasks,
     organization_id: UUID = Depends(get_current_organization),
     project_service: ProjectService = Depends(get_project_service)
-):
-    """Create a new project.
+) -> ProjectResponse:
+    """
+    Create a new project.
     
     This endpoint initiates project creation and returns immediately with a response
     containing links to monitor progress. The actual resource creation continues
     in the background.
     
-    Returns a ProjectResponse with HATEOAS links to:
-    - Project API endpoint
-    - GitHub repository (when ready)
-    - Documentation (when ready)
-    - Monitoring dashboard
-    - Logging dashboard
-    - Other project artifacts
+    Args:
+        project_data: Project creation data
+        background_tasks: FastAPI background tasks
+        organization_id: Current organization ID
+        project_service: Project service instance
+        
+    Returns:
+        ProjectResponse with HATEOAS links to:
+        - Project API endpoint
+        - GitHub repository (when ready)
+        - Documentation (when ready)
+        - Monitoring dashboard
+        - Logging dashboard
+        
+    Raises:
+        HTTPException: If project creation fails
     """
     try:
         # Create project and get initial response
@@ -54,73 +71,175 @@ async def create_project(
         
         return project_response
         
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create project: {str(e)}"
         )
 
 @router.get("", response_model=ProjectsResponse)
 async def list_projects(
     organization_id: UUID = Depends(get_current_organization),
-    service: ProjectService = Depends(get_project_service)
-):
-    """List all projects for organization."""
-    projects = await service.list_projects(organization_id)
-    return ProjectsResponse(
-        total=len(projects),
-        projects=[ProjectResponse.from_orm(p) for p in projects]
-    )
+    project_service: ProjectService = Depends(get_project_service)
+) -> ProjectsResponse:
+    """
+    List all projects for organization.
+    
+    Args:
+        organization_id: Current organization ID
+        project_service: Project service instance
+        
+    Returns:
+        List of projects with total count
+        
+    Raises:
+        HTTPException: If listing projects fails
+    """
+    try:
+        projects = await project_service.list_projects(organization_id)
+        return ProjectsResponse(
+            total=len(projects),
+            projects=[ProjectResponse.from_orm(p) for p in projects]
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list projects: {str(e)}"
+        )
 
 @router.get("/{project_id}", response_model=ProjectResponse)
 async def get_project(
     project_id: UUID,
-    service: ProjectService = Depends(get_project_service)
-):
-    """Get project by ID."""
-    project = await service.get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return ProjectResponse.from_orm(project)
+    project_service: ProjectService = Depends(get_project_service)
+) -> ProjectResponse:
+    """
+    Get project by ID.
+    
+    Args:
+        project_id: Project identifier
+        project_service: Project service instance
+        
+    Returns:
+        Project details
+        
+    Raises:
+        HTTPException: If project not found or retrieval fails
+    """
+    try:
+        project = await project_service.get_project(project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        return ProjectResponse.from_orm(project)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get project: {str(e)}"
+        )
 
 @router.patch("/{project_id}", response_model=ProjectResponse)
 async def update_project(
     project_id: UUID,
     update: ProjectUpdate,
-    service: ProjectService = Depends(get_project_service)
-):
-    """Update project."""
-    project = await service.update_project(
-        project_id=project_id,
-        name=update.name,
-        description=update.description,
-        agent_config=update.agent_config,
-        resource_limits=update.resource_limits
-    )
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return ProjectResponse.from_orm(project)
+    project_service: ProjectService = Depends(get_project_service)
+) -> ProjectResponse:
+    """
+    Update project.
+    
+    Args:
+        project_id: Project identifier
+        update: Project update data
+        project_service: Project service instance
+        
+    Returns:
+        Updated project details
+        
+    Raises:
+        HTTPException: If project not found or update fails
+    """
+    try:
+        project = await project_service.update_project(
+            project_id=project_id,
+            name=update.name,
+            description=update.description,
+            agent_config=update.agent_config,
+            resource_limits=update.resource_limits
+        )
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+        return ProjectResponse.from_orm(project)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update project: {str(e)}"
+        )
 
-@router.delete("/{project_id}")
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_project(
     project_id: UUID,
-    service: ProjectService = Depends(get_project_service)
-):
-    """Delete project."""
-    deleted = await service.delete_project(project_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return {"status": "success"}
+    project_service: ProjectService = Depends(get_project_service)
+) -> None:
+    """
+    Delete project.
+    
+    Args:
+        project_id: Project identifier
+        project_service: Project service instance
+        
+    Raises:
+        HTTPException: If project not found or deletion fails
+    """
+    try:
+        deleted = await project_service.delete_project(project_id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Project not found"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete project: {str(e)}"
+        )
 
 @router.post("/{project_id}/agents", response_model=AgentDeployment)
 async def deploy_agent(
     project_id: UUID,
     config: AgentConfig,
-    service: ProjectService = Depends(get_project_service)
-):
-    """Deploy an agent for the project."""
+    project_service: ProjectService = Depends(get_project_service)
+) -> AgentDeployment:
+    """
+    Deploy an agent for the project.
+    
+    Args:
+        project_id: Project identifier
+        config: Agent configuration
+        project_service: Project service instance
+        
+    Returns:
+        Agent deployment status
+        
+    Raises:
+        HTTPException: If deployment fails
+    """
     try:
-        status = await service.deploy_agent(
+        status = await project_service.deploy_agent(
             project_id=project_id,
             agent_type=config.agent_type,
             config=config.config
@@ -130,40 +249,85 @@ async def deploy_agent(
             status=status
         )
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
-@router.patch("/{project_id}/agents/{agent_type}/scale")
+@router.patch("/{project_id}/agents/{agent_type}/scale", response_model=Dict[str, Any])
 async def scale_agent(
     project_id: UUID,
     agent_type: str,
     replicas: int,
-    service: ProjectService = Depends(get_project_service)
-):
-    """Scale an agent deployment."""
+    project_service: ProjectService = Depends(get_project_service)
+) -> Dict[str, Any]:
+    """
+    Scale an agent deployment.
+    
+    Args:
+        project_id: Project identifier
+        agent_type: Type of agent to scale
+        replicas: Number of replicas
+        project_service: Project service instance
+        
+    Returns:
+        Scaling operation status
+        
+    Raises:
+        HTTPException: If scaling fails
+    """
     try:
-        status = await service.scale_agent(
+        status = await project_service.scale_agent(
             project_id=project_id,
             agent_type=agent_type,
             replicas=replicas
         )
-        return status
+        return {"status": status}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to scale agent: {str(e)}"
+        )
 
-@router.delete("/{project_id}/agents/{agent_type}")
+@router.delete("/{project_id}/agents/{agent_type}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_agent(
     project_id: UUID,
     agent_type: str,
-    service: ProjectService = Depends(get_project_service)
-):
-    """Delete an agent deployment."""
+    project_service: ProjectService = Depends(get_project_service)
+) -> None:
+    """
+    Delete an agent deployment.
+    
+    Args:
+        project_id: Project identifier
+        agent_type: Type of agent to delete
+        project_service: Project service instance
+        
+    Raises:
+        HTTPException: If deletion fails
+    """
     try:
-        await service.delete_agent(
+        await project_service.delete_agent(
             project_id=project_id,
             agent_type=agent_type
         )
-        return {"status": "success"}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e)) 
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete agent: {str(e)}"
+        ) 

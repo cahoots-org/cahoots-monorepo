@@ -60,4 +60,32 @@ services:
     url: https://api.trello.com/1
     timeout: 30
     retry_attempts: 3
-    retry_delay: 1 
+    retry_delay: 1
+
+ai:
+  provider: openai  # openai, anthropic, local, etc.
+  api_key: ${OPENAI_API_KEY}  # Override with specific provider key if needed
+  models:
+    default: gpt-4-turbo-preview
+    embeddings: text-embedding-3-small
+    fallback: gpt-3.5-turbo
+  settings:
+    temperature: 0.7
+    max_tokens: 4096
+    timeout_seconds: 30
+    retry_attempts: 3
+    cache_ttl_seconds: 3600
+
+agents:
+  qa_tester:
+    model: ${ai.models.default}
+    temperature: 0.3  # Lower temperature for more deterministic testing
+  developer:
+    model: ${ai.models.default}
+    temperature: 0.7  # Balanced for code generation
+  ux_designer:
+    model: ${ai.models.default}
+    temperature: 0.8  # Higher temperature for creative design
+  project_manager:
+    model: ${ai.models.default}
+    temperature: 0.5  # Balanced for task management 

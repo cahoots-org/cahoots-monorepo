@@ -2,9 +2,10 @@
 from enum import Enum
 from typing import Dict, Any, Optional
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from ..exceptions import EventError
+from cahoots_events.bus.types import EventStatus, EventType, EventPriority
 
 # Channel definitions
 CHANNELS = {
@@ -16,45 +17,6 @@ CHANNELS = {
     "FEEDBACK": "feedback",
     "DEPLOYMENT": "deployment"
 }
-
-class EventType(str, Enum):
-    """Types of events in the system."""
-    # Task events
-    TASK_CREATED = "task_created"
-    TASK_UPDATED = "task_updated"
-    TASK_COMPLETED = "task_completed"
-    
-    # Story events
-    STORY_ASSIGNED = "story_assigned"
-    STORY_COMPLETED = "story_completed"
-    
-    # Design events
-    DESIGN_CREATED = "design_created"
-    
-    # Test events
-    TEST_STARTED = "test_started"
-    TEST_COMPLETED = "test_completed"
-    
-    # Feedback events
-    FEEDBACK_RECEIVED = "feedback_received"
-    
-    # Deployment events
-    DEPLOYMENT_STARTED = "deployment_started"
-    DEPLOYMENT_COMPLETED = "deployment_completed"
-
-class EventPriority(str, Enum):
-    """Priority levels for events."""
-    LOW = "low"           # Non-critical events that can be processed later
-    MEDIUM = "medium"     # Default priority for most events
-    HIGH = "high"         # Important events that should be processed soon
-    CRITICAL = "critical" # Urgent events that require immediate attention
-
-class EventStatus(str, Enum):
-    """Status of events in the system."""
-    PENDING = "pending"       # Event has been created but not yet processed
-    PROCESSING = "processing" # Event is currently being processed
-    COMPLETED = "completed"   # Event has been successfully processed
-    FAILED = "failed"        # Event processing has failed
 
 class CommunicationPattern(str, Enum):
     """Communication patterns supported by the event system."""
@@ -81,7 +43,7 @@ class EventSchema(BaseModel):
     id: str
     type: EventType
     channel: str
-    priority: EventPriority = EventPriority.MEDIUM
+    priority: EventPriority = EventPriority.NORMAL
     status: EventStatus = EventStatus.PENDING
     timestamp: datetime
     data: Dict[str, Any]
@@ -90,8 +52,9 @@ class EventSchema(BaseModel):
     pattern: CommunicationPattern = CommunicationPattern.PUBLISH_SUBSCRIBE
     service_name: Optional[str] = None
     
-    class Config:
-        """Pydantic model configuration."""
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
+    @property
+    def model_serializer(self):
+        """Custom serialization."""
+        return {
+            "timestamp": lambda dt: dt.isoformat() if dt else None
         } 

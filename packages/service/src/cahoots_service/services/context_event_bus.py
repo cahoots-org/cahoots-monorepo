@@ -6,11 +6,11 @@ from datetime import datetime
 import json
 from uuid import UUID
 
+from cahoots_core.exceptions.base import ErrorCategory, ErrorSeverity
+from cahoots_core.utils.errors.handling import RecoveryStrategy
+from cahoots_core.utils.infrastructure.redis.client import get_redis_client
 from redis import Redis
 from sqlalchemy.orm import Session
-
-from src.utils.redis_client import get_redis_client
-from src.utils.error_handling import SystemError, ErrorCategory, ErrorSeverity, RecoveryStrategy
 
 class ContextEventBus:
     """Event bus for real-time context updates with Redis pub/sub."""
@@ -151,8 +151,8 @@ class ContextEventBus:
                     if not message:
                         continue
                         
-                    channel = message["channel"].decode("utf-8")
-                    data = json.loads(message["data"].decode("utf-8"))
+                    channel = message.get("channel", "").decode("utf-8")
+                    data = json.loads(message.get("data", {}).decode("utf-8"))
                     
                     # Notify subscribers
                     if channel in self.subscribers:

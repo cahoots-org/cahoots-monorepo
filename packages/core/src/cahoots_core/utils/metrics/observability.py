@@ -1,4 +1,5 @@
 """Observability module for system monitoring and tracing."""
+import asyncio
 import logging
 import traceback
 from typing import Dict, Any, Optional, List, Callable

@@ -1,10 +1,29 @@
 """Team configuration models."""
+from enum import Enum
 from typing import Dict, Optional, List, Any
 from pydantic import BaseModel
 import json
 from pathlib import Path
 import glob
 import os
+
+class ServiceRole(str, Enum):
+    """Service role types."""
+    ADMIN = "admin"
+    MEMBER = "member"
+    VIEWER = "viewer"
+
+class ProjectLimits(BaseModel):
+    """Project resource limits."""
+    max_projects: int = 10
+    max_users: int = 50
+    max_storage_gb: int = 100
+    max_compute_units: int = 1000
+
+class RoleConfig(BaseModel):
+    """Role configuration."""
+    role: ServiceRole
+    permissions: Dict[str, bool]
 
 class AgentConfig(BaseModel):
     """Base configuration for any agent type"""
@@ -21,10 +40,34 @@ class TeamDynamics(BaseModel):
     communication_channels: Dict[str, List[str]]
 
 class TeamConfig(BaseModel):
-    """Configuration for the AI development team"""
-    project_id: str
-    agents: Dict[str, AgentConfig]
-    team_dynamics: Optional[TeamDynamics] = None
+    """Team configuration."""
+    team_id: str
+    name: str
+    description: Optional[str] = None
+    roles: Dict[str, RoleConfig]
+    limits: ProjectLimits
+    is_active: bool = True
+    
+    @classmethod
+    def from_env(cls) -> Optional["TeamConfig"]:
+        """Create team config from environment variables."""
+        try:
+            return cls(
+                team_id=os.getenv("TEAM_ID", "default"),
+                name=os.getenv("TEAM_NAME", "Default Team"),
+                roles={
+                    "ux_designer": RoleConfig(
+                        role=ServiceRole.MEMBER,
+                        permissions={
+                            "design": True,
+                            "review": True
+                        }
+                    )
+                },
+                limits=ProjectLimits()
+            )
+        except Exception:
+            return None
     
     @classmethod
     def load_from_directory(cls, config_dir: str = "config/agents") -> "TeamConfig":
@@ -53,9 +96,11 @@ class TeamConfig(BaseModel):
                 team_dynamics = TeamDynamics(**dynamics_config)
                 
         return cls(
-            project_id=os.getenv("PROJECT_ID", "default"),
-            agents=agents,
-            team_dynamics=team_dynamics
+            team_id=os.getenv("PROJECT_ID", "default"),
+            name=os.getenv("PROJECT_NAME", "Default Project"),
+            roles={},
+            limits=ProjectLimits(),
+            is_active=True
         )
         
     def get_agent_by_type(self, agent_type: str) -> Optional[AgentConfig]:

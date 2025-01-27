@@ -1,8 +1,11 @@
 """Audit logging utilities."""
 from datetime import datetime
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+from uuid import UUID
 from sqlalchemy import Column, Integer, String, DateTime, JSON
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 
 from ...models.db_models import Base
 
@@ -11,10 +14,10 @@ class AuditLog(Base):
     
     __tablename__ = "audit_logs"
     
-    id = Column(PGUUID(as_uuid=True), primary_key=True)
+    id = Column(postgresql.UUID(as_uuid=True), primary_key=True)
     timestamp = Column(DateTime, nullable=False)
-    organization_id = Column(PGUUID(as_uuid=True), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), nullable=True)
+    organization_id = Column(postgresql.UUID(as_uuid=True), nullable=False)
+    user_id = Column(postgresql.UUID(as_uuid=True), nullable=True)
     action = Column(String, nullable=False)
     resource_type = Column(String, nullable=False)
     resource_id = Column(String, nullable=True)
