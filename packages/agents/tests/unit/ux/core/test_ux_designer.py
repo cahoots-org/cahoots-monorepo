@@ -78,15 +78,22 @@ def mock_github_config():
     )
 
 @pytest.fixture
-def ux_designer(mock_agent, mock_event_system, mock_team_config, mock_github_config, mock_design_system, mock_pattern_library):
+async def ux_designer(mock_agent, mock_event_system, mock_team_config, mock_github_config, mock_design_system, mock_pattern_library):
     """Create UX designer with mocked dependencies."""
     with patch('cahoots_core.models.team_config.TeamConfig.from_env', return_value=mock_team_config):
         with patch.dict(os.environ, {"DESIGNER_ID": "test-designer"}):
-            designer = UXDesigner(event_system=mock_event_system, github_config=mock_github_config)
+            designer = UXDesigner(
+                event_system=mock_event_system,
+                github_config=mock_github_config,
+                start_listening=False  # Don't auto-start event system in tests
+            )
             # Set up mock agent
             designer.agent = mock_agent
             designer.design_system = mock_design_system
             designer.pattern_library = mock_pattern_library
+            
+            # Initialize async components
+            await designer.start()
             return designer
 
 @pytest.fixture
@@ -107,6 +114,7 @@ def sample_task():
 @pytest.mark.asyncio
 async def test_generate_design_success(ux_designer, sample_task):
     """Test successful design generation."""
+    designer = await ux_designer
     expected_design = {
         "components": [
             {
@@ -137,9 +145,9 @@ async def test_generate_design_success(ux_designer, sample_task):
             "typography": {"font-family": "Inter"}
         }
     }
-    ux_designer.agent.generate_response.return_value = json.dumps(expected_design)
-    Any
-    design: Dict[str, Any] = await ux_designer.generate_design(sample_task)
+    designer.agent.generate_response.return_value = json.dumps(expected_design)
+    
+    design: Dict[str, Any] = await designer.generate_design(sample_task)
     
     assert design.get("components")[0].get("type") == "form"
     assert len(design.get("components")[0].get("fields")) == 2
@@ -147,14 +155,16 @@ async def test_generate_design_success(ux_designer, sample_task):
 @pytest.mark.asyncio
 async def test_generate_design_invalid_json(ux_designer, sample_task):
     """Test handling of invalid JSON response."""
-    ux_designer.agent.generate_response.return_value = "invalid json"
+    designer = await ux_designer
+    designer.agent.generate_response.return_value = "invalid json"
     
     with pytest.raises(ValueError, match="Failed to parse design"):
-        await ux_designer.generate_design(sample_task)
+        await designer.generate_design(sample_task)
 
 @pytest.mark.asyncio
 async def test_validate_accessibility(ux_designer):
     """Test accessibility validation."""
+    designer = await ux_designer
     design = {
         "components": [
             {
@@ -175,9 +185,9 @@ async def test_validate_accessibility(ux_designer):
             }
         ]
     }
-    ux_designer.agent.generate_response.return_value = json.dumps(expected_validation)
+    designer.agent.generate_response.return_value = json.dumps(expected_validation)
     
-    validation = await ux_designer.validate_accessibility(design)
+    validation = await designer.validate_accessibility(design)
     
     assert validation.get("valid")
     assert len(validation.get("warnings")) > 0
@@ -185,6 +195,7 @@ async def test_validate_accessibility(ux_designer):
 @pytest.mark.asyncio
 async def test_generate_component_variants(ux_designer):
     """Test component variant generation."""
+    designer = await ux_designer
     component = {
         "type": "button",
         "label": "Submit"
@@ -205,9 +216,9 @@ async def test_generate_component_variants(ux_designer):
             }
         ]
     }
-    ux_designer.agent.generate_response.return_value = json.dumps(expected_variants)
+    designer.agent.generate_response.return_value = json.dumps(expected_variants)
     
-    variants = await ux_designer.generate_component_variants(component)
+    variants = await designer.generate_component_variants(component)
     
     assert len(variants.get("variants")) == 3
     assert all("styles" in v for v in variants.get("variants"))
@@ -215,6 +226,7 @@ async def test_generate_component_variants(ux_designer):
 @pytest.mark.asyncio
 async def test_apply_design_system(ux_designer):
     """Test design system application."""
+    designer = await ux_designer
     design = {
         "components": [
             {
@@ -227,10 +239,10 @@ async def test_apply_design_system(ux_designer):
         "colors": {"primary": "#007AFF"},
         "typography": {"font-family": "Inter"}
     }
-    ux_designer.design_system.get_color_scheme.return_value = system_styles["colors"]
-    ux_designer.design_system.get_typography.return_value = system_styles["typography"]
+    designer.design_system.get_color_scheme.return_value = system_styles["colors"]
+    designer.design_system.get_typography.return_value = system_styles["typography"]
     
-    styled_design = await ux_designer.apply_design_system(design)
+    styled_design = await designer.apply_design_system(design)
     
     assert "styles" in styled_design
     assert styled_design.get("styles").get("colors") == system_styles.get("colors")
@@ -239,6 +251,7 @@ async def test_apply_design_system(ux_designer):
 @pytest.mark.asyncio
 async def test_generate_responsive_layout(ux_designer):
     """Test responsive layout generation."""
+    designer = await ux_designer
     components = [
         {"type": "header", "content": "Login"},
         {"type": "form", "fields": []}
@@ -261,17 +274,19 @@ async def test_generate_responsive_layout(ux_designer):
             ]
         }
     }
-    ux_designer.agent.generate_response.return_value = json.dumps(expected_layout)
+    designer.agent.generate_response.return_value = json.dumps(expected_layout)
     
-    layout: Dict[str, Any] = await ux_designer.generate_responsive_layout(components)
+    layout = await designer.generate_responsive_layout(components)
     
     assert "desktop" in layout
     assert "mobile" in layout
-    assert all("grid" in layout[device] for device in ["desktop", "mobile"])
+    assert len(layout["desktop"]["components"]) == 2
+    assert len(layout["mobile"]["components"]) == 2
 
 @pytest.mark.asyncio
 async def test_generate_interaction_states(ux_designer):
     """Test interaction state generation."""
+    designer = await ux_designer
     component = {
         "type": "button",
         "label": "Submit"
@@ -292,9 +307,9 @@ async def test_generate_interaction_states(ux_designer):
             }
         ]
     }
-    ux_designer.agent.generate_response.return_value = json.dumps(expected_states)
+    designer.agent.generate_response.return_value = json.dumps(expected_states)
     
-    states: Dict[str, Any] = await ux_designer.generate_interaction_states(component)
+    states = await designer.generate_interaction_states(component)
     
-    assert len(states.get("states")) == 3
-    assert all("styles" in state for state in states.get("states")) 
+    assert len(states["states"]) == 3
+    assert all("styles" in state for state in states["states"]) 

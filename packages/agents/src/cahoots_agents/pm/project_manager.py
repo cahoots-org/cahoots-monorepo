@@ -241,6 +241,7 @@ class ProjectManager(BaseAgent):
                 description=project_data["description"]
             )
             self.board_id = board.get("id")
+            board_url = board.get("url")  # Get board URL from Trello response
 
             # Create backlog list
             backlog = await self.task_management.create_list(
@@ -249,10 +250,28 @@ class ProjectManager(BaseAgent):
             )
             self.list_id = backlog.get("id")
 
-            return {
-                "status": "success",
+            # Get GitHub repository URL
+            repo_url = await self.github_service.get_repository_url(project_data["name"])
+
+            # Prepare project resources information
+            project_resources = {
+                "name": project_data["name"],
+                "description": project_data["description"],
+                "task_board_url": board_url,
+                "repository_url": repo_url,
                 "board_id": self.board_id,
                 "list_id": self.list_id
+            }
+
+            # Notify about project creation and resources
+            await self.event_system.publish("project_resources_ready", {
+                "project_id": project_data.get("id"),
+                "resources": project_resources
+            })
+
+            return {
+                "status": "success",
+                **project_resources
             }
         except Exception as e:
             self.logger.error(f"Error creating project: {str(e)}")

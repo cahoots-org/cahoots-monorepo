@@ -16,7 +16,7 @@ spec:
       - name: master
         image: cahoots-master:latest
         imagePullPolicy: Never
-        command: ["python", "-m", "src.api.main"]
+        command: ["python", "-m", "service.src.cahoots_service.api.main"]
         ports:
         - containerPort: 8000
         envFrom:

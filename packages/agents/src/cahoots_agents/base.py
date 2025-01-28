@@ -1,7 +1,7 @@
 """Base agent implementation."""
 from collections.abc import AsyncIterator
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Callable, Union
 
 from cahoots_core.ai import AIProvider, AIProviderFactory
 from cahoots_events.bus import EventSystem
@@ -42,6 +42,30 @@ class BaseAgent:
         agent_config = config.get("agents", {}).get(agent_type, {})
         self.model = agent_config.get("model") or ai_config.get("models", {}).get("default")
         self.temperature = agent_config.get("temperature") or ai_config.get("settings", {}).get("temperature", 0.7)
+        
+        # Store event subscriptions
+        self.event_subscriptions = agent_config.get("event_subscriptions", {})
+        
+    async def setup_events(self) -> None:
+        """Set up event subscriptions from config."""
+        if not self.event_system:
+            return
+
+        await self.event_system.connect()
+        
+        # Subscribe to configured events
+        for event_type, handler_name in self.event_subscriptions.items():
+            handler = getattr(self, handler_name, None)
+            if handler and callable(handler):
+                await self.event_system.subscribe(event_type, handler)
+                self.logger.info(f"Subscribed to {event_type} with handler {handler_name}")
+            else:
+                self.logger.warning(f"Handler {handler_name} not found for event {event_type}")
+                
+    async def start(self) -> None:
+        """Start the agent."""
+        await self.setup_events()
+        self.logger.info(f"Agent {self.agent_type} started successfully")
         
     async def generate_response(
         self,

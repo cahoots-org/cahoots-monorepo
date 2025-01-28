@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Your Project Resources</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .resource-link {
+            display: block;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            margin: 10px 0;
+            text-decoration: none;
+            color: #0070f3;
+        }
+        .resource-link:hover {
+            background-color: #e5e5e5;
+        }
+        .description {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 0.9em;
+            color: #666;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Your Project Resources</h1>
+    </div>
+
+    <p>Your project <strong>{{ project_name }}</strong> has been successfully created!</p>
+
+    <div class="description">
+        <h3>Project Description:</h3>
+        <p>{{ project_description }}</p>
+    </div>
+
+    <h3>Important Links:</h3>
+    
+    <a href="{{ task_board_url }}" class="resource-link">
+        📋 View Task Board
+        <small style="display: block; color: #666;">Track project progress and manage tasks</small>
+    </a>
+
+    <a href="{{ repository_url }}" class="resource-link">
+        💻 View GitHub Repository
+        <small style="display: block; color: #666;">Access project code and contribute</small>
+    </a>
+
+    <div class="footer">
+        <p>You can always find these links in your project dashboard.</p>
+        <p>Happy coding! 🚀</p>
+        <p>- The Cahoots AI Dev Team</p>
+    </div>
+</body>
+</html> 

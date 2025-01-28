@@ -1,5 +1,5 @@
 """Email service for user communications."""
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import EmailStr
 from jinja2 import Environment, PackageLoader, select_autoescape
 
@@ -85,6 +85,35 @@ class EmailService:
         
         message = MessageSchema(
             subject="Welcome to Cahoots!",
+            recipients=[email],
+            body=html,
+            subtype="html"
+        )
+        
+        await self.fastmail.send_message(message)
+    
+    async def send_project_resources_email(
+        self,
+        email: EmailStr,
+        project_data: Dict[str, Any]
+    ):
+        """Send email with project resource links.
+        
+        Args:
+            email: User's email address
+            project_data: Project data including resource URLs
+        """
+        template = self.templates.get_template('project_resources.html')
+        
+        html = template.render(
+            project_name=project_data["name"],
+            project_description=project_data["description"],
+            task_board_url=project_data["task_board_url"],
+            repository_url=project_data["repository_url"]
+        )
+        
+        message = MessageSchema(
+            subject=f"Your Project Resources: {project_data['name']}",
             recipients=[email],
             body=html,
             subtype="html"

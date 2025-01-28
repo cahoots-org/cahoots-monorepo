@@ -85,6 +85,7 @@ class UXDesigner(BaseAgent):
 
         # Store start_listening preference
         self._start_listening = start_listening
+        self._initialized = False  # Track initialization state
 
         # Initialize GitHub service
         self.github_service = github_service or GitHubService(github_config)
@@ -108,6 +109,33 @@ class UXDesigner(BaseAgent):
         self.designer_id = self.designer_id.replace("-", "_")  # Normalize to underscore
         self.uxdesigner_id = self.designer_id  # Add this for test compatibility
         self.logger = Logger(self.__class__.__name__)
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        if not self._initialized and self._start_listening:
+            await self.setup_events()
+            self._initialized = True
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        pass
+
+    def __await__(self):
+        """Make the class awaitable."""
+        async def _async_init():
+            if not self._initialized and self._start_listening:
+                await self.setup_events()
+                self._initialized = True
+            return self
+        return _async_init().__await__()
+
+    async def start(self) -> None:
+        """Start the UX designer agent."""
+        if not self._initialized and self._start_listening:
+            await self.setup_events()
+            self._initialized = True
+        self.logger.info("UX Designer started successfully")
 
     async def setup_events(self):
         """Initialize event system and subscribe to channels"""
