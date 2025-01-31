@@ -1,7 +1,6 @@
 # Version control
 .git
 .gitignore
-.gitattributes
 
 # Python
 __pycache__/
@@ -25,49 +24,46 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
-ENV/
-env/
+# Virtual environments
 .env
 .venv
+env/
+venv/
+ENV/
 
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-.project
-.pydevproject
-.settings
 
 # Testing
-.tox/
 .coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
 htmlcov/
+.tox/
+.pytest_cache/
 
 # Logs
 *.log
-logs/
 
 # Local development
-.DS_Store
-*.sqlite3
-workspace/
-.cursorrules
+docker-compose.override.yml
+.env.local
+.env.*.local
+
+# Build artifacts
+node_modules/
+*.pyo
+*.pyd
+.Python
+*.so
 
 # Documentation
-docs/_build/
-site/
+docs/
+*.md
+!README.md
 
-# Docker
-Dockerfile
-.dockerignore
-docker-compose*.yml 
+# Temporary files
+*.tmp
+*.temp
+.DS_Store 

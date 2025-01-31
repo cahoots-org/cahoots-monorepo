@@ -100,7 +100,7 @@ metadata:
   name: developer
   namespace: cahoots
 spec:
-  replicas: 0  # Scaled by HPA
+  replicas: 1  # Set minimum replicas for HPA
   selector:
     matchLabels:
       app: developer
@@ -134,15 +134,15 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: developer
-  minReplicas: 0
-  maxReplicas: 10
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70
+        averageUtilization: 80
   - type: Resource
     resource:
       name: memory
@@ -176,7 +176,7 @@ metadata:
   name: ux-designer
   namespace: cahoots
 spec:
-  replicas: 0  # Scaled by HPA
+  replicas: 1  # Set minimum replicas for HPA
   selector:
     matchLabels:
       app: ux-designer
@@ -210,15 +210,15 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: ux-designer
-  minReplicas: 0
-  maxReplicas: 5
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70
+        averageUtilization: 80
   - type: Resource
     resource:
       name: memory
@@ -252,7 +252,7 @@ metadata:
   name: qa-tester
   namespace: cahoots
 spec:
-  replicas: 0  # Scaled by HPA
+  replicas: 1  # Set minimum replicas for HPA
   selector:
     matchLabels:
       app: qa-tester
@@ -286,15 +286,15 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: qa-tester
-  minReplicas: 0
-  maxReplicas: 5
+  minReplicas: 1
+  maxReplicas: 3
   metrics:
   - type: Resource
     resource:
       name: cpu
       target:
         type: Utilization
-        averageUtilization: 70
+        averageUtilization: 80
   - type: Resource
     resource:
       name: memory

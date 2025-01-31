@@ -1,0 +1,12 @@
+[worker.oci]
+  max-parallelism = 4
+
+[worker.containerd]
+  gc = true
+  gc-keepstorage = 20000
+
+[registry."docker.io"]
+  mirrors = ["mirror.gcr.io"]
+
+[registry."ghcr.io"]
+  mirrors = ["mirror.gcr.io"]

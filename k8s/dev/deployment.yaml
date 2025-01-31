@@ -1,0 +1,177 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: developer
+  namespace: cahoots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: developer
+  template:
+    metadata:
+      labels:
+        app: developer
+    spec:
+      containers:
+      - name: developer
+        image: cahoots-developer:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: CONFIG_PATH
+          value: "/app/config"
+        - name: LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: source-code
+          mountPath: /app/packages
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+      volumes:
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tester
+  namespace: cahoots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tester
+  template:
+    metadata:
+      labels:
+        app: tester
+    spec:
+      containers:
+      - name: tester
+        image: cahoots-tester:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: CONFIG_PATH
+          value: "/app/config"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ux-designer
+  namespace: cahoots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ux-designer
+  template:
+    metadata:
+      labels:
+        app: ux-designer
+    spec:
+      containers:
+      - name: ux-designer
+        image: cahoots-ux-designer:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: CONFIG_PATH
+          value: "/app/config"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-manager
+  namespace: cahoots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: project-manager
+  template:
+    metadata:
+      labels:
+        app: project-manager
+    spec:
+      containers:
+      - name: project-manager
+        image: cahoots-project-manager:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: CONFIG_PATH
+          value: "/app/config"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: context-manager
+  namespace: cahoots
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: context-manager
+  template:
+    metadata:
+      labels:
+        app: context-manager
+    spec:
+      containers:
+      - name: context-manager
+        image: cahoots-context-manager:latest
+        imagePullPolicy: Never
+        env:
+        - name: REDIS_HOST
+          value: "redis"
+        - name: CONFIG_PATH
+          value: "/app/config"
+        - name: LOG_LEVEL
+          value: "INFO"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m" 

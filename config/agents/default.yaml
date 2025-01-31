@@ -1,0 +1,26 @@
+# Default Agent Configuration
+event_subscriptions:
+  # System events that all agents should handle
+  system_alert: handle_system_alert
+  health_check: handle_health_check
+  config_update: handle_config_update
+  metrics_request: handle_metrics_request
+
+# Default AI configuration
+ai:
+  provider: openai
+  models:
+    default: gpt-3.5-turbo
+    fallback: gpt-3.5-turbo-16k
+    embeddings: text-embedding-3-small
+  settings:
+    temperature: 0.7
+    max_tokens: 2048
+
+# Default agent settings
+settings:
+  log_level: INFO
+  metrics_enabled: true
+  health_check_interval: 60
+  retry_attempts: 3
+  timeout: 30

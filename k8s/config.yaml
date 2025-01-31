@@ -65,22 +65,11 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: cahoots-secrets
+  namespace: cahoots
 type: Opaque
-stringData:
-  secrets.yaml: |
-    # Redis Secrets
-    redis:
-      password: ${REDIS_PASSWORD}
-
-    # Authentication Secrets
-    auth:
-      secret_key: ${JWT_SECRET_KEY}
-
-    # External Services
-    external:
-      github_api_key: ${GITHUB_API_KEY}
-      trello_api_key: ${TRELLO_API_KEY}
-      trello_api_secret: ${TRELLO_API_SECRET}
+data:
+  GITHUB_TOKEN: Z2hwX3h4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA==  # Replace with your base64 encoded token
+  OPENAI_API_KEY: c2stX3h4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eA==  # Replace with your base64 encoded key
 
 ---
 apiVersion: v1

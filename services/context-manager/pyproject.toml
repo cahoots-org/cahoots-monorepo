@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cahoots-context-manager"
+version = "0.1.0"
+description = "Context management service for Cahoots"
+requires-python = ">=3.11"
+dependencies = [
+    "cahoots-core",
+    "cahoots-events",
+    "cahoots-context",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "sqlalchemy",
+    "alembic",
+    "psycopg2-binary",
+    "redis",
+    "openai",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "httpx",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=src --cov-report=term-missing"
+asyncio_mode = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cahoots_context_manager"] 
