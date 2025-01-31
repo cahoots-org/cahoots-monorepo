@@ -17,16 +17,17 @@ fi
 echo "Creating namespace..."
 kubectl create namespace cahoots --dry-run=client -o yaml | kubectl apply -f -
 
+# Build base image first
+echo "Building base image..."
+docker build -t cahoots-base:latest -f docker/base.Dockerfile .
+
 # Build Docker images
 echo "Building Docker images..."
 services=("master" "developer" "project-manager" "tester" "ux-designer" "context-manager")
 for service in "${services[@]}"; do
-    if [ -f "packages/${service}/Dockerfile" ]; then
-        echo "Building ${service} from packages/${service}/Dockerfile..."
-        docker build -t "cahoots-${service}:latest" -f "packages/${service}/Dockerfile" .
-    elif [ -f "docker/${service//-/_}/Dockerfile" ]; then
-        echo "Building ${service} from docker/${service//-/_}/Dockerfile..."
-        docker build -t "cahoots-${service}:latest" -f "docker/${service//-/_}/Dockerfile" .
+    if [ -f "docker/${service}/Dockerfile" ]; then
+        echo "Building ${service} from docker/${service}/Dockerfile..."
+        docker build -t "cahoots-${service}:latest" -f "docker/${service}/Dockerfile" .
     else
         echo "Warning: No Dockerfile found for ${service}"
         continue

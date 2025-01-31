@@ -1,5 +1,0 @@
-bucket         = "cahoots-terraform-state-prod"
-key            = "production/terraform.tfstate"
-region         = "us-west-2"
-dynamodb_table = "cahoots-terraform-locks-prod"
-encrypt        = true 

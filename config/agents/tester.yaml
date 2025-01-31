@@ -1,0 +1,65 @@
+# Tester Agent Configuration
+name: tester
+description: Tester agent for quality assurance and testing
+role: tester
+version: 0.1.0
+
+event_subscriptions:
+  # System events
+  system_alert: handle_system_alert
+  health_check: handle_health_check
+  config_update: handle_config_update
+  metrics_request: handle_metrics_request
+  # Testing specific events
+  test_requested: handle_test_request
+  coverage_report: handle_coverage_report
+  bug_reported: handle_bug_report
+  test_failed: handle_test_failure
+
+# AI configuration
+ai:
+  provider: openai
+  models:
+    default: gpt-4
+    fallback: gpt-3.5-turbo
+    embeddings: text-embedding-3-small
+  settings:
+    temperature: 0.7
+    max_tokens: 4096
+
+# Agent settings
+settings:
+  log_level: INFO
+  metrics_enabled: true
+  health_check_interval: 30
+  retry_attempts: 3
+  timeout: 60
+  test_framework: pytest
+  coverage_threshold: 80
+  lint_on_test: true
+
+communication:
+  event_bus:
+    host: localhost
+    port: 5672
+    channels:
+      - testing
+      - quality
+      - bugs
+
+capabilities:
+  - test_generation
+  - test_execution
+  - bug_analysis
+  - quality_assurance
+
+security:
+  requires_auth: true
+  allowed_roles:
+    - admin
+    - tester
+
+resources:
+  memory_limit: 1024Mi
+  cpu_limit: 1.0
+  storage_limit: 1Gi 

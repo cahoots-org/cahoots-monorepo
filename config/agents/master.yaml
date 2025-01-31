@@ -1,0 +1,53 @@
+name: master
+description: Master agent for coordinating other agents
+role: master
+version: 0.1.0
+
+event_subscriptions:
+  agent_status: handle_agent_status
+  task_created: handle_task_creation
+  task_completed: handle_task_completion
+  system_alert: handle_system_alert
+
+ai:
+  provider: openai
+  models:
+    default: gpt-4
+    fallback: gpt-3.5-turbo
+    embeddings: text-embedding-3-small
+  settings:
+    temperature: 0.7
+    max_tokens: 4096
+
+settings:
+  log_level: INFO
+  metrics_enabled: true
+  health_check_interval: 30
+  retry_attempts: 3
+  timeout: 60
+
+communication:
+  event_bus:
+    host: localhost
+    port: 5672
+    channels:
+      - master
+      - system
+      - coordination
+
+capabilities:
+  - task_distribution
+  - agent_coordination
+  - system_monitoring
+  - resource_management
+
+security:
+  requires_auth: true
+  allowed_roles:
+    - admin
+    - master
+
+resources:
+  memory_limit: 2048Mi
+  cpu_limit: 2.0
+  storage_limit: 2Gi 

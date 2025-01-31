@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1.4
+
+ARG BASE_IMAGE=cahoots-base:latest
+FROM ${BASE_IMAGE} as runtime
+
+# Set agent-specific environment variables
+ENV AGENT_NAME="{{agent_name}}" \
+    AGENT_DESCRIPTION="{{agent_description}}" \
+    AGENT_TYPE="{{agent_type}}"
+
+# Create config directory
+RUN mkdir -p /app/config
+
+# Default command
+CMD ["python", "-m", "cahoots_agents.services.agent_service"] 

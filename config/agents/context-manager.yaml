@@ -1,0 +1,53 @@
+name: context-manager
+description: Context manager agent for maintaining project context and knowledge
+role: context-manager
+version: 0.1.0
+
+event_subscriptions:
+  context_update: handle_context_update
+  knowledge_query: handle_knowledge_query
+  document_added: handle_document_addition
+  context_query: handle_context_query
+
+ai:
+  provider: openai
+  models:
+    default: gpt-4
+    fallback: gpt-3.5-turbo
+    embeddings: text-embedding-3-small
+  settings:
+    temperature: 0.7
+    max_tokens: 4096
+
+settings:
+  log_level: INFO
+  metrics_enabled: true
+  health_check_interval: 30
+  retry_attempts: 3
+  timeout: 60
+
+communication:
+  event_bus:
+    host: localhost
+    port: 5672
+    channels:
+      - context
+      - knowledge
+      - documentation
+
+capabilities:
+  - context_management
+  - knowledge_base_maintenance
+  - document_processing
+  - semantic_search
+
+security:
+  requires_auth: true
+  allowed_roles:
+    - admin
+    - context-manager
+
+resources:
+  memory_limit: 2048Mi
+  cpu_limit: 1.0
+  storage_limit: 5Gi 

@@ -16,7 +16,7 @@ spec:
       - name: master
         image: cahoots-master:latest
         imagePullPolicy: Never
-        command: ["python", "-m", "service.src.cahoots_service.api.main"]
+        command: ["python", "-m", "packages.agents.src.cahoots_agents.factory"]
         ports:
         - containerPort: 8000
         envFrom:
@@ -25,6 +25,8 @@ spec:
         - secretRef:
             name: cahoots-secrets
         env:
+        - name: AGENT_TYPE
+          value: master
         - name: CONFIG_PATH
           value: /app/config/default.yaml
         resources:
@@ -41,6 +43,8 @@ spec:
         - name: default-config
           mountPath: /app/config
           readOnly: true
+        - name: source-code
+          mountPath: /app/packages
       volumes:
       - name: health-check
         configMap:
@@ -50,6 +54,10 @@ spec:
         configMap:
           name: cahoots-default-config
           defaultMode: 0644
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -69,6 +77,7 @@ spec:
       - name: project-manager
         image: cahoots-project-manager:latest
         imagePullPolicy: Never
+        command: ["python", "-m", "packages.agents.src.cahoots_agents.factory"]
         ports:
         - containerPort: 8000
         envFrom:
@@ -95,6 +104,8 @@ spec:
         - name: default-config
           mountPath: /app/config
           readOnly: true
+        - name: source-code
+          mountPath: /app/packages
       volumes:
       - name: health-check
         configMap:
@@ -104,6 +115,10 @@ spec:
         configMap:
           name: cahoots-default-config
           defaultMode: 0644
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -123,6 +138,7 @@ spec:
       - name: developer
         image: cahoots-developer:latest
         imagePullPolicy: Never
+        command: ["python", "-m", "packages.agents.src.cahoots_agents.factory"]
         ports:
         - containerPort: 8000
         envFrom:
@@ -149,6 +165,8 @@ spec:
         - name: default-config
           mountPath: /app/config
           readOnly: true
+        - name: source-code
+          mountPath: /app/packages
       volumes:
       - name: health-check
         configMap:
@@ -158,6 +176,10 @@ spec:
         configMap:
           name: cahoots-default-config
           defaultMode: 0644
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -177,6 +199,7 @@ spec:
       - name: ux-designer
         image: cahoots-ux-designer:latest
         imagePullPolicy: Never
+        command: ["python", "-m", "packages.agents.src.cahoots_agents.factory"]
         ports:
         - containerPort: 8000
         envFrom:
@@ -186,7 +209,7 @@ spec:
             name: cahoots-secrets
         env:
         - name: AGENT_TYPE
-          value: ux-designer
+          value: ux_designer
         - name: CONFIG_PATH
           value: /app/config/default.yaml
         resources:
@@ -203,6 +226,8 @@ spec:
         - name: default-config
           mountPath: /app/config
           readOnly: true
+        - name: source-code
+          mountPath: /app/packages
       volumes:
       - name: health-check
         configMap:
@@ -212,6 +237,10 @@ spec:
         configMap:
           name: cahoots-default-config
           defaultMode: 0644
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -231,6 +260,7 @@ spec:
       - name: tester
         image: cahoots-tester:latest
         imagePullPolicy: Never
+        command: ["python", "-m", "packages.agents.src.cahoots_agents.factory"]
         ports:
         - containerPort: 8000
         envFrom:
@@ -257,6 +287,8 @@ spec:
         - name: default-config
           mountPath: /app/config
           readOnly: true
+        - name: source-code
+          mountPath: /app/packages
       volumes:
       - name: health-check
         configMap:
@@ -265,4 +297,69 @@ spec:
       - name: default-config
         configMap:
           name: cahoots-default-config
-          defaultMode: 0644 
+          defaultMode: 0644
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cahoots-context-manager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cahoots-context-manager
+  template:
+    metadata:
+      labels:
+        app: cahoots-context-manager
+    spec:
+      containers:
+      - name: context-manager
+        image: cahoots-context-manager:latest
+        imagePullPolicy: Never
+        command: ["python", "-m", "packages.agents.src.cahoots_agents.factory"]
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: cahoots-config
+        - secretRef:
+            name: cahoots-secrets
+        env:
+        - name: AGENT_TYPE
+          value: context_manager
+        - name: CONFIG_PATH
+          value: /app/config/default.yaml
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        volumeMounts:
+        - name: health-check
+          mountPath: /health
+          readOnly: true
+        - name: default-config
+          mountPath: /app/config
+          readOnly: true
+        - name: source-code
+          mountPath: /app/packages
+      volumes:
+      - name: health-check
+        configMap:
+          name: cahoots-health-check
+          defaultMode: 0755
+      - name: default-config
+        configMap:
+          name: cahoots-default-config
+          defaultMode: 0644
+      - name: source-code
+        hostPath:
+          path: /Users/robmiller/Projects/ai_dev_team/packages
+          type: Directory 

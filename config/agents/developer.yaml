@@ -33,4 +33,41 @@ settings:
   workspace_dir: /app/workspace
   auto_commit: true
   review_batch_size: 5
-  max_concurrent_tasks: 3 
+  max_concurrent_tasks: 3
+  log_level: INFO
+  health_check_interval: 30
+  retry_attempts: 3
+  timeout: 60
+  metrics_enabled: true
+
+name: developer
+description: Developer agent for handling development tasks
+role: developer
+version: 0.1.0
+
+communication:
+  event_bus:
+    host: localhost
+    port: 5672
+    channels:
+      - development
+      - code_review
+      - testing
+
+capabilities:
+  - code_generation
+  - code_review
+  - testing
+  - debugging
+  - documentation
+
+security:
+  requires_auth: true
+  allowed_roles:
+    - developer
+    - admin
+
+resources:
+  memory_limit: 1024Mi
+  cpu_limit: 1.0
+  storage_limit: 1Gi 

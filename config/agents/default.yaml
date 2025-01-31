@@ -23,4 +23,4 @@ settings:
   metrics_enabled: true
   health_check_interval: 60
   retry_attempts: 3
-  timeout: 30 
+  timeout: 30

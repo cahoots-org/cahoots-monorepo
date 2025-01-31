@@ -1,0 +1,277 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow.json
+name: Services Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'services/**'
+      - 'docker/**'
+      - 'k8s/**'
+      - '.github/workflows/services-pipeline.yml'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'packages/**'
+      - 'services/**'
+      - 'docker/**'
+      - 'k8s/**'
+      - '.github/workflows/services-pipeline.yml'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+
+env:
+  PYTHON_VERSION: "3.11"
+  AWS_REGION: us-west-2
+  ECR_REPOSITORY: cahoots
+  ECS_CLUSTER: cahoots-cluster
+  TERRAFORM_VERSION: 1.5.0
+  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        package: [core, events, context, service, agents]
+    services:
+      redis:
+        image: redis
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt', '**/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install pip==23.3.2
+          python -m pip install -r requirements.txt
+          
+          # Install all packages in editable mode
+          pip install -e "./packages/core[test]"
+          pip install -e "./packages/events[test]"
+          pip install -e "./packages/context[test]"
+          pip install -e "./packages/service[test]"
+          pip install -e "./packages/agents[test]"
+
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/packages/${{ matrix.package }}/src
+          ENV: test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          API_KEY: test-key
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd packages/${{ matrix.package }}
+          python -m pytest --cov=src --cov-report=xml --cov-report=term --cov-fail-under=10
+          cp .coverage ../coverage.${{ matrix.package }}
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-${{ matrix.package }}
+          path: |
+            packages/${{ matrix.package }}/coverage.xml
+            packages/coverage.${{ matrix.package }}
+
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install pip==23.3.2
+          python -m pip install black isort pylint
+
+      - name: Run Black
+        run: black --config pyproject.toml .
+
+      - name: Run isort
+        run: isort --settings-path pyproject.toml .
+
+      - name: Run Pylint
+        run: pylint --rcfile pyproject.toml packages/
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install bandit safety
+
+      - name: Run Bandit
+        run: bandit -r packages/ -c .bandit -lll
+
+      - name: Run Safety Check
+        run: safety check
+
+  build:
+    name: Build and Push Images
+    needs: [test, lint, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push base image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/base.Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/cahoots-base:latest
+            ${{ env.DOCKER_REGISTRY }}/cahoots-base:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push service images
+        run: |
+          # Build and push all services
+          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
+          for service in "${services[@]}"; do
+            docker build -t ${{ env.DOCKER_REGISTRY }}/cahoots-$service:latest \
+                        -t ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }} \
+                        -f docker/services/$service.Dockerfile .
+            docker push ${{ env.DOCKER_REGISTRY }}/cahoots-$service:latest
+            docker push ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }}
+          done
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.aidevteam.com
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+          chmod 600 kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Update image tags in Kubernetes manifests
+          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
+          for service in "${services[@]}"; do
+            # Replace image tag in deployment
+            sed -i "s|image: .*cahoots-$service:.*|image: ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
+            # Apply the updated manifest
+            kubectl apply -f k8s/base/$service.yaml
+            # Wait for rollout
+            kubectl rollout status deployment/$service -n default
+          done
+
+  deploy-production:
+    name: Deploy to Production
+    needs: [deploy-staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://api.aidevteam.com
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure kubectl
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
+          chmod 600 kubeconfig.yaml
+          export KUBECONFIG=kubeconfig.yaml
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Update image tags in Kubernetes manifests
+          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
+          for service in "${services[@]}"; do
+            # Replace image tag in deployment
+            sed -i "s|image: .*cahoots-$service:.*|image: ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
+            # Apply the updated manifest
+            kubectl apply -f k8s/base/$service.yaml
+            # Wait for rollout
+            kubectl rollout status deployment/$service -n default
+          done
+
+  coverage:
+    name: Coverage Report
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download coverage reports
+        uses: actions/download-artifact@v3
+        with:
+          path: coverage-reports
+
+      - name: Generate combined coverage
+        run: |
+          pip install coverage
+          cd coverage-reports
+          coverage combine */coverage.*
+          coverage report
+          coverage xml
