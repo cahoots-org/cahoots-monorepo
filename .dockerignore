@@ -1,69 +1,152 @@
 # Version control
 .git
 .gitignore
+.gitattributes
+.github/
+.gitlab/
+.gitmodules
 
 # Python
+venv/
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
 *.py[cod]
 *$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
+# Node/Web
+web-client/
+node_modules/
+npm-debug.log
+
+# Git
+.git/
+.gitignore
 
 # IDE
+.vscode/
+.idea/
+
+# Docker
+.docker/
+
+# Kubernetes
+k8s/
+
+# Documentation
+docs/
+
+# Cache
+*.log
+.cache/
+.pytest_cache/
+
+# Local development
+.env
+.env.local
+*.local
+
+# Virtual environments
+.env.*
+!.env.example
+
+# IDE and editors
 .idea/
 .vscode/
 *.swp
 *.swo
+*.sublime-*
+.project
+.settings
+.classpath
+.factorypath
+*.iml
+*.iws
+*.ipr
+.vs/
+*.code-workspace
+.history/
 
-# Testing
-.coverage
-htmlcov/
-.tox/
-.pytest_cache/
-
-# Logs
-*.log
-
-# Local development
-docker-compose.override.yml
-.env.local
-.env.*.local
+# Logs and databases
+*.log.*
+log/
+tmp/
+temp/
 
 # Build artifacts
-node_modules/
-*.pyo
-*.pyd
-.Python
-*.so
+.next/
+.nuxt/
+dist/
+build/
+*.tsbuildinfo
+.webpack/
+.rollup.cache/
+coverage/
+*.min.js
+*.min.css
+*.map
 
 # Documentation
-docs/
 *.md
 !README.md
+!CHANGELOG.md
+!LICENSE.md
+apidoc/
+swagger/
+typedoc/
 
 # Temporary files
 *.tmp
 *.temp
-.DS_Store 
+.DS_Store
+*~
+*.bak
+*.swp
+*.swo
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Cache directories
+.npm/
+.yarn/
+.pnp/
+.pnp.js
+.parcel-cache/
+.vuepress/dist
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
+.eslintcache
+.stylelintcache
+
+# Docker specific
+docker-compose*.yml
+!docker-compose.yml
+Dockerfile*
+.dockerignore
+*.dockerfile
+
+# Test files
+test/
+tests/
+__tests__/
+__mocks__/
+*.spec.*
+*.test.*
+
+# Dependencies
+package-lock.json
+yarn.lock
+poetry.lock
+Pipfile.lock
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+.github/
+jenkins/ 

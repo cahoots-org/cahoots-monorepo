@@ -5,6 +5,7 @@ import os
 from .base import AIProvider
 from .openai_provider import OpenAIProvider
 from .anthropic_provider import AnthropicProvider
+from .hybrid_provider import HybridProvider
 from .test_provider import TestProvider
 
 class AIProviderFactory:
@@ -13,6 +14,7 @@ class AIProviderFactory:
     _providers: Dict[str, Type[AIProvider]] = {
         "openai": OpenAIProvider,
         "anthropic": AnthropicProvider,
+        "hybrid": HybridProvider,
         "test": TestProvider,
         # Add more providers here as they're implemented
         # "local": LocalProvider,
@@ -29,7 +31,7 @@ class AIProviderFactory:
         """Create an AI provider instance.
         
         Args:
-            provider: Provider type ("openai", etc)
+            provider: Provider type ("openai", "hybrid", etc)
             api_key: Optional API key
             model: Optional default model
             **kwargs: Additional provider-specific args
@@ -52,6 +54,12 @@ class AIProviderFactory:
         if provider == "openai":
             return provider_cls(
                 api_key=api_key,
+                default_model=model,
+                **kwargs
+            )
+        elif provider == "hybrid":
+            return provider_cls(
+                mistral_api_key=api_key,  # Primary API key is for Mistral
                 default_model=model,
                 **kwargs
             )

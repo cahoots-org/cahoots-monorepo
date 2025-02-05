@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Default values
-REGISTRY=${REGISTRY:-"ghcr.io/your-org"}
+REGISTRY=${REGISTRY:-"ghcr.io/cahoots-org"}
 TAG=${TAG:-"latest"}
 BUILDKIT_PROGRESS=${BUILDKIT_PROGRESS:-"auto"}
 DOCKER_BUILDKIT=1
@@ -27,17 +27,16 @@ error() {
     exit 1
 }
 
-# Build base image first
-build_base() {
-    log "Building base image..."
-    docker build \
-        --build-arg BUILDKIT_PROGRESS=$BUILDKIT_PROGRESS \
-        --cache-from $REGISTRY/ai-dev-team-base:cache \
-        --cache-from $REGISTRY/ai-dev-team-base:$TAG \
-        -t $REGISTRY/ai-dev-team-base:$TAG \
-        -t $REGISTRY/ai-dev-team-base:cache \
-        -f docker/base/Dockerfile .
-}
+# Build base image
+echo "Building base image..."
+DOCKER_BUILDKIT=1 docker build \
+  --build-arg BUILDKIT_INLINE_CACHE=1 \
+  -f docker/base/Dockerfile \
+  --cache-from $REGISTRY/cahoots-monorepo-base:cache \
+  --cache-from $REGISTRY/cahoots-monorepo-base:$TAG \
+  -t $REGISTRY/cahoots-monorepo-base:$TAG \
+  -t $REGISTRY/cahoots-monorepo-base:cache \
+  .
 
 # Build agent image
 build_agent() {
@@ -49,14 +48,16 @@ build_agent() {
         python docker/scripts/generate_agent_dockerfile.py "$agent_name"
     fi
     
-    docker build \
-        --build-arg BUILDKIT_PROGRESS=$BUILDKIT_PROGRESS \
-        --build-arg BASE_IMAGE=$REGISTRY/ai-dev-team-base:$TAG \
-        --cache-from $REGISTRY/ai-dev-team-agent-${agent_name}:cache \
-        --cache-from $REGISTRY/ai-dev-team-agent-${agent_name}:$TAG \
-        -t $REGISTRY/ai-dev-team-agent-${agent_name}:$TAG \
-        -t $REGISTRY/ai-dev-team-agent-${agent_name}:cache \
-        -f docker/agents/${agent_name}.Dockerfile .
+    echo "Building agent image for ${agent_name}..."
+    DOCKER_BUILDKIT=1 docker build \
+      --build-arg BUILDKIT_INLINE_CACHE=1 \
+      -f docker/agents/${agent_name}.Dockerfile \
+      --build-arg BASE_IMAGE=$REGISTRY/cahoots-monorepo-base:$TAG \
+      --cache-from $REGISTRY/cahoots-monorepo-agent-${agent_name}:cache \
+      --cache-from $REGISTRY/cahoots-monorepo-agent-${agent_name}:$TAG \
+      -t $REGISTRY/cahoots-monorepo-agent-${agent_name}:$TAG \
+      -t $REGISTRY/cahoots-monorepo-agent-${agent_name}:cache \
+      .
 }
 
 # Main build process
@@ -65,9 +66,6 @@ main() {
     if [ ! -f "pyproject.toml" ]; then
         error "Must run from project root"
     fi
-    
-    # Build base image first
-    build_base
     
     # Build all agent images
     for config in config/agents/*.yaml; do
