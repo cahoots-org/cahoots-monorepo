@@ -15,8 +15,10 @@ from redis import Redis
 from fastapi import HTTPException
 
 from cahoots_core.exceptions import StorageError, ValidationError
-from cahoots_core.models.project import Project
+from cahoots_core.models.db_models import Project
 from cahoots_events.models import Event
+from cahoots_service.schemas.events import EventCreate, EventResponse
+from cahoots_service.api.dependencies import ServiceDeps
 
 logger = logging.getLogger(__name__)
 

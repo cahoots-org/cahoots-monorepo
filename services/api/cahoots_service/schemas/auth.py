@@ -18,12 +18,6 @@ class RefreshTokenRequest(BaseModel):
     """Refresh token request schema."""
     refresh_token: str
 
-class SocialAuthRequest(BaseModel):
-    """Social authentication request schema."""
-    token: str
-    provider_user_id: str
-    provider_data: Dict
-
 class PasswordChangeRequest(BaseModel):
     """Password change request schema."""
     current_password: str
@@ -44,4 +38,29 @@ class EmailVerificationRequest(BaseModel):
 
 class ResendVerificationRequest(BaseModel):
     """Resend verification request schema."""
-    user_id: str 
+    user_id: str
+
+class SocialUserData(BaseModel):
+    """Base social user data schema."""
+    id: str
+    email: EmailStr
+    name: str
+    picture: Optional[str] = None
+
+class GoogleUserData(SocialUserData):
+    """Google user data schema."""
+    locale: Optional[str] = None
+    verified_email: Optional[bool] = None
+
+class GithubUserData(SocialUserData):
+    """GitHub user data schema."""
+    login: str
+    avatar_url: Optional[str] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+
+class SocialLoginRequest(BaseModel):
+    """Social login request schema."""
+    provider: str
+    user_data: Dict
+    access_token: str  # The OAuth access token from the provider 

@@ -8,15 +8,14 @@ from decimal import Decimal
 from cahoots_core.exceptions.api import APIError
 from cahoots_core.exceptions.domain import DomainError
 from cahoots_core.exceptions.infrastructure import InfrastructureError
-from cahoots_core.models.db_models import Organization
-from cahoots_core.models.subscription import Subscription
-from cahoots_core.models.billing import Invoice, UsageRecord, SubscriptionTier
+from cahoots_core.models.db_models import Organization, Subscription, Invoice, UsageRecord
 from cahoots_core.models.billing import (
     BillingInfo,
     SubscriptionPlan,
     SubscriptionStatus,
     PaymentMethod,
-    PaymentStatus
+    PaymentStatus,
+    SubscriptionTier
 )
 from cahoots_core.utils.infrastructure.stripe.client import StripeClient
 from cahoots_service.utils.config import ServiceConfig

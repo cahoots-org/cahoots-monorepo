@@ -40,6 +40,72 @@ export REDIS_HOST=localhost
 export REDIS_PORT=6379
 ```
 
+## Database Migrations
+
+Cahoots uses a custom migration tool built on top of Alembic for managing database schema changes. The tool provides a CLI interface for common migration tasks.
+
+### Basic Usage
+
+1. **Create a new migration**:
+```bash
+# Auto-generate from models
+python -m cahoots_service.cli.migrate create -m "add user table"
+
+# Create empty migration
+python -m cahoots_service.cli.migrate create -m "custom migration" --no-autogenerate
+```
+
+2. **Check migration status**:
+```bash
+python -m cahoots_service.cli.migrate status
+```
+
+This shows:
+- Current revision
+- Available migrations
+- Pending migrations
+- Whether the database needs upgrading
+
+3. **Apply migrations**:
+```bash
+# Upgrade to latest
+python -m cahoots_service.cli.migrate upgrade
+
+# Upgrade to specific revision
+python -m cahoots_service.cli.migrate upgrade -t abc123
+```
+
+4. **Rollback migrations**:
+```bash
+# Rollback one migration
+python -m cahoots_service.cli.migrate downgrade -1
+
+# Rollback to specific revision
+python -m cahoots_service.cli.migrate downgrade abc123
+```
+
+5. **Verify database state**:
+```bash
+python -m cahoots_service.cli.migrate verify
+```
+
+### Development Workflow
+
+1. Make changes to your SQLAlchemy models
+2. Create a new migration to capture the changes
+3. Test the migration locally
+4. Commit both model changes and migration files
+5. When deploying, migrations run automatically during service startup
+
+### Best Practices
+
+- Always create migrations in a clean working directory
+- Test both upgrade and downgrade paths
+- Include meaningful descriptions in migration messages
+- Review auto-generated migrations for accuracy
+- Run migrations on a staging environment before production
+- Back up the database before applying migrations in production
+
 ## Testing
 
 Run the test suite:

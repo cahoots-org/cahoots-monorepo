@@ -8,15 +8,16 @@ from starlette.exceptions import HTTPException
 from cahoots_service.api.error_handlers import (
     http_exception_handler,
     validation_exception_handler,
-    service_error_handler
+    service_error_handler,
+    base_error_handler
 )
-from cahoots_service.api.auth import router as auth_router
-from cahoots_service.api.projects import router as projects_router
-from cahoots_service.api.billing import router as billing_router
-from cahoots_service.api.metrics import router as metrics_router
-from cahoots_service.api.health import router as health_router
+from cahoots_service.api.v1 import router as v1_router
 from cahoots_service.utils.config import get_settings
-from cahoots_core.exceptions import ServiceError
+from cahoots_service.core.exceptions import (
+    BaseError,
+    ServiceError
+)
+from cahoots_service.api.middleware.request_tracking import RequestTrackingMiddleware
 
 def create_app() -> FastAPI:
     """Create FastAPI application.
@@ -29,7 +30,10 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Cahoots Service",
         description="API for Cahoots service",
-        version="0.1.0"
+        version="1.0.0",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json"
     )
 
     # Configure CORS
@@ -40,18 +44,18 @@ def create_app() -> FastAPI:
         allow_methods=settings.cors_allow_methods,
         allow_headers=settings.cors_allow_headers,
     )
+    
+    # Add request tracking
+    app.add_middleware(RequestTrackingMiddleware)
 
     # Register error handlers
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
     app.add_exception_handler(ServiceError, service_error_handler)
+    app.add_exception_handler(BaseError, base_error_handler)
 
-    # Register routers
-    app.include_router(auth_router)
-    app.include_router(projects_router)
-    app.include_router(billing_router)
-    app.include_router(metrics_router)
-    app.include_router(health_router)
+    # Register v1 router
+    app.include_router(v1_router)
 
     return app
 

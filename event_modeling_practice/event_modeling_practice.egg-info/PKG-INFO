@@ -1,0 +1,7 @@
+Metadata-Version: 2.2
+Name: event_modeling_practice
+Version: 0.1
+Requires-Dist: behave>=1.2.6
+Requires-Dist: parse>=1.8.2
+Requires-Dist: parse-type>=0.4.2
+Dynamic: requires-dist

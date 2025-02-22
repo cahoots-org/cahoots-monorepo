@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List, Union
 import json
 import logging
 from datetime import datetime, timedelta
+import asyncio
 import redis.asyncio as redis
 from redis.asyncio.connection import ConnectionPool
 from redis.exceptions import RedisError
@@ -48,25 +49,32 @@ class RedisClient(BaseClient[RedisConfig]):
         """
         super().__init__(config)
         self._client: Optional[Redis] = None
+        self._connected = False
         
     @property
     def client(self) -> Redis:
         """Get Redis client instance."""
-        if not self._client:
-            raise ConnectionError("Redis client not initialized")
+        if not self._client or not self._connected:
+            raise ConnectionError("Redis client not initialized or not connected")
         return self._client
         
     @track_time(metric="redis_connect")
     async def connect(self) -> None:
         """Establish Redis connection."""
         try:
+            connection_kwargs = {
+                "encoding": self.config.encoding,
+                "decode_responses": True
+            }
+            
+            # Add SSL configuration if enabled
+            if self.config.ssl:
+                connection_kwargs["ssl_cert_reqs"] = None
+            
             if self.config.url:
                 self._client = redis_from_url(
                     self.config.url,
-                    encoding=self.config.encoding,
-                    decode_responses=True,
-                    ssl=self.config.ssl,
-                    socket_timeout=self.config.timeout
+                    **connection_kwargs
                 )
             else:
                 self._client = Redis(
@@ -74,10 +82,7 @@ class RedisClient(BaseClient[RedisConfig]):
                     port=self.config.port,
                     db=self.config.db,
                     password=self.config.password,
-                    encoding=self.config.encoding,
-                    decode_responses=True,
-                    ssl=self.config.ssl,
-                    socket_timeout=self.config.timeout
+                    **connection_kwargs
                 )
             
             # Verify connection
@@ -85,8 +90,10 @@ class RedisClient(BaseClient[RedisConfig]):
             self._connected = True
             
         except Exception as e:
-            self._handle_error(e, "connect")
-            
+            self._client = None
+            self._connected = False
+            raise ConnectionError(f"Failed to connect to Redis: {str(e)}")
+        
     async def disconnect(self) -> None:
         """Close Redis connection."""
         if self._client:
@@ -101,11 +108,20 @@ class RedisClient(BaseClient[RedisConfig]):
             if not self._client:
                 return False
                 
-            await self._client.ping()
-            return True
+            result = await self._client.ping()
+            return result == True
             
         except Exception as e:
-            self._handle_error(e, "verify_connection")
+            logger.error(f"Redis connection verification failed: {str(e)}")
+            return False
+            
+    async def ping(self) -> bool:
+        """Ping Redis server to verify connection.
+        
+        Returns:
+            True if connection is active, False otherwise
+        """
+        return await self.verify_connection()
             
     @track_time(metric="redis_get")
     async def get(self, key: str) -> Any:
@@ -338,30 +354,39 @@ class RedisClient(BaseClient[RedisConfig]):
 _redis_client: Optional[RedisClient] = None
 
 def get_redis_client(
-    host: str = "localhost",
-    port: int = 6379,
-    db: int = 0,
-    password: Optional[str] = None
-) -> RedisClient:
-    """Get or create the global Redis client instance.
+    url: Optional[str] = None,
+    max_retries: int = 3,
+    retry_interval: int = 1
+) -> "RedisClient":
+    """Get Redis client instance with retries.
     
     Args:
-        host: Redis host
-        port: Redis port
-        db: Redis database number
-        password: Optional Redis password
+        url: Redis URL
+        max_retries: Maximum number of connection attempts
+        retry_interval: Seconds between retries
         
     Returns:
-        RedisClient instance
+        Initialized Redis client
+        
+    Raises:
+        ConnectionError: If connection fails after retries
     """
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = RedisClient(
-            RedisConfig(
-            host=host,
-            port=port,
-            db=db,
-            password=password
-            )
-        )
-    return _redis_client 
+    config = RedisConfig(url=url)
+    client = RedisClient(config)
+    
+    async def initialize():
+        for attempt in range(max_retries):
+            try:
+                await client.connect()
+                return client
+            except Exception as e:
+                logger.error(f"Redis connection attempt {attempt + 1}/{max_retries} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(retry_interval)
+                else:
+                    raise ConnectionError(f"Could not connect to Redis: {str(e)}")
+    
+    try:
+        return asyncio.get_event_loop().run_until_complete(initialize())
+    except Exception as e:
+        raise ConnectionError(f"Could not connect to Redis: {str(e)}") 

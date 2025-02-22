@@ -1,0 +1,13 @@
+version: "2"
+web_addr: 0.0.0.0:4040
+log: stdout
+log_level: info
+tunnels:
+  web:
+    addr: http://web-client:3000
+    proto: http
+    hostname: test.cahoots.cc
+  api:
+    addr: http://master:8000
+    proto: http
+    hostname: api.test.cahoots.cc 

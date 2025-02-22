@@ -4,6 +4,7 @@ from uuid import UUID
 import logging
 from fastapi import HTTPException
 
+from cahoots_core.models.db_models import Team, TeamMember
 from cahoots_core.models.team_config import TeamConfig, ServiceRole, RoleConfig, ProjectLimits
 from cahoots_core.utils.infrastructure.k8s.client import KubernetesClient
 from cahoots_service.api.dependencies import ServiceDeps

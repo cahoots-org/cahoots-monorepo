@@ -1,10 +1,11 @@
 """Project management service."""
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 import logging
 from datetime import datetime
 
-from cahoots_core.models.project import Project, ProjectCreate, ProjectUpdate
+from cahoots_core.models.db_models import Project
+from cahoots_service.schemas.projects import ProjectCreate, ProjectUpdate
 from cahoots_core.utils.infrastructure.database.manager import DatabaseManager
 from cahoots_core.utils.infrastructure.k8s.client import KubernetesClient
 from cahoots_core.utils.infrastructure.redis.manager import RedisManager

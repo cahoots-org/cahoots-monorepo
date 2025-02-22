@@ -1,6 +1,6 @@
 """Authentication service."""
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any
 from uuid import UUID
 import secrets
 import os
@@ -13,35 +13,54 @@ from fastapi import HTTPException, status
 
 from cahoots_core.models.user import User
 from cahoots_core.models.auth import SocialAccount
-from cahoots_service.services.auth.providers import GoogleAuthProvider, GitHubAuthProvider
 from cahoots_service.services.auth.utils import hash_password, verify_password
 from cahoots_service.utils.security import SecurityManager
+from cahoots_service.utils.config import get_settings
+from cahoots_core.utils.config import SecurityConfig
+from cahoots_core.utils.infrastructure.redis.client import RedisClient, RedisConfig
 
 logger = logging.getLogger(__name__)
 
 class AuthService:
     """Service for handling authentication operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, security_manager: SecurityManager):
         """Initialize auth service.
         
         Args:
             db: Database session
+            security_manager: Security manager instance
         """
         self.db = db
-        self.secret_key = os.environ["SECRET_KEY"]
-        self.jwt_algorithm = os.environ.get("JWT_ALGORITHM", "HS256")
-        self.access_token_expire_minutes = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
-        self.refresh_token_expire_days = int(os.environ.get("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
-        self.google_auth = GoogleAuthProvider(
-            client_id=os.environ["GOOGLE_CLIENT_ID"],
-            client_secret=os.environ["GOOGLE_CLIENT_SECRET"]
-        )
-        self.github_auth = GitHubAuthProvider(
-            client_id=os.environ["GITHUB_CLIENT_ID"],
-            client_secret=os.environ["GITHUB_CLIENT_SECRET"]
-        )
-        self.security_manager = SecurityManager()
+        self._security_manager = security_manager
+        self.logger = logging.getLogger(__name__)
+        self.settings = get_settings()
+        
+        self.secret_key = self.settings.jwt_secret_key
+        self.jwt_algorithm = self.settings.jwt_algorithm
+        self.access_token_expire_minutes = self.settings.auth_token_expire_minutes
+        self.refresh_token_expire_days = 30  # Default to 30 days
+
+    async def initialize(self) -> None:
+        """Initialize auth service dependencies."""
+        try:
+            self.logger.info("Auth service initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize auth service: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to initialize auth service"
+            )
+
+    @property
+    def security_manager(self) -> SecurityManager:
+        """Get security manager instance."""
+        if not self._security_manager:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Auth service not initialized"
+            )
+        return self._security_manager
 
     async def authenticate_user(self, email: str, password: str) -> Tuple[User, str, str]:
         """Authenticate user with email and password.
@@ -144,13 +163,12 @@ class AuthService:
         """
         await self.security_manager.revoke_token(refresh_token)
 
-    async def authenticate_social(self, provider: str, code: str, state: Optional[str] = None) -> Tuple[User, str, str]:
-        """Authenticate user with social provider.
+    async def authenticate_social(self, provider: str, user_data: Dict[str, Any]) -> Tuple[User, str, str]:
+        """Authenticate user with social provider data.
         
         Args:
             provider: Social provider (google/github)
-            code: Authorization code
-            state: Optional state for CSRF protection
+            user_data: User data from social provider
             
         Returns:
             Tuple of (user, access_token, refresh_token)
@@ -159,28 +177,18 @@ class AuthService:
             HTTPException: If authentication fails
         """
         try:
-            if provider == "google":
-                user_info = await self.google_auth.get_user_info(code)
-            elif provider == "github":
-                user_info = await self.github_auth.get_user_info(code)
-            else:
+            # Verify we have required fields
+            if not user_data.get("id") or not user_data.get("email"):
+                logger.error(f"Missing required fields from {provider} data")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid provider"
-                )
-
-            # Verify we have an email
-            if not user_info.get("email"):
-                logger.error(f"No email provided by {provider} for user {user_info.get('id')}")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"No email provided by {provider}"
+                    detail=f"Missing required user data fields"
                 )
 
             # Find or create social account
             stmt = select(SocialAccount).where(
                 SocialAccount.provider == provider,
-                SocialAccount.provider_user_id == str(user_info["id"])
+                SocialAccount.provider_user_id == str(user_data["id"])
             )
             result = await self.db.execute(stmt)
             social_account = result.scalar_one_or_none()
@@ -190,14 +198,14 @@ class AuthService:
                 logger.info(f"Social login for existing user via {provider}: {user.email}")
             else:
                 # Create user if doesn't exist
-                stmt = select(User).where(User.email == user_info["email"])
+                stmt = select(User).where(User.email == user_data["email"])
                 result = await self.db.execute(stmt)
                 user = result.scalar_one_or_none()
 
                 if not user:
                     user = User(
-                        email=user_info["email"],
-                        full_name=user_info.get("name", ""),
+                        email=user_data["email"],
+                        full_name=user_data.get("name", ""),
                         is_verified=True  # Social users are pre-verified
                     )
                     self.db.add(user)
@@ -208,8 +216,8 @@ class AuthService:
                 social_account = SocialAccount(
                     user_id=user.id,
                     provider=provider,
-                    provider_user_id=str(user_info["id"]),
-                    provider_data=user_info
+                    provider_user_id=str(user_data["id"]),
+                    provider_data=user_data
                 )
                 self.db.add(social_account)
                 await self.db.commit()
@@ -219,15 +227,19 @@ class AuthService:
             access_token = self._create_access_token(user.id)
             refresh_token = await self._create_refresh_token(user.id)
 
+            # Update last login
+            user.last_login = datetime.utcnow()
+            await self.db.commit()
+
             return user, access_token, refresh_token
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Unexpected error during {provider} authentication: {str(e)}")
+            logger.error(f"Error in social authentication: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"{provider} authentication failed"
+                detail=f"Failed to handle social user: {str(e)}"
             )
 
     async def change_password(self, user: User, current_password: str, new_password: str):
@@ -448,4 +460,79 @@ class AuthService:
                 detail="User not found"
             )
 
-        return user 
+        return user
+
+    async def handle_social_user(self, provider: str, user_data: Dict[str, Any]) -> Tuple[User, str, str]:
+        """Handle social user authentication.
+        
+        Args:
+            provider: The social provider (e.g. 'google', 'github')
+            user_data: User data from social provider
+            
+        Returns:
+            Tuple of (user, access_token, refresh_token)
+            
+        Raises:
+            HTTPException: If user creation/update fails
+        """
+        try:
+            self.logger.info(f"[OAUTH_FLOW] Handling {provider} user")
+            
+            # Validate required fields
+            required_fields = ["email", "name"]
+            if not all(field in user_data for field in required_fields):
+                self.logger.error("[OAUTH_FLOW] Missing required fields in user data")
+                raise ValueError("Missing required user data fields")
+
+            # Check if user exists
+            self.logger.info(f"[OAUTH_FLOW] Looking up user by email: {user_data['email']}")
+            result = await self.db.execute(
+                select(User).where(User.email == user_data["email"])
+            )
+            user = result.scalar_one_or_none()
+
+            if not user:
+                self.logger.info("[OAUTH_FLOW] Creating new user")
+                
+                # Create default organization for new user
+                from cahoots_core.models.db_models import Organization
+                import secrets
+                
+                org = Organization(
+                    name=f"{user_data['name']}'s Organization",
+                    email=user_data["email"],
+                    api_key=f"org_{secrets.token_urlsafe(32)}",
+                    subscription_tier="free",
+                    subscription_status="active"
+                )
+                self.db.add(org)
+                await self.db.commit()
+                
+                # Create user with organization
+                user = User(
+                    email=user_data["email"],
+                    name=user_data["name"],
+                    picture=user_data.get("picture"),  # Make picture optional
+                    organization_id=org.id,  # Set organization ID
+                    is_verified=True  # Social users are pre-verified
+                )
+                self.db.add(user)
+                await self.db.commit()
+                await self.db.refresh(user)
+                self.logger.info(f"[OAUTH_FLOW] Created new user with ID: {user.id}")
+            else:
+                self.logger.info(f"[OAUTH_FLOW] Found existing user with ID: {user.id}")
+
+            # Create session tokens
+            self.logger.info("[OAUTH_FLOW] Creating session tokens")
+            access_token, refresh_token = await self.security_manager.create_session(str(user.id))
+            self.logger.info("[OAUTH_FLOW] Successfully created session tokens")
+
+            return user, access_token, refresh_token
+
+        except Exception as e:
+            self.logger.error(f"[OAUTH_FLOW] Error handling social user: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to handle social user: {str(e)}"
+            ) 

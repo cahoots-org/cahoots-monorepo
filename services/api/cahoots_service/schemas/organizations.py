@@ -70,4 +70,21 @@ class MemberResponse(BaseModel):
 
 class OrganizationWithMembers(OrganizationResponse):
     """Organization response with members."""
-    members: List[MemberResponse] 
+    members: List[MemberResponse]
+
+class TeamAssignment(BaseModel):
+    """Team assignment schema."""
+    team_id: UUID4
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TeamResponse(BaseModel):
+    """Team response schema."""
+    id: UUID4
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    links: Dict[str, str] = Field(default_factory=dict, description="HATEOAS links")
+
+    model_config = ConfigDict(from_attributes=True) 

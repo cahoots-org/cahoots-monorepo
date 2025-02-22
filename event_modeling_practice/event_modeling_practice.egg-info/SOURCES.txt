@@ -1,0 +1,9 @@
+setup.py
+event_modeling_practice.egg-info/PKG-INFO
+event_modeling_practice.egg-info/SOURCES.txt
+event_modeling_practice.egg-info/dependency_links.txt
+event_modeling_practice.egg-info/requires.txt
+event_modeling_practice.egg-info/top_level.txt
+sdlc/__init__.py
+tests/__init__.py
+tests/conftest.py

@@ -1,18 +1,20 @@
 """Security utilities."""
 from typing import Optional, Dict, Any, Tuple, List
 from datetime import datetime, timedelta
-from cahoots_core.models.api_key import APIKey
-from cahoots_core.utils.infrastructure import RateLimiter, get_redis_client
 import jwt
 from fastapi import HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import secrets
 from enum import Enum
 from dataclasses import dataclass
 import logging
+import asyncio
+from redis.asyncio import Redis
 
-from cahoots_core.utils.config import SecurityConfig
+from libs.core.cahoots_core.models.api_key import APIKey
+from libs.core.cahoots_core.utils.config.base import SecurityConfig
+from libs.core.cahoots_core.utils.infrastructure.redis.client import RedisClient, RedisConfig
+from libs.core.cahoots_core.utils.infrastructure.redis.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 
@@ -498,18 +500,159 @@ class TokenManager:
             return False
 
 class SecurityManager:
-    """Security manager for handling authentication and authorization."""
+    """Manager for security operations."""
 
-    def __init__(self, db: AsyncSession, config: SecurityConfig):
+    def __init__(self, config: SecurityConfig):
         """Initialize security manager.
         
         Args:
-            db: Database session
             config: Security configuration
         """
-        self.db = db
         self.config = config
-        self.redis = get_redis_client()
+        self.logger = logging.getLogger(__name__)
+        self._redis_client = None
+        self._initialized = False
+        self.token_manager = None
+
+    async def initialize(self) -> None:
+        """Initialize security services."""
+        if self._initialized:
+            return
+            
+        try:
+            # Initialize Redis client using our own config
+            self.logger.info("[SECURITY] Initializing Redis client with URL: %s", self.config.redis_url)
+            redis_config = RedisConfig(url=self.config.redis_url)
+            self._redis_client = RedisClient(redis_config)
+            
+            # Connect to Redis
+            self.logger.info("[SECURITY] Connecting to Redis...")
+            await self._redis_client.connect()
+            
+            # Verify connection with retries
+            await self._verify_redis_health()
+            
+            # Initialize token manager with the Redis client
+            self.logger.info("[SECURITY] Initializing token manager...")
+            self.token_manager = TokenManager(self._redis_client, self.config)
+            self.logger.info("[SECURITY] Token manager initialized")
+            
+            self._initialized = True
+            self.logger.info("[SECURITY] Security services initialized successfully")
+            
+        except Exception as e:
+            self.logger.error("[SECURITY] Failed to initialize security services: %s", str(e), exc_info=True)
+            self._initialized = False
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to initialize security services: {str(e)}"
+            )
+
+    async def _verify_redis_health(self) -> None:
+        """Verify Redis connection health with retries."""
+        max_retries = 3
+        retry_delay = 1
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                if await self._redis_client.ping():
+                    self.logger.info("[SECURITY] Redis connection healthy")
+                    return
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries - 1:
+                    self.logger.warning(f"[SECURITY] Health check attempt {attempt + 1} failed, retrying...")
+                    await asyncio.sleep(retry_delay)
+                    
+        raise ConnectionError(f"Redis health check failed after {max_retries} attempts: {str(last_error)}")
+
+    @property
+    def redis_client(self) -> Redis:
+        """Get Redis client instance."""
+        if not self._initialized or not self._redis_client:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Security services not initialized"
+            )
+        return self._redis_client
+
+    async def create_session(
+        self,
+        user_id: str,
+        data: Optional[Dict[str, Any]] = None,
+        expires_in: Optional[timedelta] = None
+    ) -> Tuple[str, str]:
+        """Create a new session for a user.
+        
+        Args:
+            user_id: User ID to create session for
+            data: Optional session data
+            expires_in: Optional session expiration time
+            
+        Returns:
+            Tuple of (access_token, refresh_token)
+        """
+        try:
+            # Generate tokens
+            access_token = self._generate_token(user_id, is_refresh=False)
+            refresh_token = self._generate_token(user_id, is_refresh=True)
+            
+            # Store refresh token in Redis
+            await self.redis_client.set(
+                f"refresh_token:{refresh_token}",
+                user_id,
+                expire=2592000  # 30 days
+            )
+            
+            # Store additional session data if provided
+            if data:
+                session_id = secrets.token_urlsafe()
+                session_data = {
+                    "user_id": user_id,
+                    **data,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+                await self.redis_client.setex(
+                    f"session:{session_id}",
+                    expires_in.total_seconds() if expires_in else 2592000,
+                    session_data
+                )
+            
+            return access_token, refresh_token
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create session: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create session"
+            )
+
+    def _generate_token(self, user_id: str, is_refresh: bool = False) -> str:
+        """Generate a JWT token.
+        
+        Args:
+            user_id: User ID to generate token for
+            is_refresh: Whether this is a refresh token
+            
+        Returns:
+            Generated JWT token
+        """
+        expiration = datetime.utcnow() + (
+            timedelta(days=30) if is_refresh else timedelta(minutes=15)
+        )
+        
+        payload = {
+            "sub": user_id,
+            "exp": expiration,
+            "type": "refresh" if is_refresh else "access"
+        }
+        
+        return jwt.encode(
+            payload,
+            self.config.secret_key,
+            algorithm="HS256"
+        )
 
     async def authenticate(self, api_key: str) -> Dict[str, Any]:
         """Authenticate API key.
@@ -548,44 +691,40 @@ class SecurityManager:
         }
 
     async def create_tokens(self, user_id: str) -> Tuple[str, str]:
-        """Create access and refresh tokens.
-        
-        Args:
-            user_id: User ID to create tokens for
+        """Create access and refresh tokens."""
+        try:
+            if not self._initialized:
+                await self.initialize()
+                
+            logger.info("[OAUTH_FLOW] Starting token creation for user", extra={"user_id": user_id})
             
-        Returns:
-            Tuple of (access_token, refresh_token)
-        """
-        # Create access token
-        access_token_data = {
-            "sub": user_id,
-            "exp": datetime.utcnow() + timedelta(minutes=self.config.access_token_expire_minutes)
-        }
-        access_token = jwt.encode(
-            access_token_data,
-            self.config.jwt_secret,
-            algorithm=self.config.jwt_algorithm
-        )
+            # Create access token
+            logger.info("[OAUTH_FLOW] Creating access token")
+            access_token = self._generate_token(user_id, is_refresh=False)
+            logger.info("[OAUTH_FLOW] Access token created successfully")
         
-        # Create refresh token
-        refresh_token_data = {
-            "sub": user_id,
-            "exp": datetime.utcnow() + timedelta(days=self.config.refresh_token_expire_days)
-        }
-        refresh_token = jwt.encode(
-            refresh_token_data,
-            self.config.jwt_secret,
-            algorithm=self.config.jwt_algorithm
-        )
+            # Create refresh token
+            logger.info("[OAUTH_FLOW] Creating refresh token")
+            refresh_token = self._generate_token(user_id, is_refresh=True)
+            logger.info("[OAUTH_FLOW] Refresh token created successfully")
+            
+            # Store refresh token in Redis
+            logger.info("[OAUTH_FLOW] Storing refresh token in Redis")
+            await self._redis_client.setex(
+                f"refresh_token:{refresh_token}",
+                timedelta(days=30).total_seconds(),
+                user_id
+            )
+            logger.info("[OAUTH_FLOW] Refresh token stored in Redis")
         
-        # Store refresh token in Redis
-        await self.redis.setex(
-            f"refresh_token:{refresh_token}",
-            timedelta(days=self.config.refresh_token_expire_days).total_seconds(),
-            user_id
-        )
-        
-        return access_token, refresh_token
+            return access_token, refresh_token
+            
+        except Exception as e:
+            logger.error("[OAUTH_FLOW] Failed to create tokens", exc_info=e)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create authentication tokens"
+            )
 
     async def validate_token(self, token: str) -> Dict[str, Any]:
         """Validate JWT token.
@@ -623,53 +762,7 @@ class SecurityManager:
         Args:
             token: Token to revoke
         """
-        await self.redis.delete(f"refresh_token:{token}")
-
-    async def create_session(self, user_id: str, data: Dict[str, Any], expires_in: timedelta) -> str:
-        """Create user session.
-        
-        Args:
-            user_id: User ID
-            data: Session data
-            expires_in: Session expiration time
-            
-        Returns:
-            Session ID
-        """
-        session_id = secrets.token_urlsafe()
-        
-        # Store session data in Redis
-        await self.redis.setex(
-            f"session:{session_id}",
-            expires_in.total_seconds(),
-            {
-                "user_id": user_id,
-                **data,
-                "created_at": datetime.utcnow().isoformat()
-            }
-        )
-        
-        return session_id
-
-    async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get session data.
-        
-        Args:
-            session_id: Session ID
-            
-        Returns:
-            Session data if exists, None otherwise
-        """
-        data = await self.redis.get(f"session:{session_id}")
-        return data
-
-    async def end_session(self, session_id: str) -> None:
-        """End user session.
-        
-        Args:
-            session_id: Session ID to end
-        """
-        await self.redis.delete(f"session:{session_id}")
+        await self.redis_client.delete(f"refresh_token:{token}")
 
     async def create_verification_token(self, user_id: str) -> str:
         """Create email verification token.
@@ -683,7 +776,7 @@ class SecurityManager:
         token = secrets.token_urlsafe()
         
         # Store token in Redis with expiration
-        await self.redis.setex(
+        await self.redis_client.setex(
             f"verify:{token}",
             timedelta(hours=24).total_seconds(),
             user_id
@@ -703,7 +796,7 @@ class SecurityManager:
         Raises:
             HTTPException: If token is invalid
         """
-        user_id = await self.redis.get(f"verify:{token}")
+        user_id = await self.redis_client.get(f"verify:{token}")
         
         if not user_id:
             raise HTTPException(
@@ -712,7 +805,7 @@ class SecurityManager:
             )
             
         # Delete token after use
-        await self.redis.delete(f"verify:{token}")
+        await self.redis_client.delete(f"verify:{token}")
         
         return user_id
 

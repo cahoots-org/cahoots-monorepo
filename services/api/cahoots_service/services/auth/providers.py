@@ -1,13 +1,16 @@
-"""Authentication providers for social login."""
-from typing import Dict
+"""OAuth providers for authentication."""
+import logging
+from typing import Dict, Any
 import aiohttp
 from fastapi import HTTPException, status
 
+logger = logging.getLogger(__name__)
+
 class GoogleAuthProvider:
-    """Google OAuth authentication provider."""
+    """Google OAuth provider."""
     
     def __init__(self, client_id: str, client_secret: str):
-        """Initialize provider.
+        """Initialize Google auth provider.
         
         Args:
             client_id: Google OAuth client ID
@@ -15,58 +18,52 @@ class GoogleAuthProvider:
         """
         self.client_id = client_id
         self.client_secret = client_secret
-        self.token_url = "https://oauth2.googleapis.com/token"
-        self.user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
-        
-    async def get_user_info(self, code: str) -> Dict:
+    
+    async def get_user_info(self, code_or_user_info: Dict[str, Any]) -> Dict[str, Any]:
         """Get user info from Google.
         
         Args:
-            code: Authorization code from OAuth flow
+            code_or_user_info: User info from frontend
             
         Returns:
-            User info dictionary
+            Dict containing user info
             
         Raises:
-            HTTPException: If authentication fails
+            HTTPException: If validation fails
         """
         try:
-            # Exchange code for tokens
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.token_url, data={
-                    "client_id": self.client_id,
-                    "client_secret": self.client_secret,
-                    "code": code,
-                    "grant_type": "authorization_code"
-                }) as resp:
-                    if resp.status != 200:
-                        raise HTTPException(
-                            status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Failed to authenticate with Google"
-                        )
-                    tokens = await resp.json()
-                
-                # Get user info
-                headers = {"Authorization": f"Bearer {tokens['access_token']}"}
-                async with session.get(self.user_info_url, headers=headers) as resp:
-                    if resp.status != 200:
-                        raise HTTPException(
-                            status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Failed to get Google user info"
-                        )
-                    return await resp.json()
+            # We only handle direct user info now, no more API calls
+            if not isinstance(code_or_user_info, dict):
+                logger.error("[OAUTH_FLOW] Expected user info dict, got something else")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid user info format"
+                )
+            
+            logger.info("[OAUTH_FLOW] Validating provided user info")
+            required_fields = ["email", "id"]
+            if not all(field in code_or_user_info for field in required_fields):
+                logger.error("[OAUTH_FLOW] Missing required fields in user info")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Missing required fields in user info"
+                )
+            return code_or_user_info
                     
+        except HTTPException:
+            raise
         except Exception as e:
+            logger.error(f"[OAUTH_FLOW] Error validating user info: {str(e)}")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Google authentication failed: {str(e)}"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to validate user info: {str(e)}"
             )
 
 class GitHubAuthProvider:
-    """GitHub OAuth authentication provider."""
+    """GitHub OAuth provider."""
     
     def __init__(self, client_id: str, client_secret: str):
-        """Initialize provider.
+        """Initialize GitHub auth provider.
         
         Args:
             client_id: GitHub OAuth client ID
@@ -76,70 +73,99 @@ class GitHubAuthProvider:
         self.client_secret = client_secret
         self.token_url = "https://github.com/login/oauth/access_token"
         self.user_info_url = "https://api.github.com/user"
-        
-    async def get_user_info(self, code: str) -> Dict:
+        self.user_emails_url = "https://api.github.com/user/emails"
+    
+    async def get_user_info(self, code: str) -> Dict[str, Any]:
         """Get user info from GitHub.
         
         Args:
-            code: Authorization code from OAuth flow
+            code: Authorization code from GitHub
             
         Returns:
-            User info dictionary
+            Dict containing user info
             
         Raises:
             HTTPException: If authentication fails
         """
         try:
-            # Exchange code for token
             async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.token_url,
-                    headers={"Accept": "application/json"},
-                    data={
-                        "client_id": self.client_id,
-                        "client_secret": self.client_secret,
-                        "code": code
-                    }
-                ) as resp:
+                # Exchange code for access token
+                logger.info("[OAUTH_FLOW] Exchanging code for tokens with GitHub")
+                
+                token_data = {
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "code": code
+                }
+                headers = {"Accept": "application/json"}
+                
+                async with session.post(self.token_url, json=token_data, headers=headers) as resp:
                     if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"[OAUTH_FLOW] GitHub OAuth error: {error_text}")
                         raise HTTPException(
                             status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Failed to authenticate with GitHub"
+                            detail=f"GitHub authentication failed: {error_text}"
                         )
+                    
                     tokens = await resp.json()
+                    if "error" in tokens:
+                        logger.error(f"[OAUTH_FLOW] GitHub OAuth error: {tokens['error']}")
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail=f"GitHub authentication failed: {tokens['error']}"
+                        )
                 
                 # Get user info
                 headers = {
-                    "Authorization": f"Bearer {tokens['access_token']}",
+                    "Authorization": f"token {tokens['access_token']}",
                     "Accept": "application/json"
                 }
+                
+                # Get basic user info
                 async with session.get(self.user_info_url, headers=headers) as resp:
                     if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"[OAUTH_FLOW] Failed to get GitHub user info: {error_text}")
                         raise HTTPException(
                             status_code=status.HTTP_401_UNAUTHORIZED,
-                            detail="Failed to get GitHub user info"
+                            detail="Failed to get user info from GitHub"
                         )
+                    
                     user_info = await resp.json()
+                
+                # Get user emails since they're not included in basic info
+                async with session.get(self.user_emails_url, headers=headers) as resp:
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        logger.error(f"[OAUTH_FLOW] Failed to get GitHub user emails: {error_text}")
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Failed to get user emails from GitHub"
+                        )
                     
-                # Get email if not public
-                if not user_info.get("email"):
-                    async with session.get(
-                        "https://api.github.com/user/emails",
-                        headers=headers
-                    ) as resp:
-                        if resp.status == 200:
-                            emails = await resp.json()
-                            primary_email = next(
-                                (e for e in emails if e["primary"]),
-                                emails[0] if emails else None
-                            )
-                            if primary_email:
-                                user_info["email"] = primary_email["email"]
-                                
-                return user_info
+                    emails = await resp.json()
+                    primary_email = next(
+                        (email["email"] for email in emails if email["primary"]),
+                        None
+                    )
                     
+                    if not primary_email:
+                        logger.error("[OAUTH_FLOW] No primary email found in GitHub account")
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No primary email found in GitHub account"
+                        )
+                    
+                    user_info["email"] = primary_email
+                    logger.info(f"[OAUTH_FLOW] Successfully retrieved user info for: {primary_email}")
+                    return user_info
+                    
+        except HTTPException:
+            raise
         except Exception as e:
+            logger.error(f"[OAUTH_FLOW] Error in GitHub authentication: {str(e)}")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"GitHub authentication failed: {str(e)}"
             ) 

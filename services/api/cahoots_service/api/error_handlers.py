@@ -1,52 +1,70 @@
-"""Error handlers for the API."""
-from logging import Logger
-from typing import Dict, Any
-from fastapi import Request, status
+"""Error handler middleware for consistent error handling."""
+from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException
+import logging
+from typing import Any, Dict
 
-from cahoots_core.exceptions import (
-    CahootsError,
-    APIError,
+from cahoots_service.core.exceptions import (
+    BaseError,
+    ServiceError,
     ValidationError,
+    AuthError,
+    DomainError,
+    InfrastructureError,
     ErrorCategory,
-    ErrorSeverity,
-    ServiceError
+    ErrorSeverity
 )
+from cahoots_service.schemas.base import APIResponse, ErrorDetail
 
-logger = Logger("api.error_handlers")
+logger = logging.getLogger(__name__)
+
+async def base_error_handler(request: Request, exc: BaseError) -> JSONResponse:
+    """Handle base application errors.
+    
+    Args:
+        request: Request instance
+        exc: Exception instance
+        
+    Returns:
+        JSON response with error details
+    """
+    return JSONResponse(
+        status_code=_get_status_code(exc.category),
+        content=APIResponse(
+            success=False,
+            error=ErrorDetail(
+                code=exc.code,
+                message=exc.message,
+                category=exc.category,
+                severity=exc.severity,
+                details=exc.details
+            ).dict()
+        ).dict()
+    )
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     """Handle HTTP exceptions.
     
     Args:
         request: Request instance
-        exc: HTTP exception
+        exc: Exception instance
         
     Returns:
-        JSONResponse: Error response
+        JSON response with error details
     """
-    error_response = {
-        "success": False,
-        "detail": str(exc.detail),
-        "error": {
-            "code": f"HTTP_{exc.status_code}",
-            "message": str(exc.detail),
-            "status_code": exc.status_code,
-            "category": ErrorCategory.API.value,
-            "severity": ErrorSeverity.ERROR.value
-        }
-    }
-    
-    logger.error(
-        f"HTTP error {exc.status_code}: {exc.detail}",
-        extra={"path": request.url.path}
-    )
-    
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_response
+        content=APIResponse(
+            success=False,
+            error=ErrorDetail(
+                code="HTTP_ERROR",
+                message=str(exc.detail),
+                category=ErrorCategory.INFRASTRUCTURE,
+                severity=ErrorSeverity.ERROR
+            ).dict()
+        ).dict()
     )
 
 async def validation_exception_handler(
@@ -57,81 +75,24 @@ async def validation_exception_handler(
     
     Args:
         request: Request instance
-        exc: Validation exception
+        exc: Exception instance
         
     Returns:
-        JSONResponse: Error response
+        JSON response with error details
     """
-    error_details = []
-    for error in exc.errors():
-        loc = error.get("loc", [])
-        if len(loc) > 1:
-            field = loc[-1]  # Get the last item as the field name
-        else:
-            field = " -> ".join(str(x) for x in loc)
-            
-        error_details.append({
-            "field": field,
-            "message": error["msg"],
-            "type": error["type"]
-        })
-    
-    error_response = {
-        "success": False,
-        "detail": "Request validation failed",
-        "error": {
-            "code": "VALIDATION_ERROR",
-            "message": "Request validation failed",
-            "details": error_details,
-            "category": ErrorCategory.VALIDATION.value,
-            "severity": ErrorSeverity.WARNING.value
-        }
-    }
-    
-    logger.error(
-        "Validation error",
-        extra={
-            "path": request.url.path,
-            "errors": error_details
-        }
-    )
-    
+    errors = exc.errors()
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=error_response
-    )
-
-async def app_exception_handler(
-    request: Request,
-    exc: CahootsError
-) -> JSONResponse:
-    """Handle application-specific exceptions.
-    
-    Args:
-        request: Request instance
-        exc: Application exception
-        
-    Returns:
-        JSONResponse: Error response
-    """
-    error_response = {
-        "success": False,
-        "detail": str(exc),
-        "error": exc.to_dict()
-    }
-    
-    logger.error(
-        str(exc),
-        extra={
-            "path": request.url.path,
-            "error_code": exc.code,
-            "details": exc.details
-        }
-    )
-    
-    return JSONResponse(
-        status_code=exc.status_code if hasattr(exc, 'status_code') else status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=error_response
+        status_code=422,
+        content=APIResponse(
+            success=False,
+            error=ErrorDetail(
+                code="VALIDATION_ERROR",
+                message="Request validation failed",
+                category=ErrorCategory.VALIDATION,
+                severity=ErrorSeverity.WARNING,
+                details={"errors": errors}
+            ).dict()
+        ).dict()
     )
 
 async def service_error_handler(request: Request, exc: ServiceError) -> JSONResponse:
@@ -139,77 +100,28 @@ async def service_error_handler(request: Request, exc: ServiceError) -> JSONResp
     
     Args:
         request: Request instance
-        exc: Service error
+        exc: Exception instance
         
     Returns:
-        JSONResponse: Error response
+        JSON response with error details
     """
-    error_response = {
-        "success": False,
-        "detail": str(exc),
-        "error": {
-            "code": exc.code,
-            "message": str(exc),
-            "details": exc.details,
-            "service": exc.details.get("service"),
-            "operation": exc.details.get("operation"),
-            "category": ErrorCategory.INFRASTRUCTURE.value,
-            "severity": ErrorSeverity.ERROR.value
-        }
-    }
-    
-    logger.error(
-        f"Service error: {exc}",
-        extra={
-            "path": request.url.path,
-            "service": exc.details.get("service"),
-            "operation": exc.details.get("operation")
-        }
-    )
-    
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=error_response
-    )
+    return await base_error_handler(request, exc)
 
-async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Handle any unhandled exceptions."""
-    error_response = {
-        "success": False,
-        "detail": str(exc),
-        "error": {
-            "code": "INTERNAL_ERROR",
-            "message": "An internal server error occurred",
-            "details": {
-                "type": exc.__class__.__name__,
-                "message": str(exc)
-            },
-            "category": ErrorCategory.INFRASTRUCTURE.value,
-            "severity": ErrorSeverity.ERROR.value
-        }
-    }
-    
-    logger.error(
-        f"Unhandled error: {exc}",
-        extra={
-            "path": request.url.path,
-            "error_type": exc.__class__.__name__
-        }
-    )
-    
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content=error_response
-    )
-
-def register_error_handlers(app):
-    """Register error handlers for the application.
+def _get_status_code(category: ErrorCategory) -> int:
+    """Get HTTP status code for error category.
     
     Args:
-        app: FastAPI application instance
+        category: Error category
+        
+    Returns:
+        HTTP status code
     """
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(CahootsError, app_exception_handler)
-    app.add_exception_handler(ServiceError, service_error_handler)
-    app.add_exception_handler(Exception, generic_exception_handler)
+    status_codes = {
+        ErrorCategory.VALIDATION: 422,
+        ErrorCategory.AUTHENTICATION: 401,
+        ErrorCategory.AUTHORIZATION: 403,
+        ErrorCategory.BUSINESS_LOGIC: 400,
+        ErrorCategory.INFRASTRUCTURE: 500,
+        ErrorCategory.EXTERNAL_SERVICE: 502
+    }
+    return status_codes.get(category, 500)

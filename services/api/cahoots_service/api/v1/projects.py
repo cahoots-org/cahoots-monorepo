@@ -1,21 +1,23 @@
 """Project management API endpoints."""
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 
-from cahoots_core.models.project import (
+from cahoots_service.schemas.projects import (
     ProjectCreate,
     ProjectUpdate,
-    Project as ProjectModel
+    ProjectResponse,
+    ProjectsResponse
 )
+from cahoots_service.schemas.base import APIResponse, ErrorDetail, ErrorCategory, ErrorSeverity
 from cahoots_service.api.dependencies import (
     get_project_service,
     get_current_organization,
-    ServiceDeps
+    ServiceDeps,
+    get_db,
+    get_current_user
 )
 from cahoots_service.schemas.project import (
-    ProjectResponse,
-    ProjectsResponse,
     AgentConfig,
     AgentDeployment
 )

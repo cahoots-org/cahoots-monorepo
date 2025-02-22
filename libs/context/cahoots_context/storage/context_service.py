@@ -13,7 +13,7 @@ from cahoots_core.utils.infrastructure.redis.client import get_redis_client
 from cahoots_core.utils.version_vector import VersionVector
 from fastapi import HTTPException
 
-from cahoots_core.models.project import Project
+from cahoots_core.models.db_models import Project
 from cahoots_events.models.events import ContextEventModel
 from cahoots_core.utils.caching import CacheManager
 from cahoots_core.exceptions import ValidationError, StorageError, ContextLimitError

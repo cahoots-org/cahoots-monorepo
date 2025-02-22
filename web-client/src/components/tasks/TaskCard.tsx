@@ -1,5 +1,5 @@
 import { Card, Group, Stack, Text, Badge, Menu, ActionIcon } from '@mantine/core';
-import { IconDotsVertical } from '@tabler/icons-react';
+import { IconDotsVertical } from '../../components/common/icons';
 import { Task, useTaskStore } from '../../stores/tasks';
 
 interface TaskCardProps {
