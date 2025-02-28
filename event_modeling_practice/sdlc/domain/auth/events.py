@@ -1,13 +1,15 @@
+"""Authentication domain events"""
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
 from typing import Optional
+from uuid import UUID
 
 from ..events import Event, EventMetadata
 
 
 @dataclass
-class UserRegistered(Event):
+class UserCreated(Event):
+    """Event when a user is created"""
     user_id: UUID
     email: str
     password_hash: str
@@ -28,7 +30,8 @@ class UserRegistered(Event):
 
 
 @dataclass
-class EmailVerified(Event):
+class UserVerified(Event):
+    """Event when a user is verified"""
     user_id: UUID
     verification_token: str
 
@@ -45,7 +48,26 @@ class EmailVerified(Event):
 
 
 @dataclass
+class PasswordChanged(Event):
+    """Event when a password is changed"""
+    user_id: UUID
+    password_hash: str
+
+    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
+                 user_id: UUID, password_hash: str):
+        super().__init__(event_id, timestamp, metadata)
+        self.user_id = user_id
+        self.password_hash = password_hash
+
+    @property
+    def aggregate_id(self) -> UUID:
+        """Get the aggregate ID for this event"""
+        return self.user_id
+
+
+@dataclass
 class UserLoggedIn(Event):
+    """Event when a user logs in"""
     user_id: UUID
     session_id: UUID
     access_token: str
@@ -67,6 +89,7 @@ class UserLoggedIn(Event):
 
 @dataclass
 class PasswordResetRequested(Event):
+    """Event when a password reset is requested"""
     user_id: UUID
     reset_token: str
 
@@ -84,14 +107,17 @@ class PasswordResetRequested(Event):
 
 @dataclass
 class PasswordReset(Event):
+    """Event when a password is reset"""
     user_id: UUID
     password_hash: str
+    reset_token: str
 
     def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 user_id: UUID, password_hash: str):
+                 user_id: UUID, password_hash: str, reset_token: str):
         super().__init__(event_id, timestamp, metadata)
         self.user_id = user_id
         self.password_hash = password_hash
+        self.reset_token = reset_token
 
     @property
     def aggregate_id(self) -> UUID:
@@ -101,14 +127,17 @@ class PasswordReset(Event):
 
 @dataclass
 class TokenRefreshed(Event):
+    """Event when a token is refreshed"""
     user_id: UUID
+    session_id: UUID
     access_token: str
     refresh_token: str
 
     def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 user_id: UUID, access_token: str, refresh_token: str):
+                 user_id: UUID, session_id: UUID, access_token: str, refresh_token: str):
         super().__init__(event_id, timestamp, metadata)
         self.user_id = user_id
+        self.session_id = session_id
         self.access_token = access_token
         self.refresh_token = refresh_token
 
@@ -120,6 +149,7 @@ class TokenRefreshed(Event):
 
 @dataclass
 class UserLoggedOut(Event):
+    """Event when a user logs out"""
     user_id: UUID
     session_id: UUID
 
@@ -137,6 +167,7 @@ class UserLoggedOut(Event):
 
 @dataclass
 class SessionRevoked(Event):
+    """Event when a session is revoked"""
     user_id: UUID
     session_id: UUID
 

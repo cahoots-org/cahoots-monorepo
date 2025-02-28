@@ -13,6 +13,7 @@ from ..domain.organization.events import (
     OrganizationMemberAdded, OrganizationMemberRemoved,
     OrganizationMemberRoleChanged, OrganizationArchived
 )
+from ..domain.organization.repository import OrganizationRepository
 from ..domain.team.commands import (
     CreateTeam, AddTeamMember, UpdateTeamMemberRole,
     RemoveTeamMember, TransferTeamLeadership, ArchiveTeam
@@ -28,12 +29,18 @@ from ..domain.events import Event, EventMetadata
 class OrganizationHandler:
     """Handler for organization-related commands"""
 
-    def __init__(self, event_store, view_store):
+    def __init__(self, event_store, view_store, organization_repository: OrganizationRepository):
         self.event_store = event_store
         self.view_store = view_store
+        self.organization_repository = organization_repository
 
     def handle_create_organization(self, cmd: CreateOrganization) -> List[OrganizationCreated]:
         """Handle CreateOrganization command"""
+        # Check if organization name is already taken
+        existing_org = self.organization_repository.get_by_name(cmd.name)
+        if existing_org:
+            raise ValueError(f"Organization with name '{cmd.name}' already exists")
+
         organization_id = uuid4()
         organization = Organization(organization_id=organization_id)
 
@@ -58,16 +65,17 @@ class OrganizationHandler:
 
     def handle_update_name(self, cmd: UpdateOrganizationName) -> List[OrganizationNameUpdated]:
         """Handle UpdateOrganizationName command"""
-        events = self.event_store.get_events_for_aggregate(cmd.organization_id)
-        if not events:
+        organization = self.organization_repository.get_by_id(cmd.organization_id)
+        if not organization:
             raise ValueError(f"No organization found with id {cmd.organization_id}")
-
-        organization = Organization(organization_id=cmd.organization_id)
-        for event in events:
-            organization.apply_event(event)
 
         if not organization.can_modify(cmd.updated_by):
             raise ValueError("Insufficient permissions")
+
+        # Check if new name is already taken
+        existing_org = self.organization_repository.get_by_name(cmd.new_name)
+        if existing_org and existing_org.organization_id != cmd.organization_id:
+            raise ValueError(f"Organization with name '{cmd.new_name}' already exists")
 
         event = OrganizationNameUpdated(
             event_id=uuid4(),
@@ -78,7 +86,7 @@ class OrganizationHandler:
             new_name=cmd.new_name,
             reason=cmd.reason,
             updated_by=cmd.updated_by
-        ).triggered_by(cmd.updated_by).caused_by(events[-1]).with_context(
+        ).triggered_by(cmd.updated_by).with_context(
             command_id=cmd.command_id,
             reason=cmd.reason
         )
@@ -91,13 +99,9 @@ class OrganizationHandler:
 
     def handle_add_member(self, cmd: AddOrganizationMember) -> List[OrganizationMemberAdded]:
         """Handle AddOrganizationMember command"""
-        events = self.event_store.get_events_for_aggregate(cmd.organization_id)
-        if not events:
+        organization = self.organization_repository.get_by_id(cmd.organization_id)
+        if not organization:
             raise ValueError(f"No organization found with id {cmd.organization_id}")
-
-        organization = Organization(organization_id=cmd.organization_id)
-        for event in events:
-            organization.apply_event(event)
 
         if not organization.can_add_member(cmd.added_by, cmd.role):
             raise ValueError("Insufficient permissions")
@@ -113,7 +117,7 @@ class OrganizationHandler:
             user_id=cmd.user_id,
             role=cmd.role,
             added_by=cmd.added_by
-        ).triggered_by(cmd.added_by).caused_by(events[-1]).with_context(
+        ).triggered_by(cmd.added_by).with_context(
             command_id=cmd.command_id,
             member_role=cmd.role
         )
@@ -126,13 +130,9 @@ class OrganizationHandler:
 
     def handle_remove_member(self, cmd: RemoveOrganizationMember) -> List[OrganizationMemberRemoved]:
         """Handle RemoveOrganizationMember command"""
-        events = self.event_store.get_events_for_aggregate(cmd.organization_id)
-        if not events:
+        organization = self.organization_repository.get_by_id(cmd.organization_id)
+        if not organization:
             raise ValueError(f"No organization found with id {cmd.organization_id}")
-
-        organization = Organization(organization_id=cmd.organization_id)
-        for event in events:
-            organization.apply_event(event)
 
         if not organization.can_remove_member(cmd.removed_by, cmd.user_id):
             raise ValueError("Cannot remove the last admin")
@@ -145,7 +145,7 @@ class OrganizationHandler:
             user_id=cmd.user_id,
             removed_by=cmd.removed_by,
             reason=cmd.reason
-        ).triggered_by(cmd.removed_by).caused_by(events[-1]).with_context(
+        ).triggered_by(cmd.removed_by).with_context(
             command_id=cmd.command_id,
             reason=cmd.reason
         )
@@ -158,13 +158,9 @@ class OrganizationHandler:
 
     def handle_change_member_role(self, cmd: ChangeOrganizationMemberRole) -> List[OrganizationMemberRoleChanged]:
         """Handle ChangeOrganizationMemberRole command"""
-        events = self.event_store.get_events_for_aggregate(cmd.organization_id)
-        if not events:
+        organization = self.organization_repository.get_by_id(cmd.organization_id)
+        if not organization:
             raise ValueError(f"No organization found with id {cmd.organization_id}")
-
-        organization = Organization(organization_id=cmd.organization_id)
-        for event in events:
-            organization.apply_event(event)
 
         if not organization.can_change_member_role(cmd.changed_by, cmd.user_id, cmd.new_role):
             raise ValueError("Insufficient permissions")
@@ -182,7 +178,7 @@ class OrganizationHandler:
             new_role=cmd.new_role,
             reason=cmd.reason,
             changed_by=cmd.changed_by
-        ).triggered_by(cmd.changed_by).caused_by(events[-1]).with_context(
+        ).triggered_by(cmd.changed_by).with_context(
             command_id=cmd.command_id,
             reason=cmd.reason
         )
@@ -195,13 +191,9 @@ class OrganizationHandler:
 
     def handle_archive_organization(self, cmd: ArchiveOrganization) -> List[OrganizationArchived]:
         """Handle ArchiveOrganization command"""
-        events = self.event_store.get_events_for_aggregate(cmd.organization_id)
-        if not events:
+        organization = self.organization_repository.get_by_id(cmd.organization_id)
+        if not organization:
             raise ValueError(f"No organization found with id {cmd.organization_id}")
-
-        organization = Organization(organization_id=cmd.organization_id)
-        for event in events:
-            organization.apply_event(event)
 
         if not organization.can_modify(cmd.archived_by):
             raise ValueError("Insufficient permissions")
@@ -214,7 +206,7 @@ class OrganizationHandler:
             reason=cmd.reason,
             archived_by=cmd.archived_by,
             archived_at=datetime.utcnow()
-        ).triggered_by(cmd.archived_by).caused_by(events[-1]).with_context(
+        ).triggered_by(cmd.archived_by).with_context(
             command_id=cmd.command_id,
             reason=cmd.reason
         )
@@ -227,6 +219,14 @@ class OrganizationHandler:
 
     def handle_create_team(self, cmd: CreateTeam) -> List[Event]:
         """Handle CreateTeam command"""
+        # Check if organization exists and user has permission
+        organization = self.organization_repository.get_by_id(cmd.organization_id)
+        if not organization:
+            raise ValueError(f"No organization found with id {cmd.organization_id}")
+
+        if not organization.can_modify(cmd.created_by):
+            raise ValueError("Insufficient permissions")
+
         team_id = uuid4()
 
         # Create the team
@@ -248,34 +248,15 @@ class OrganizationHandler:
         team_view = self.view_store.create_view(
             TeamView,
             team_id,
-            organization_id=cmd.organization_id,
-            name=cmd.name,
-            description=cmd.description
+            organization_id=cmd.organization_id
         )
 
-        # Add the creator as the first team member with lead role
-        team_member_added_event = TeamMemberAdded(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            team_id=team_id,
-            member_id=cmd.created_by,
-            role='lead',
-            added_by=cmd.created_by
-        ).triggered_by(cmd.created_by).caused_by(team_created_event).with_context(
-            command_id=cmd.command_id,
-            member_role='lead'
-        )
-
-        # Store and apply the events
+        # Apply and store the event
+        team_view.apply_event(team_created_event)
         self.event_store.append(team_created_event)
-        self.event_store.append(team_member_added_event)
-        
-        # Apply events to the view
         self.view_store.apply_event(team_created_event)
-        self.view_store.apply_event(team_member_added_event)
 
-        return [team_created_event, team_member_added_event]
+        return [team_created_event]
 
     def handle_add_team_member(self, cmd: AddTeamMember) -> List[Event]:
         """Handle AddTeamMember command"""

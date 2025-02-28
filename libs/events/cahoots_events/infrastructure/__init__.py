@@ -1,4 +1,4 @@
-"""Event infrastructure package."""
+"""Infrastructure package for event sourcing."""
 from .client import (
     EventClient,
     EventClientError,

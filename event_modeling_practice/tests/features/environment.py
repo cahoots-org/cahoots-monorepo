@@ -5,7 +5,10 @@ from uuid import uuid4
 from sdlc.application.handlers import ProjectHandler
 from sdlc.application.organization_handler import OrganizationHandler
 from sdlc.domain.auth.handler import AuthHandler
+from sdlc.domain.auth.repository import EventStoreUserRepository
+from sdlc.domain.auth.notifications import MockEmailService
 from sdlc.domain.code_changes.handler import CodeChangesHandler
+from sdlc.domain.organization.repository import EventStoreOrganizationRepository
 from sdlc.infrastructure.view_store import InMemoryViewStore
 from domain.commands.command_bus import CommandBus
 from domain.commands.create_system_user import CreateSystemUser, handle_create_system_user
@@ -33,10 +36,26 @@ def before_scenario(context: Context, scenario):
     context.event_store = InMemoryEventStore()
     context.view_store = InMemoryViewStore()
     
+    # Initialize repositories
+    context.organization_repository = EventStoreOrganizationRepository(context.event_store)
+    context.user_repository = EventStoreUserRepository(context.event_store)
+    
+    # Initialize services
+    context.email_service = MockEmailService()
+    
     # Initialize handlers
     context.project_handler = ProjectHandler(context.event_store, context.view_store)
-    context.organization_handler = OrganizationHandler(context.event_store, context.view_store)
-    context.auth_handler = AuthHandler(context.event_store, context.view_store)
+    context.organization_handler = OrganizationHandler(
+        context.event_store,
+        context.view_store,
+        context.organization_repository
+    )
+    context.auth_handler = AuthHandler(
+        context.event_store,
+        context.view_store,
+        context.user_repository,
+        context.email_service
+    )
     context.code_changes_handler = CodeChangesHandler(context.event_store, context.view_store)
     context.project_handler.set_code_changes_handler(context.code_changes_handler)
     

@@ -1,5 +1,5 @@
 # Version control
-.git
+.git/
 .gitignore
 .gitattributes
 .github/
@@ -7,56 +7,67 @@
 .gitmodules
 
 # Python
-venv/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
 *.py[cod]
 *$py.class
-
-# Node/Web
-web-client/
-node_modules/
-npm-debug.log
-
-# Git
-.git/
-.gitignore
-
-# IDE
-.vscode/
-.idea/
-
-# Docker
-.docker/
-
-# Kubernetes
-k8s/
-
-# Documentation
-docs/
-
-# Cache
-*.log
-.cache/
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 .pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
 
-# Local development
-.env
+# Node/Web (preserve necessary build files)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+.eslintcache
+.stylelintcache
+.parcel-cache
+.next
+.nuxt
+.vuepress/dist
+.docusaurus
+.serverless/
+.fusebox/
+.dynamodb/
+.tern-port
 .env.local
-*.local
-
-# Virtual environments
-.env.*
-!.env.example
+.env.*.local
+*.tsbuildinfo
 
 # IDE and editors
 .idea/
 .vscode/
 *.swp
 *.swo
+*.swn
+*.bak
 *.sublime-*
 .project
 .settings
@@ -69,84 +80,33 @@ docs/
 *.code-workspace
 .history/
 
-# Logs and databases
-*.log.*
-log/
-tmp/
-temp/
-
-# Build artifacts
-.next/
-.nuxt/
-dist/
-build/
-*.tsbuildinfo
-.webpack/
-.rollup.cache/
-coverage/
-*.min.js
-*.min.css
-*.map
-
-# Documentation
-*.md
-!README.md
-!CHANGELOG.md
-!LICENSE.md
-apidoc/
-swagger/
-typedoc/
-
-# Temporary files
-*.tmp
-*.temp
+# OS generated files
 .DS_Store
-*~
-*.bak
-*.swp
-*.swo
-Thumbs.db
+.DS_Store?
+._*
 .Spotlight-V100
 .Trashes
+ehthumbs.db
+Thumbs.db
 
-# Cache directories
-.npm/
-.yarn/
-.pnp/
-.pnp.js
-.parcel-cache/
-.vuepress/dist
-.serverless/
-.fusebox/
-.dynamodb/
-.tern-port
-.eslintcache
-.stylelintcache
-
-# Docker specific
-docker-compose*.yml
-!docker-compose.yml
-Dockerfile*
-.dockerignore
+# Docker specific (preserve core docker files)
+docker-compose.override.yml
+.docker/
 *.dockerfile
+!docker/*/Dockerfile
 
-# Test files
-test/
-tests/
-__tests__/
-__mocks__/
-*.spec.*
-*.test.*
+# Temporary files and logs
+*.log
+*.tmp
+*.temp
+tmp/
+temp/
+logs/
 
-# Dependencies
-package-lock.json
-yarn.lock
-poetry.lock
-Pipfile.lock
-
-# CI/CD
-.gitlab-ci.yml
-.travis.yml
-.circleci/
-.github/
-jenkins/ 
+# Keep essential files
+!docker-compose.yml
+!requirements*.txt
+!package.json
+!package-lock.json
+!tsconfig.json
+!vite.config.ts 
