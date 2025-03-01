@@ -11,7 +11,7 @@ import {
   Title,
   Badge,
 } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { IconPlus } from '../../components/common/icons';
 import { useProjectStore } from '../../stores/projects';
 import { CreateProjectModal } from './CreateProjectModal';
 import { useDisclosure } from '@mantine/hooks';

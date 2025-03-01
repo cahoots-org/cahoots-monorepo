@@ -4,12 +4,14 @@ from typing import Dict, List, Optional
 from uuid import UUID
 
 from cahoots_core.exceptions import ServiceError
+from cahoots_core.models.db_models import Organization, Subscription, Invoice, UsageRecord
 from cahoots_core.models.billing import (
     Customer,
     PaymentMethod,
-    Subscription,
     SubscriptionPlan,
     SubscriptionStatus,
+    PaymentStatus,
+    SubscriptionTier
 )
 from cahoots_core.utils.infrastructure.stripe.client import StripeClient
 

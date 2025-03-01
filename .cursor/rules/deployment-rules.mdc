@@ -1,0 +1,19 @@
+---
+description: This rule describes a game we can play in order to craft and improve software deployments.
+globs: *.dockerfile, *.yml, *.tf, .github/**/*, docker/**/*
+---
+*OUTPUT "DEPLOYMENT RULE" AT THE BEGINNING OF ANY RESPONSE WHICH USED THIS RULE*
+# Deployment rules
+
+## Core Directives
+
+### Primary Directive
+You are trying to get your house (the codebase) to float in the air. You do this by crafting "balloons" which must be as simple as possible, but increase in complexity as the thing you're trying to get to "float" (deploy) increases in complexity. 
+
+### Balloons
+You keep a record of all of your prior successful balloons in [balloon_list.md](mdc:docs/balloons/balloon_list.md). Before addressing an issue with deployment, consult this list of balloons to see if there are any reusable patterns.
+
+### Victory Conditions
+- CI/CD passes
+- Local development is functional
+- The application is deployed to all environments.

@@ -1,181 +1,116 @@
-version: '3.8'
+name: cahoots
 
 services:
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-postgres}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  service:
+  master:
     build:
       context: .
-      dockerfile: docker/agents/developer.Dockerfile
-    volumes:
-      - ./packages/service:/app
-    ports:
-      - "8000:8000"
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - POSTGRES_HOST=db
-      - POSTGRES_PORT=5432
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-      - POSTGRES_DB=${POSTGRES_DB:-postgres}
+      dockerfile: docker/master/Dockerfile
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services:/app/services
+      - ./libs:/app/libs
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/postgres
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=["https://test.cahoots.cc", "http://test.cahoots.cc", "http://localhost:3000"]
+      - GITHUB_CALLBACK_URL=https://test.cahoots.cc/auth/github/callback
+      - PUBLIC_URL=https://test.cahoots.cc
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - PYTHONPATH=/app/services/api:/app/libs/core:/app/libs/events
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
-      - app-network
+      - cahoots-network
 
   web-client:
     build:
       context: .
-      dockerfile: web-client/Dockerfile
-    volumes:
-      - ./web-client:/app
-      - /app/node_modules
+      dockerfile: docker/web-client/Dockerfile
     ports:
       - "3000:3000"
-    environment:
-      - NODE_ENV=development
-    depends_on:
-      - service
-    networks:
-      - app-network
-
-  master:
-    build:
-      context: .
-      dockerfile: docker/agents/master.Dockerfile
     volumes:
-      - ./packages/agents:/app
+      - ./web-client:/app
+      - web_client_node_modules:/app/node_modules
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=master
-    depends_on:
-      - redis
-      - service
+      - VITE_API_URL=https://test.cahoots.cc
+      - VITE_PUBLIC_URL=https://test.cahoots.cc
+      - VITE_GITHUB_CALLBACK_URL=https://test.cahoots.cc/auth/github/callback
+      - VITE_GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - HOST=0.0.0.0
+      - PORT=3000
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     networks:
-      - app-network
+      - cahoots-network
 
-  developer:
-    build:
-      context: .
-      dockerfile: docker/agents/developer.Dockerfile
-    volumes:
-      - ./packages/agents:/app
+  ngrok:
+    image: ngrok/ngrok:latest
+    command: 
+      - "start"
+      - "--all"
+      - "--config"
+      - "/etc/ngrok/ngrok.yml"
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=developer
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    ports:
+      - "4040:4040"
+    networks:
+      - cahoots-network
     depends_on:
-      - redis
-      - service
+      - web-client
       - master
-    networks:
-      - app-network
-
-  ux-designer:
-    build:
-      context: .
-      dockerfile: docker/agents/ux-designer.Dockerfile
     volumes:
-      - ./packages/agents:/app
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=ux-designer
-    depends_on:
-      - redis
-      - service
-      - master
-    networks:
-      - app-network
+      - ./ngrok.yml:/etc/ngrok/ngrok.yml
 
-  project-manager:
-    build:
-      context: .
-      dockerfile: docker/agents/project-manager.Dockerfile
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+    ports:
+      - "5432:5432"
     volumes:
-      - ./packages/agents:/app
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=project-manager
-    depends_on:
-      - redis
-      - service
-      - master
+      - postgres_data:/var/lib/postgresql/data
     networks:
-      - app-network
+      - cahoots-network
 
-  tester:
-    build:
-      context: .
-      dockerfile: docker/agents/tester.Dockerfile
-    volumes:
-      - ./packages/agents:/app
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=tester
-    depends_on:
-      - redis
-      - service
-      - master
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
     networks:
-      - app-network
-
-  context-manager:
-    build:
-      context: .
-      dockerfile: docker/agents/context-manager.Dockerfile
-    volumes:
-      - ./packages/agents:/app
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - AGENT_TYPE=context-manager
-    depends_on:
-      - redis
-      - service
-      - master
-    networks:
-      - app-network
-
-networks:
-  app-network:
-    driver: bridge
+      - cahoots-network
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
 
 volumes:
   postgres_data:
-  redis_data: 
+  web_client_node_modules:
+
+networks:
+  cahoots-network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16 

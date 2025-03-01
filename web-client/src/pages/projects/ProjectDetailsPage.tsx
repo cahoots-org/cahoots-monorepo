@@ -1,203 +1,149 @@
-import { useEffect, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import {
+  Container,
   Title,
-  Stack,
-  Group,
-  Button,
   Text,
+  Stack,
   Card,
-  Grid,
+  Group,
   Badge,
-  Loader,
-  Tabs,
+  Button,
+  Grid,
+  Skeleton,
+  Alert,
 } from '@mantine/core';
-import { IconExternalLink } from '@tabler/icons-react';
+import { IconAlertCircle, IconExternalLink } from '../../components/common/icons';
 import { useProjectStore } from '../../stores/projects';
-import { useTaskStore, Task } from '../../stores/tasks';
-import { TaskList } from '../../components/tasks/TaskList';
-import { CreateTaskModal } from '../../components/tasks/CreateTaskModal';
-import { useDisclosure } from '@mantine/hooks';
+
+const statusColors = {
+  initializing: 'blue',
+  active: 'green',
+  completed: 'teal',
+  failed: 'red',
+} as const;
 
 export function ProjectDetailsPage() {
   const { id } = useParams<{ id: string }>();
-  const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false);
   const {
     currentProject,
-    isLoading: projectLoading,
-    error: projectError,
+    isLoading,
+    error,
     fetchProjectDetails,
+    fetchProjectResources,
   } = useProjectStore();
-  const {
-    tasks,
-    isLoading: tasksLoading,
-    error: tasksError,
-    fetchTasks,
-  } = useTaskStore();
 
   useEffect(() => {
     if (id) {
       fetchProjectDetails(id);
-      fetchTasks(id);
     }
-  }, [id, fetchProjectDetails, fetchTasks]);
+  }, [id, fetchProjectDetails]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'green';
-      case 'completed':
-        return 'blue';
-      case 'failed':
-        return 'red';
-      default:
-        return 'gray';
-    }
-  };
-
-  const filteredTasks = useMemo(() => {
-    return {
-      all: tasks,
-      open: tasks.filter((task) => task.status === 'open'),
-      in_progress: tasks.filter((task) => task.status === 'in_progress'),
-      review: tasks.filter((task) => task.status === 'review'),
-      testing: tasks.filter((task) => task.status === 'testing'),
-      done: tasks.filter((task) => task.status === 'done'),
-    };
-  }, [tasks]);
-
-  if (projectLoading) {
+  if (error) {
     return (
-      <Stack align="center" justify="center" h="100%">
-        <Loader size="lg" />
-      </Stack>
+      <Container size="md" py="xl">
+        <Alert icon={<IconAlertCircle />} title="Error" color="red">
+          {error}
+        </Alert>
+      </Container>
     );
   }
 
-  if (projectError || !currentProject) {
+  if (isLoading || !currentProject) {
     return (
-      <Stack align="center" justify="center" h="100%">
-        <Text c="red">{projectError || 'Project not found'}</Text>
-        <Button onClick={() => id && fetchProjectDetails(id)}>Retry</Button>
-      </Stack>
+      <Container size="md" py="xl">
+        <Stack gap="md">
+          <Skeleton height={50} radius="md" />
+          <Skeleton height={20} radius="md" width="60%" />
+          <Grid>
+            <Grid.Col span={6}>
+              <Skeleton height={200} radius="md" />
+            </Grid.Col>
+            <Grid.Col span={6}>
+              <Skeleton height={200} radius="md" />
+            </Grid.Col>
+          </Grid>
+        </Stack>
+      </Container>
     );
   }
 
   return (
-    <Stack gap="lg">
-      <Card withBorder>
-        <Stack gap="md">
-          <Group justify="space-between">
-            <Stack gap="xs">
-              <Title order={2}>{currentProject.name}</Title>
-              <Badge color={getStatusColor(currentProject.status)} size="lg">
-                {currentProject.status}
-              </Badge>
-            </Stack>
-            <Group>
-              {currentProject.task_board_url && (
-                <Button
-                  component="a"
-                  href={currentProject.task_board_url}
-                  target="_blank"
-                  variant="light"
-                  rightSection={<IconExternalLink size="1.2rem" />}
-                >
-                  Task Board
-                </Button>
-              )}
-              {currentProject.repository_url && (
-                <Button
-                  component="a"
-                  href={currentProject.repository_url}
-                  target="_blank"
-                  variant="light"
-                  rightSection={<IconExternalLink size="1.2rem" />}
-                >
-                  Repository
-                </Button>
-              )}
-            </Group>
-          </Group>
-          <Text>{currentProject.description}</Text>
-        </Stack>
-      </Card>
+    <Container size="md" py="xl">
+      <Stack gap="lg">
+        <Group justify="space-between" align="center">
+          <div>
+            <Title order={2}>{currentProject.name}</Title>
+            <Text c="dimmed" size="sm">
+              Created on {new Date(currentProject.created_at).toLocaleDateString()}
+            </Text>
+          </div>
+          <Badge size="lg" color={statusColors[currentProject.status]}>
+            {currentProject.status.charAt(0).toUpperCase() + currentProject.status.slice(1)}
+          </Badge>
+        </Group>
 
-      <Card withBorder>
-        <Stack gap="md">
-          <Group justify="space-between">
-            <Title order={3}>Tasks</Title>
-            <Button onClick={openModal}>Add Task</Button>
-          </Group>
+        <Text>{currentProject.description}</Text>
 
-          <Tabs defaultValue="all">
-            <Tabs.List>
-              <Tabs.Tab value="all">All</Tabs.Tab>
-              <Tabs.Tab value="open">Open</Tabs.Tab>
-              <Tabs.Tab value="in_progress">In Progress</Tabs.Tab>
-              <Tabs.Tab value="review">Review</Tabs.Tab>
-              <Tabs.Tab value="testing">Testing</Tabs.Tab>
-              <Tabs.Tab value="done">Done</Tabs.Tab>
-            </Tabs.List>
+        <Grid>
+          <Grid.Col span={6}>
+            <Card withBorder>
+              <Stack gap="md">
+                <Title order={3}>Task Board</Title>
+                {currentProject.task_board_url ? (
+                  <Button
+                    component="a"
+                    href={currentProject.task_board_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    rightSection={<IconExternalLink size={16} />}
+                  >
+                    Open Task Board
+                  </Button>
+                ) : (
+                  <Text c="dimmed">Task board is being set up...</Text>
+                )}
+              </Stack>
+            </Card>
+          </Grid.Col>
 
-            <Tabs.Panel value="all" pt="md">
-              <TaskList
-                tasks={filteredTasks.all}
-                isLoading={tasksLoading}
-                error={tasksError}
-                onRetry={() => id && fetchTasks(id)}
-              />
-            </Tabs.Panel>
+          <Grid.Col span={6}>
+            <Card withBorder>
+              <Stack gap="md">
+                <Title order={3}>Repository</Title>
+                {currentProject.repository_url ? (
+                  <Button
+                    component="a"
+                    href={currentProject.repository_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    rightSection={<IconExternalLink size={16} />}
+                  >
+                    Open Repository
+                  </Button>
+                ) : (
+                  <Text c="dimmed">Repository is being set up...</Text>
+                )}
+              </Stack>
+            </Card>
+          </Grid.Col>
+        </Grid>
 
-            <Tabs.Panel value="open" pt="md">
-              <TaskList
-                tasks={filteredTasks.open}
-                isLoading={tasksLoading}
-                error={tasksError}
-                onRetry={() => id && fetchTasks(id)}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="in_progress" pt="md">
-              <TaskList
-                tasks={filteredTasks.in_progress}
-                isLoading={tasksLoading}
-                error={tasksError}
-                onRetry={() => id && fetchTasks(id)}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="review" pt="md">
-              <TaskList
-                tasks={filteredTasks.review}
-                isLoading={tasksLoading}
-                error={tasksError}
-                onRetry={() => id && fetchTasks(id)}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="testing" pt="md">
-              <TaskList
-                tasks={filteredTasks.testing}
-                isLoading={tasksLoading}
-                error={tasksError}
-                onRetry={() => id && fetchTasks(id)}
-              />
-            </Tabs.Panel>
-
-            <Tabs.Panel value="done" pt="md">
-              <TaskList
-                tasks={filteredTasks.done}
-                isLoading={tasksLoading}
-                error={tasksError}
-                onRetry={() => id && fetchTasks(id)}
-              />
-            </Tabs.Panel>
-          </Tabs>
-        </Stack>
-      </Card>
-
-      {id && <CreateTaskModal projectId={id} opened={modalOpened} onClose={closeModal} />}
-    </Stack>
+        <Card withBorder>
+          <Stack gap="md">
+            <Title order={3}>Project Status</Title>
+            <Text>
+              {currentProject.status === 'initializing'
+                ? 'Setting up your project resources...'
+                : currentProject.status === 'active'
+                ? 'Your project is ready! You can start working on tasks.'
+                : currentProject.status === 'completed'
+                ? 'Project setup completed successfully.'
+                : 'Project setup failed. Please contact support.'}
+            </Text>
+          </Stack>
+        </Card>
+      </Stack>
+    </Container>
   );
 } 

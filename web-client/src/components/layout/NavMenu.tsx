@@ -1,5 +1,5 @@
 import { NavLink, Stack } from '@mantine/core';
-import { IconDashboard, IconFolder, IconSettings } from '@tabler/icons-react';
+import { IconDashboard, IconFolder, IconSettings } from '../../components/common/icons';
 import { Link, useLocation } from 'react-router-dom';
 
 export function NavMenu() {

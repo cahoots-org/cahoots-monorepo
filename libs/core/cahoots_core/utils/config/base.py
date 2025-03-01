@@ -80,6 +80,9 @@ class SecurityConfig(BaseModel):
     min_password_length: int = Field(default=8, description="Minimum password length")
     password_reset_expire_minutes: int = Field(default=15, description="Password reset token expiration in minutes")
     
+    # Redis configuration
+    redis_url: str = Field(default="redis://localhost:6379/0", description="Redis connection URL")
+    
     # Rate limiting
     rate_limit_requests: int = Field(default=60, description="Number of requests allowed per minute")
     rate_limit_burst: int = Field(default=10, description="Maximum burst size for rate limiting")

@@ -5,35 +5,37 @@ build-backend = "hatchling.build"
 [project]
 name = "cahoots-service"
 version = "0.1.0"
-description = "Service layer for Cahoots"
+description = "API service for Cahoots"
 requires-python = ">=3.11"
 dependencies = [
     "cahoots-core>=0.1.0",
     "cahoots-events>=0.1.0",
     "cahoots-context>=0.1.0",
-    "fastapi>=0.100.0",
-    "stripe>=7.0.0",
-    "PyGithub>=2.1.0",
+    "fastapi>=0.104.1",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.5.2",
+    "sqlalchemy>=2.0.23",
+    "alembic>=1.12.1",
+    "psycopg2-binary>=2.9.9",
+    "redis>=5.0.1",
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21.0",
-    "pytest-cov>=4.0",
-    "pytest-mock>=3.11.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "pytest-cov>=4.1.0",
     "httpx>=0.24.0",
-    "pytest-randomly>=3.15.0",
 ]
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/cahoots_service"]
-
-[tool.hatch.build]
-packages = ["src/cahoots_service"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --cov=src --cov-report=term-missing"
-asyncio_mode = "strict" 
+addopts = "-v --cov=cahoots_service --cov-report=term-missing"
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+[tool.hatch.build.targets.wheel]
+packages = ["cahoots_service"] 

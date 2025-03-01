@@ -6,8 +6,8 @@ This guide provides detailed information for developers working on the Cahoots A
 
 ### Required Tools
 
-- Python 3.10+
-- Redis
+- Python 3.11+
+- Redis 7.2+
 - Docker
 - kubectl (for Kubernetes development)
 - Git
@@ -23,6 +23,25 @@ We recommend the following extensions:
 - Kubernetes
 - GitLens
 - Python Test Explorer
+- Python Debugger
+- GitHub Copilot
+- Better Comments
+- Error Lens
+- Remote Development
+
+### Dependencies
+
+Core system dependencies:
+- Redis for event system and caching
+- PostgreSQL 16+ for data storage
+- Argon2 for secure password hashing
+
+Python dependencies are managed through requirements.txt and include:
+- FastAPI for API development
+- SQLAlchemy for database operations
+- Pydantic for data validation
+- Argon2-cffi for password hashing
+- Redis[hiredis] for caching and events
 
 ### Environment Setup
 
