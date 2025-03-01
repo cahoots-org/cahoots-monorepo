@@ -23,6 +23,11 @@ on:
       - 'requirements.txt'
       - 'pyproject.toml'
 
+# Add permissions for the workflow
+permissions:
+  contents: read
+  packages: write
+
 env:
   PYTHON_VERSION: "3.11"
   AWS_REGION: us-west-2
@@ -175,11 +180,18 @@ jobs:
           find docker -name "Dockerfile" -o -name "*.Dockerfile" | sort
           echo "---"
 
+      - name: Check GitHub token permissions
+        run: |
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "GitHub Repository: ${{ github.repository }}"
+          echo "GitHub Repository Owner: ${{ github.repository_owner }}"
+          echo "Token permissions should include 'packages: write'"
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push base image
@@ -189,8 +201,8 @@ jobs:
           file: docker/base/Dockerfile
           push: true
           tags: |
-            ${{ env.DOCKER_REGISTRY }}/cahoots-base:latest
-            ${{ env.DOCKER_REGISTRY }}/cahoots-base:${{ github.sha }}
+            ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-base:latest
+            ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-base:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -210,11 +222,11 @@ jobs:
             dockerfile_path="${dockerfile_paths[$service]:-docker/agent/Dockerfile}"
             echo "Building $service using $dockerfile_path"
             
-            docker build -t ${{ env.DOCKER_REGISTRY }}/cahoots-$service:latest \
-                        -t ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }} \
+            docker build -t ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-$service:latest \
+                        -t ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-$service:${{ github.sha }} \
                         -f $dockerfile_path .
-            docker push ${{ env.DOCKER_REGISTRY }}/cahoots-$service:latest
-            docker push ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }}
+            docker push ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-$service:latest
+            docker push ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-$service:${{ github.sha }}
           done
 
   deploy-staging:
@@ -244,7 +256,7 @@ jobs:
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
           for service in "${services[@]}"; do
             # Replace image tag in deployment
-            sed -i "s|image: .*cahoots-$service:.*|image: ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
+            sed -i "s|image: .*$service:.*|image: ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-$service:${{ github.sha }}|" k8s/base/$service.yaml
             # Apply the updated manifest
             kubectl apply -f k8s/base/$service.yaml
             # Wait for rollout
@@ -278,7 +290,7 @@ jobs:
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
           for service in "${services[@]}"; do
             # Replace image tag in deployment
-            sed -i "s|image: .*cahoots-$service:.*|image: ${{ env.DOCKER_REGISTRY }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
+            sed -i "s|image: .*$service:.*|image: ${{ env.DOCKER_REGISTRY }}/cahoots-monorepo-$service:${{ github.sha }}|" k8s/base/$service.yaml
             # Apply the updated manifest
             kubectl apply -f k8s/base/$service.yaml
             # Wait for rollout
