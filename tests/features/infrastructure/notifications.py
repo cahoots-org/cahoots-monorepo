@@ -3,26 +3,35 @@ from typing import Dict, List
 
 
 class MockEmailService:
-    """Mock email service that stores sent emails in memory"""
+    """Mock email service for tests"""
     
     def __init__(self):
-        """Initialize the email service"""
+        """Initialize the mock email service"""
         self.sent_emails = []
     
-    def send_verification_email(self, email: str, token: str) -> None:
-        """Send a verification email (mock)"""
+    def send_verification_email(self, email, token):
+        """Send a verification email"""
         self.sent_emails.append({
-            'to': email,
             'type': 'verification',
+            'to': email,
             'token': token
         })
     
-    def send_password_reset_email(self, email: str, token: str) -> None:
-        """Send a password reset email (mock)"""
+    def send_password_reset_email(self, email, token):
+        """Send a password reset email"""
         self.sent_emails.append({
+            'type': 'password_reset',
             'to': email,
-            'type': 'reset',
             'token': token
+        })
+    
+    def send_notification_email(self, email, subject, body):
+        """Send a notification email"""
+        self.sent_emails.append({
+            'type': 'notification',
+            'to': email,
+            'subject': subject,
+            'body': body
         })
     
     def send_welcome_email(self, email: str) -> None:

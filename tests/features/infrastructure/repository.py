@@ -2,7 +2,7 @@
 from typing import Any, Dict, List, Optional, Set
 from uuid import UUID
 
-from cahoots_events.auth_aggregates import User
+from ..test_imports import User
 
 
 class UserRepository:

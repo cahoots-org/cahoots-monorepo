@@ -12,6 +12,9 @@ class EventMetadata:
     correlation_id: Optional[UUID] = None
     causation_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
+    schema_version: int = 1
+    actor_id: Optional[UUID] = None
+    context: Dict[str, Any] = field(default_factory=dict)
 
 
 class Event(ABC):
@@ -53,4 +56,4 @@ class Event(ABC):
     @property
     def aggregate_id(self) -> UUID:
         """Get the aggregate ID for this event. Must be overridden by subclasses."""
-        raise NotImplementedError("Subclasses must implement aggregate_id") 
+        raise NotImplementedError("Subclasses must implement aggregate_id")

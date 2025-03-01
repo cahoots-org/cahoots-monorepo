@@ -91,7 +91,31 @@ We track key metrics such as event throughput, processing latency, error rates, 
 We adhere to best practices by designing small, focused events, versioning event schemas, and including sufficient context. Error handling involves idempotent handlers, defined retry policies, and logging of failed events. Performance is optimized by batching events, monitoring channel capacity, and implementing backpressure mechanisms.
 
 ### Security Measures
-Security is paramount, involving service-level authentication and channel access control to ensure that only authorized services can publish or subscribe to events. Data protection measures include encrypting sensitive payloads, sanitizing logged data, and implementing TTL for temporary channels to protect data integrity and privacy.
+Security is paramount in our event system, implemented through multiple layers:
+
+1. Authentication and Authorization:
+   - Service-level authentication using JWT tokens
+   - Channel access control with granular permissions
+   - Argon2id-based password hashing for user credentials
+   - API key validation with rate limiting
+
+2. Data Protection:
+   - Encryption of sensitive payloads
+   - Sanitization of logged data
+   - TTL implementation for temporary channels
+   - Session management with automatic expiration
+
+3. Network Security:
+   - TLS encryption for all communications
+   - IP whitelisting for service-to-service communication
+   - Redis AUTH for secure connections
+   - Regular security audits and updates
+
+4. Monitoring and Alerts:
+   - Real-time security event monitoring
+   - Automated alerts for suspicious activities
+   - Regular security metric reporting
+   - Audit logging of security-related events
 
 ## Event Replay Capabilities
 

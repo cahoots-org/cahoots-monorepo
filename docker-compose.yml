@@ -24,7 +24,7 @@ services:
       - ENVIRONMENT=development
       - DEBUG=true
       - PYTHONPATH=/app/services/api:/app/libs/core:/app/libs/events
-      - JWT_SECRET_KEY=your-super-secret-key-for-development-only
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
@@ -76,7 +76,7 @@ services:
       - ./ngrok.yml:/etc/ngrok/ngrok.yml
 
   db:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -89,7 +89,7 @@ services:
       - cahoots-network
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
     ports:
       - "6379:6379"
     networks:

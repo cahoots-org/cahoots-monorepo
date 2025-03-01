@@ -1,7 +1,10 @@
 from uuid import uuid4
 from behave import given, when, then
 from behave.runner import Context
-from features.steps.common import ensure_agent_id
+from tests.features.steps.common import ensure_agent_id
+
+# Import our new view class
+from tests.features.views.code_change_views import CodeChangesView
 
 # We need to implement the appropriate commands based on the events
 class ProposeCodeChange:
@@ -33,11 +36,8 @@ class ImplementCodeChange:
         self.change_id = change_id
         self.implemented_by = implemented_by
 
-class CodeChangeView:
-    pass
-
-# Import the events from code_changes that will be used
-from cahoots_events.code_changes import (
+# Import the events from test_imports
+from tests.features.test_imports import (
     CodeChangeProposed, CodeChangeReviewed, CodeChangeImplemented
 )
 
@@ -53,14 +53,14 @@ def step_propose_code_change(context: Context, agent_id: str):
         reasoning=row['reasoning'],
         proposed_by=ensure_agent_id(context, agent_id)
     )
-    events = context.project_handler.handle_propose_code_change(cmd)
+    events = context.code_changes_handler.handle_propose_code_change(cmd)
     context.current_change_id = events[0].change_id
 
 @then('the code change should be in "{status}" status')
 def step_check_code_change_status(context: Context, status: str):
     view = context.view_store.get_view(
         context.current_project_id,
-        CodeChangeView
+        CodeChangesView
     )
     change = view.changes[context.current_change_id]
     assert change['status'] == status, \
@@ -70,7 +70,7 @@ def step_check_code_change_status(context: Context, status: str):
 def step_check_pending_changes(context: Context):
     view = context.view_store.get_view(
         context.current_project_id,
-        CodeChangeView
+        CodeChangesView
     )
     assert context.current_change_id in view.pending_changes, \
         "Change not found in pending changes"
@@ -88,7 +88,7 @@ def step_review_code_change(context: Context, agent_id: str):
         suggested_changes=row.get('suggested_changes', ''),
         reviewed_by=ensure_agent_id(context, agent_id)
     )
-    context.project_handler.handle_review_code_change(cmd)
+    context.code_changes_handler.handle_review_code_change(cmd)
 
 @when('agent "{agent_id}" implements the approved change')
 def step_implement_code_change(context: Context, agent_id: str):
@@ -99,13 +99,13 @@ def step_implement_code_change(context: Context, agent_id: str):
         change_id=context.current_change_id,
         implemented_by=ensure_agent_id(context, agent_id)
     )
-    context.project_handler.handle_implement_code_change(cmd)
+    context.code_changes_handler.handle_implement_code_change(cmd)
 
 @then('the code change should be visible in the project\'s implemented changes')
 def step_check_implemented_changes(context: Context):
     view = context.view_store.get_view(
         context.current_project_id,
-        CodeChangeView
+        CodeChangesView
     )
     assert context.current_change_id in view.implemented_changes, \
         "Change not found in implemented changes"
@@ -114,7 +114,7 @@ def step_check_implemented_changes(context: Context):
 def step_check_review_comments(context: Context):
     view = context.view_store.get_view(
         context.current_project_id,
-        CodeChangeView
+        CodeChangesView
     )
     change = view.changes[context.current_change_id]
     assert change['comments'] != '', "No review comments found"
@@ -133,7 +133,7 @@ def step_attempt_self_review(context: Context, agent_id: str):
             suggested_changes='',
             reviewed_by=ensure_agent_id(context, agent_id)
         )
-        context.project_handler.handle_review_code_change(cmd)
+        context.code_changes_handler.handle_review_code_change(cmd)
         context.last_error = None
     except ValueError as e:
         context.last_error = str(e)
@@ -142,10 +142,10 @@ def step_attempt_self_review(context: Context, agent_id: str):
 def step_check_file_pending_changes(context: Context, count: int, file_path: str):
     view = context.view_store.get_view(
         context.current_project_id,
-        CodeChangeView
+        CodeChangesView
     )
     file_changes = [
-        change for change in view.pending_changes.values()
+        change_id for change_id, change in view.pending_changes.items()
         if file_path in change['files']
     ]
     assert len(file_changes) == count, \

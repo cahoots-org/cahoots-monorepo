@@ -1,7 +1,7 @@
 from uuid import uuid4
 from behave import given, when, then
 from behave.runner import Context
-from features.steps.common import ensure_agent_id
+from tests.features.steps.common import ensure_agent_id
 
 
 @given('a system user "{user_id}" exists')

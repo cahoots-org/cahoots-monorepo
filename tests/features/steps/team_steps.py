@@ -1,7 +1,7 @@
 from uuid import uuid4
 from behave import given, when, then
 from behave.runner import Context
-from features.steps.common import ensure_agent_id
+from tests.features.steps.common import ensure_agent_id
 
 # Define command classes for team operations
 class CreateTeam:
@@ -21,6 +21,7 @@ class AddTeamMember:
         self.member_id = member_id
         self.role = role
         self.added_by = added_by
+        self.created_by = added_by
 
 class UpdateTeamMemberRole:
     def __init__(self, command_id, correlation_id, team_id, member_id, new_role, reason, updated_by):
@@ -31,6 +32,8 @@ class UpdateTeamMemberRole:
         self.new_role = new_role
         self.reason = reason
         self.updated_by = updated_by
+        self.created_by = updated_by
+        self.user_id = member_id
 
 class RemoveTeamMember:
     def __init__(self, command_id, correlation_id, team_id, member_id, removed_by):
@@ -39,6 +42,8 @@ class RemoveTeamMember:
         self.team_id = team_id
         self.member_id = member_id
         self.removed_by = removed_by
+        self.created_by = removed_by
+        self.user_id = member_id
 
 class ArchiveTeam:
     def __init__(self, command_id, correlation_id, team_id, reason, archived_by):
@@ -55,6 +60,7 @@ class TransferTeamLeadership:
         self.team_id = team_id
         self.new_lead_id = new_lead_id
         self.transferred_by = transferred_by
+        self.created_by = transferred_by
 
 # Define view classes
 class TeamView:
