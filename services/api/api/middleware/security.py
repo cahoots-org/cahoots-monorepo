@@ -1,16 +1,19 @@
 """Security middleware for FastAPI."""
-from typing import Optional, Callable, Dict, Any
-from utils.security import SecurityManager
+
+import logging
+from typing import Any, Callable, Dict, Optional
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
-import logging
+from utils.security import SecurityManager
+
 
 class SecurityMiddleware:
     """Security middleware for FastAPI."""
 
     def __init__(self, app: Callable, security_manager: Optional[SecurityManager] = None):
         """Initialize security middleware.
-        
+
         Args:
             app: FastAPI application
             security_manager: Security manager instance
@@ -21,7 +24,7 @@ class SecurityMiddleware:
 
     async def __call__(self, scope: Dict[str, Any], receive: Callable, send: Callable) -> None:
         """Process request through security checks.
-        
+
         Args:
             scope: ASGI scope
             receive: ASGI receive function
@@ -41,10 +44,7 @@ class SecurityMiddleware:
         # Get API key from headers
         api_key = request.headers.get("X-API-Key")
         if not api_key:
-            response = JSONResponse(
-                status_code=401,
-                content={"detail": "Missing API key"}
-            )
+            response = JSONResponse(status_code=401, content={"detail": "Missing API key"})
             await response(scope, receive, send)
             return
 
@@ -54,8 +54,7 @@ class SecurityMiddleware:
                 self.security_manager = request.app.state.security_manager
                 if not self.security_manager:
                     response = JSONResponse(
-                        status_code=401,
-                        content={"detail": "Authentication service unavailable"}
+                        status_code=401, content={"detail": "Authentication service unavailable"}
                     )
                     await response(scope, receive, send)
                     return
@@ -68,17 +67,11 @@ class SecurityMiddleware:
 
         except ValueError as e:
             self.logger.warning("Authentication failed: %s", str(e))
-            response = JSONResponse(
-                status_code=401,
-                content={"detail": str(e)}
-            )
+            response = JSONResponse(status_code=401, content={"detail": str(e)})
             await response(scope, receive, send)
             return
         except Exception as e:
             self.logger.error("Unexpected error in middleware: %s", str(e))
-            response = JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid API key"}
-            )
+            response = JSONResponse(status_code=401, content={"detail": "Invalid API key"})
             await response(scope, receive, send)
-            return 
+            return

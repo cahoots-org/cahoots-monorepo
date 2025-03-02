@@ -1,18 +1,18 @@
 """Project Manager Agent implementation."""
 
-import logging
-from typing import List, Dict, TypedDict, Any, Optional
-import uuid
 import json
+import logging
+import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional, TypedDict
 
+from cahoots_core.ai import AIProvider
 from cahoots_core.models.story import Story
 from cahoots_core.models.team_config import TeamConfig
 from cahoots_core.services.github_service import GitHubService
-from cahoots_events.bus.system import EventSystem
-from cahoots_core.ai import AIProvider
 from cahoots_core.utils.metrics import MetricsCollector
+from cahoots_events.bus.system import EventSystem
 
 from ..base import BaseAgent
 
@@ -33,10 +33,10 @@ class ProjectManager(BaseAgent):
         event_system: EventSystem,
         config: Optional[Dict[str, Any]] = None,
         ai_provider: Optional[AIProvider] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Initialize the project manager.
-        
+
         Args:
             event_system: Event system for communication
             config: Optional configuration dictionary
@@ -48,7 +48,7 @@ class ProjectManager(BaseAgent):
             event_system=event_system,
             config=config,
             ai_provider=ai_provider,
-            **kwargs
+            **kwargs,
         )
         self.logger = logging.getLogger(__name__)
         self.metrics = MetricsCollector(service_name="project_manager")
@@ -82,7 +82,7 @@ class ProjectManager(BaseAgent):
         """
         story_data = event.get("data", {})
         story = Story.from_dict(story_data)
-        
+
         # Estimate complexity and assign story
         complexity = await self.estimate_story_complexity(story)
         await self.assign_story(story.id, complexity)
@@ -105,7 +105,7 @@ class ProjectManager(BaseAgent):
             event_data = {
                 "story_id": feedback_data["story_id"],
                 "feedback": feedback_data["feedback"],
-                "actions": result.get("actions", [])
+                "actions": result.get("actions", []),
             }
             try:
                 await self.event_system.publish("story.feedback.processed", event_data)
@@ -164,7 +164,7 @@ class ProjectManager(BaseAgent):
             event_data = {
                 "story_id": story_id,
                 "developer_id": developer_id,
-                "status": result.get("status")
+                "status": result.get("status"),
             }
             try:
                 await self.event_system.publish("story.assigned", event_data)
@@ -207,10 +207,10 @@ class ProjectManager(BaseAgent):
 
     async def handle_system_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """Handle system messages.
-        
+
         Args:
             message: System message to handle
-            
+
         Returns:
             Response with operation status
         """
@@ -227,27 +227,23 @@ class ProjectManager(BaseAgent):
 
     async def handle_project_created(self, project_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle project creation.
-        
+
         Args:
             project_data: Project creation data
-            
+
         Returns:
             Response with created project details
         """
         try:
             # Create board
             board = await self.task_management.create_board(
-                name=project_data["name"],
-                description=project_data["description"]
+                name=project_data["name"], description=project_data["description"]
             )
             self.board_id = board.get("id")
             board_url = board.get("url")  # Get board URL from Trello response
 
             # Create backlog list
-            backlog = await self.task_management.create_list(
-                board_id=self.board_id,
-                name="Backlog"
-            )
+            backlog = await self.task_management.create_list(board_id=self.board_id, name="Backlog")
             self.list_id = backlog.get("id")
 
             # Get GitHub repository URL
@@ -260,32 +256,26 @@ class ProjectManager(BaseAgent):
                 "task_board_url": board_url,
                 "repository_url": repo_url,
                 "board_id": self.board_id,
-                "list_id": self.list_id
+                "list_id": self.list_id,
             }
 
             # Notify about project creation and resources
-            await self.event_system.publish("project_resources_ready", {
-                "project_id": project_data.get("id"),
-                "resources": project_resources
-            })
+            await self.event_system.publish(
+                "project_resources_ready",
+                {"project_id": project_data.get("id"), "resources": project_resources},
+            )
 
-            return {
-                "status": "success",
-                **project_resources
-            }
+            return {"status": "success", **project_resources}
         except Exception as e:
             self.logger.error(f"Error creating project: {str(e)}")
-            return {
-                "status": "error",
-                "message": str(e)
-            }
+            return {"status": "error", "message": str(e)}
 
     async def handle_task_completed(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle task completion.
-        
+
         Args:
             task_data: Task completion data
-            
+
         Returns:
             Response with updated task status
         """
@@ -294,18 +284,13 @@ class ProjectManager(BaseAgent):
             task = {
                 "id": task_data["id"],
                 "status": "completed",
-                "completion_data": task_data["completion_data"]
+                "completion_data": task_data["completion_data"],
             }
 
             # Notify about task completion
-            await self.event_system.publish("task_completed", {
-                "task": task
-            })
+            await self.event_system.publish("task_completed", {"task": task})
 
-            return {
-                "status": "success",
-                "task": task
-            }
+            return {"status": "success", "task": task}
 
         except Exception as e:
             self.logger.error(f"Failed to handle task completion: {e}")
@@ -313,39 +298,31 @@ class ProjectManager(BaseAgent):
 
     async def handle_pr_created(self, pr_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle pull request creation.
-        
+
         Args:
             pr_data: Pull request data
-            
+
         Returns:
             Response with reviewer assignments
         """
         try:
             # Determine reviewers based on PR content
             reviewers = ["qa_tester"]  # Always include QA
-            
+
             # Add UX designer for UI changes
-            if any("ui" in file.lower() or "frontend" in file.lower() 
-                  for file in pr_data.get("files", [])):
+            if any(
+                "ui" in file.lower() or "frontend" in file.lower()
+                for file in pr_data.get("files", [])
+            ):
                 reviewers.append("ux_designer")
 
             # Update PR with reviewers
-            await self.github_service.update_pr(
-                pr_data["id"],
-                {"reviewers": reviewers}
-            )
+            await self.github_service.update_pr(pr_data["id"], {"reviewers": reviewers})
 
             # Notify about PR assignment
-            await self.event_system.publish("pr_assigned", {
-                "pr": pr_data,
-                "reviewers": reviewers
-            })
+            await self.event_system.publish("pr_assigned", {"pr": pr_data, "reviewers": reviewers})
 
-            return {
-                "status": "success",
-                "pr": pr_data,
-                "reviewers": reviewers
-            }
+            return {"status": "success", "pr": pr_data, "reviewers": reviewers}
 
         except Exception as e:
             self.logger.error(f"Failed to handle PR creation: {e}")
@@ -353,10 +330,10 @@ class ProjectManager(BaseAgent):
 
     async def handle_design_completed(self, design_data: Dict[str, Any]) -> Dict[str, Any]:
         """Handle design completion.
-        
+
         Args:
             design_data: Design completion data
-            
+
         Returns:
             Response with implementation tasks
         """
@@ -371,49 +348,38 @@ class ProjectManager(BaseAgent):
                     "type": "development",
                     "title": f"Implement {component['name']}",
                     "description": component["specs"],
-                    "design_url": design_data["design_url"]
+                    "design_url": design_data["design_url"],
                 }
                 tasks.append(task)
                 assignments[task["id"]] = "developer"
 
             # Notify about implementation tasks
-            await self.event_system.publish("design_implementation_tasks_created", {
-                "tasks": tasks,
-                "assignments": assignments
-            })
+            await self.event_system.publish(
+                "design_implementation_tasks_created", {"tasks": tasks, "assignments": assignments}
+            )
 
-            return {
-                "tasks": tasks,
-                "assignments": assignments
-            }
+            return {"tasks": tasks, "assignments": assignments}
 
         except Exception as e:
             self.logger.error(f"Failed to handle design completion: {e}")
             return {"status": "error", "message": str(e)}
 
     async def create_roadmap(
-        self,
-        project_name: str,
-        description: str,
-        requirements: List[str]
+        self, project_name: str, description: str, requirements: List[str]
     ) -> Dict[str, Any]:
         """Create project roadmap.
-        
+
         Args:
             project_name: Name of the project
             description: Project description
             requirements: List of project requirements
-            
+
         Returns:
             Generated roadmap with milestones and tasks
         """
         try:
             # Generate roadmap using AI model
-            prompt = self._generate_roadmap_prompt(
-                project_name,
-                description,
-                requirements
-            )
+            prompt = self._generate_roadmap_prompt(project_name, description, requirements)
             response = await self.model.generate_response(prompt)
             roadmap = json.loads(response)
 
@@ -424,18 +390,15 @@ class ProjectManager(BaseAgent):
             return None
 
     def _generate_roadmap_prompt(
-        self,
-        project_name: str,
-        description: str,
-        requirements: List[str]
+        self, project_name: str, description: str, requirements: List[str]
     ) -> str:
         """Generate prompt for roadmap creation.
-        
+
         Args:
             project_name: Name of the project
             description: Project description
             requirements: List of project requirements
-            
+
         Returns:
             Generated prompt for the AI model
         """
@@ -455,7 +418,7 @@ Format the response as a JSON object with:
 - milestones: List of milestone objects
 - tasks: List of task objects
 - dependencies: List of dependency objects
-- estimates: Dictionary of task estimates""" 
+- estimates: Dictionary of task estimates"""
 
     async def create_story(self, story: Story) -> Dict[str, Any]:
         """Create a new story.
@@ -553,4 +516,4 @@ Format the response as a JSON object with:
             return json.loads(response)
         except Exception as e:
             self.logger.error(f"Error prioritizing stories: {str(e)}")
-            raise 
+            raise

@@ -1,13 +1,15 @@
 """Authentication handler for tests"""
+
+import hashlib
+import secrets
 from datetime import datetime
 from typing import List
 from uuid import UUID, uuid4
-import hashlib
-import secrets
 
-from ..test_imports import EventMetadata
-from ..infrastructure.repository import UserRepository
 from ..infrastructure.notifications import MockEmailService
+from ..infrastructure.repository import UserRepository
+from ..test_imports import EventMetadata
+
 
 # Stub class definitions for commands that are imported
 class RegisterUser:
@@ -18,12 +20,14 @@ class RegisterUser:
         self.password = password
         self.name = name
 
+
 class VerifyEmail:
     def __init__(self, command_id, correlation_id, user_id, verification_token):
         self.command_id = command_id
         self.correlation_id = correlation_id
         self.user_id = user_id
         self.verification_token = verification_token
+
 
 class LoginUser:
     def __init__(self, command_id, correlation_id, email, password):
@@ -32,11 +36,13 @@ class LoginUser:
         self.email = email
         self.password = password
 
+
 class RequestPasswordReset:
     def __init__(self, command_id, correlation_id, email):
         self.command_id = command_id
         self.correlation_id = correlation_id
         self.email = email
+
 
 class ResetPassword:
     def __init__(self, command_id, correlation_id, user_id, reset_token, new_password):
@@ -46,12 +52,14 @@ class ResetPassword:
         self.reset_token = reset_token
         self.new_password = new_password
 
+
 class RefreshToken:
     def __init__(self, command_id, correlation_id, user_id, refresh_token):
         self.command_id = command_id
         self.correlation_id = correlation_id
         self.user_id = user_id
         self.refresh_token = refresh_token
+
 
 class LogoutUser:
     def __init__(self, command_id, correlation_id, user_id, session_id):
@@ -60,12 +68,14 @@ class LogoutUser:
         self.user_id = user_id
         self.session_id = session_id
 
+
 class RevokeSession:
     def __init__(self, command_id, correlation_id, user_id, session_id):
         self.command_id = command_id
         self.correlation_id = correlation_id
         self.user_id = user_id
         self.session_id = session_id
+
 
 # Stub class definitions for events that are imported
 class UserRegistered:
@@ -78,6 +88,7 @@ class UserRegistered:
         self.name = name
         self.password_hash = password_hash
 
+
 class EmailVerified:
     def __init__(self, event_id, timestamp, metadata, user_id, verification_token):
         self.event_id = event_id
@@ -86,8 +97,11 @@ class EmailVerified:
         self.user_id = user_id
         self.verification_token = verification_token
 
+
 class UserLoggedIn:
-    def __init__(self, event_id, timestamp, metadata, user_id, session_id, access_token, refresh_token):
+    def __init__(
+        self, event_id, timestamp, metadata, user_id, session_id, access_token, refresh_token
+    ):
         self.event_id = event_id
         self.timestamp = timestamp
         self.metadata = metadata
@@ -95,6 +109,7 @@ class UserLoggedIn:
         self.session_id = session_id
         self.access_token = access_token
         self.refresh_token = refresh_token
+
 
 class PasswordResetRequested:
     def __init__(self, event_id, timestamp, metadata, user_id, reset_token):
@@ -104,6 +119,7 @@ class PasswordResetRequested:
         self.user_id = user_id
         self.reset_token = reset_token
 
+
 class PasswordReset:
     def __init__(self, event_id, timestamp, metadata, user_id, password_hash):
         self.event_id = event_id
@@ -111,6 +127,7 @@ class PasswordReset:
         self.metadata = metadata
         self.user_id = user_id
         self.password_hash = password_hash
+
 
 class TokenRefreshed:
     def __init__(self, event_id, timestamp, metadata, user_id, access_token, refresh_token):
@@ -121,6 +138,7 @@ class TokenRefreshed:
         self.access_token = access_token
         self.refresh_token = refresh_token
 
+
 class UserLoggedOut:
     def __init__(self, event_id, timestamp, metadata, user_id, session_id):
         self.event_id = event_id
@@ -128,6 +146,7 @@ class UserLoggedOut:
         self.metadata = metadata
         self.user_id = user_id
         self.session_id = session_id
+
 
 class SessionRevoked:
     def __init__(self, event_id, timestamp, metadata, user_id, session_id):
@@ -137,10 +156,17 @@ class SessionRevoked:
         self.user_id = user_id
         self.session_id = session_id
 
+
 class AuthHandler:
     """Handler for authentication-related commands"""
 
-    def __init__(self, event_store, view_store, user_repository: UserRepository, email_service: MockEmailService):
+    def __init__(
+        self,
+        event_store,
+        view_store,
+        user_repository: UserRepository,
+        email_service: MockEmailService,
+    ):
         self.event_store = event_store
         self.view_store = view_store
         self.user_repository = user_repository
@@ -153,7 +179,7 @@ class AuthHandler:
     def handle_register_user(self, cmd: RegisterUser) -> List[UserRegistered]:
         """Handle RegisterUser command"""
         # Stub implementation for tests
-        return [{'user_id': uuid4()}]
+        return [{"user_id": uuid4()}]
 
     def handle_verify_email(self, cmd: VerifyEmail) -> List[EmailVerified]:
         """Handle VerifyEmail command"""
@@ -169,7 +195,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            verification_token=cmd.verification_token
+            verification_token=cmd.verification_token,
         )
 
         self.event_store.append_events(cmd.user_id, [event])
@@ -202,13 +228,15 @@ class AuthHandler:
             user_id=user.user_id,
             session_id=session_id,
             access_token=access_token,
-            refresh_token=refresh_token
+            refresh_token=refresh_token,
         )
 
         self.event_store.append_events(user.user_id, [event])
         return [event]
 
-    def handle_request_password_reset(self, cmd: RequestPasswordReset) -> List[PasswordResetRequested]:
+    def handle_request_password_reset(
+        self, cmd: RequestPasswordReset
+    ) -> List[PasswordResetRequested]:
         """Handle RequestPasswordReset command"""
         user = self.user_repository.get_by_email(cmd.email)
         if not user:
@@ -221,7 +249,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=user.user_id,
-            reset_token=reset_token
+            reset_token=reset_token,
         )
 
         # Save the event
@@ -249,7 +277,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            password_hash=password_hash
+            password_hash=password_hash,
         )
 
         self.event_store.append_events(cmd.user_id, [event])
@@ -264,15 +292,15 @@ class AuthHandler:
         # For testing, just generate a new access token without checking for the session
         # In a real implementation, we would find the session by refresh token
         new_access_token = secrets.token_urlsafe(32)
-        
+
         # Update the user's sessions if needed
-        if hasattr(user, 'sessions'):
+        if hasattr(user, "sessions"):
             for session_id, session_data in user.sessions.items():
-                if session_data.get('refresh_token') == cmd.refresh_token:
-                    session_data['access_token'] = new_access_token
-                    
+                if session_data.get("refresh_token") == cmd.refresh_token:
+                    session_data["access_token"] = new_access_token
+
             self.user_repository.save_user(user)
-        
+
         # Create the event
         event = TokenRefreshed(
             event_id=uuid4(),
@@ -280,7 +308,7 @@ class AuthHandler:
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
             access_token=new_access_token,
-            refresh_token=cmd.refresh_token
+            refresh_token=cmd.refresh_token,
         )
 
         self.event_store.append_events(cmd.user_id, [event])
@@ -294,7 +322,7 @@ class AuthHandler:
 
         # For testing, just create a logout event without verifying the session
         # Revoke the session in the user object
-        if hasattr(user, 'revoke_session'):
+        if hasattr(user, "revoke_session"):
             user.revoke_session(cmd.session_id)
             self.user_repository.save_user(user)
 
@@ -303,7 +331,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            session_id=cmd.session_id
+            session_id=cmd.session_id,
         )
 
         self.event_store.append_events(cmd.user_id, [event])
@@ -317,7 +345,7 @@ class AuthHandler:
 
         # For testing, just create a revoke event without verifying the session
         # Revoke the session in the user object if it exists
-        if hasattr(user, 'revoke_session'):
+        if hasattr(user, "revoke_session"):
             user.revoke_session(cmd.session_id)
             self.user_repository.save_user(user)
 
@@ -326,8 +354,8 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            session_id=cmd.session_id
+            session_id=cmd.session_id,
         )
 
         self.event_store.append_events(cmd.user_id, [event])
-        return [event] 
+        return [event]

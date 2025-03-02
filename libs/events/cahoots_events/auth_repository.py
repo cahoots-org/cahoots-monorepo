@@ -1,10 +1,11 @@
 """Authentication repository implementations"""
+
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import List, Optional
 from uuid import UUID
 
-from .auth_aggregates import User
 from .auth import UserRegistered
+from .auth_aggregates import User
 
 
 class UserRepository(ABC):
@@ -48,9 +49,7 @@ class EventStoreUserRepository(UserRepository):
         # Get all user registration events
         events = self.event_store.get_all_events()
         registration_event = next(
-            (e for e in events 
-             if isinstance(e, UserRegistered) and e.email == email),
-            None
+            (e for e in events if isinstance(e, UserRegistered) and e.email == email), None
         )
         if not registration_event:
             return None
@@ -60,4 +59,4 @@ class EventStoreUserRepository(UserRepository):
     def save(self, user: User) -> None:
         """Save user aggregate - no-op for event store"""
         # No need to save the aggregate since we're using event sourcing
-        pass 
+        pass

@@ -1,16 +1,27 @@
 """Base database models."""
-from datetime import datetime
+
 import uuid
-from sqlalchemy.orm import declarative_base
-from sqlalchemy import Column, String, Integer, Boolean, JSON, DateTime, ForeignKey, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
+
 class Organization(Base):
     """Organization model."""
-    
+
     __tablename__ = "organizations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -19,8 +30,8 @@ class Organization(Base):
     description = Column(String)
     api_key = Column(String, unique=True, nullable=False)
     api_rate_limit = Column(Integer, default=1000)
-    subscription_tier = Column(String, default='free')
-    subscription_status = Column(String, default='active')
+    subscription_tier = Column(String, default="free")
+    subscription_status = Column(String, default="active")
     subscription_id = Column(String)
     subscription_item_id = Column(String)
     customer_id = Column(String)
@@ -31,23 +42,32 @@ class Organization(Base):
     # Relationships
     members = relationship("UserRole", back_populates="organization", cascade="all, delete-orphan")
     teams = relationship("Team", back_populates="organization", cascade="all, delete-orphan")
-    invitations = relationship("OrganizationInvitation", back_populates="organization", cascade="all, delete-orphan")
-    audit_logs = relationship("AuditLog", back_populates="organization", cascade="all, delete-orphan")
-    usage_records = relationship("UsageRecord", back_populates="organization", cascade="all, delete-orphan")
+    invitations = relationship(
+        "OrganizationInvitation", back_populates="organization", cascade="all, delete-orphan"
+    )
+    audit_logs = relationship(
+        "AuditLog", back_populates="organization", cascade="all, delete-orphan"
+    )
+    usage_records = relationship(
+        "UsageRecord", back_populates="organization", cascade="all, delete-orphan"
+    )
     invoices = relationship("Invoice", back_populates="organization", cascade="all, delete-orphan")
-    subscriptions = relationship("Subscription", back_populates="organization", cascade="all, delete-orphan")
+    subscriptions = relationship(
+        "Subscription", back_populates="organization", cascade="all, delete-orphan"
+    )
 
     def __repr__(self) -> str:
         """String representation."""
         return f"<Organization {self.name} ({self.id})>"
 
+
 class OrganizationInvitation(Base):
     """Organization invitation model."""
-    
+
     __tablename__ = "organization_invitations"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     email = Column(String, nullable=False)
     role = Column(String, nullable=False)
     token = Column(String, nullable=False, unique=True)
@@ -68,19 +88,20 @@ class OrganizationInvitation(Base):
         """Check if invitation is expired."""
         return datetime.utcnow() > self.expires_at
 
+
 class Project(Base):
     """Project model."""
-    
+
     __tablename__ = "projects"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, nullable=False)
     description = Column(String)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
-    team_id = Column(UUID(as_uuid=True), ForeignKey('teams.id'), nullable=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), nullable=True)
     agent_config = Column(JSON, nullable=False, default=dict)
     resource_limits = Column(JSON, nullable=False, default=dict)
-    status = Column(String, default='active')
+    status = Column(String, default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -92,13 +113,14 @@ class Project(Base):
         """String representation."""
         return f"<Project {self.name} ({self.id})>"
 
+
 class Team(Base):
     """Team model."""
-    
+
     __tablename__ = "teams"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     name = Column(String, nullable=False)
     description = Column(String)
     settings = Column(JSON, nullable=False, default=dict)
@@ -114,14 +136,15 @@ class Team(Base):
         """String representation."""
         return f"<Team {self.name} ({self.id})>"
 
+
 class TeamMember(Base):
     """Team member model with role."""
-    
+
     __tablename__ = "team_members"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    team_id = Column(UUID(as_uuid=True), ForeignKey('teams.id'), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False)
+    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     role = Column(String, nullable=False)  # tech_lead, developer, designer, qa, etc.
     permissions = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -135,9 +158,10 @@ class TeamMember(Base):
         """String representation."""
         return f"<TeamMember {self.user_id} -> {self.team_id} ({self.role})>"
 
+
 class TeamConfiguration(Base):
     """Team configuration model."""
-    
+
     __tablename__ = "team_configurations"
 
     project_id = Column(String, primary_key=True)
@@ -145,15 +169,16 @@ class TeamConfiguration(Base):
     created_at = Column(Integer, nullable=False)
     updated_at = Column(Integer, nullable=False)
 
+
 class AuditLog(Base):
     """Audit log model."""
-    
+
     __tablename__ = "audit_logs"
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
-    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     action = Column(String, nullable=False)
     resource_type = Column(String, nullable=False)
     resource_id = Column(String, nullable=True)
@@ -170,15 +195,16 @@ class AuditLog(Base):
         """String representation."""
         return f"<AuditLog {self.action} on {self.resource_type} ({self.id})>"
 
+
 class Subscription(Base):
     """Subscription model."""
-    
+
     __tablename__ = "subscriptions"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     tier = Column(String, nullable=False)
-    status = Column(String, nullable=False, default='active')
+    status = Column(String, nullable=False, default="active")
     start_date = Column(DateTime, nullable=False, default=datetime.utcnow)
     end_date = Column(DateTime)
     price = Column(Integer, nullable=False)  # Price in cents
@@ -195,13 +221,14 @@ class Subscription(Base):
         """String representation."""
         return f"<Subscription {self.tier} for {self.organization_id}>"
 
+
 class UsageRecord(Base):
     """Usage record model."""
-    
+
     __tablename__ = "usage_records"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
     metric = Column(String, nullable=False)  # Type of usage being tracked
     quantity = Column(Integer, nullable=False)
     timestamp = Column(DateTime, nullable=False, default=datetime.utcnow)
@@ -216,14 +243,15 @@ class UsageRecord(Base):
         """String representation."""
         return f"<UsageRecord {self.metric}: {self.quantity} for {self.organization_id}>"
 
+
 class Invoice(Base):
     """Invoice model."""
-    
+
     __tablename__ = "invoices"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    organization_id = Column(UUID(as_uuid=True), ForeignKey('organizations.id'), nullable=False)
-    subscription_id = Column(UUID(as_uuid=True), ForeignKey('subscriptions.id'), nullable=True)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False)
+    subscription_id = Column(UUID(as_uuid=True), ForeignKey("subscriptions.id"), nullable=True)
     amount_due = Column(Integer, nullable=False)  # Amount in cents
     amount_paid = Column(Integer, nullable=False, default=0)  # Amount in cents
     status = Column(String, nullable=False)  # draft, open, paid, void, uncollectible
@@ -240,4 +268,4 @@ class Invoice(Base):
 
     def __repr__(self) -> str:
         """String representation."""
-        return f"<Invoice {self.id} for {self.organization_id}>" 
+        return f"<Invoice {self.id} for {self.organization_id}>"

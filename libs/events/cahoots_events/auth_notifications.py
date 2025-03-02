@@ -1,10 +1,11 @@
 """Authentication notification services"""
+
+import smtplib
 from abc import ABC, abstractmethod
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Optional
 from uuid import UUID
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 
 
 class EmailService(ABC):
@@ -24,8 +25,16 @@ class EmailService(ABC):
 class SMTPEmailService(EmailService):
     """SMTP implementation of email service"""
 
-    def __init__(self, smtp_host: str, smtp_port: int, username: str, password: str,
-                 from_email: str, verification_url: str, reset_url: str):
+    def __init__(
+        self,
+        smtp_host: str,
+        smtp_port: int,
+        username: str,
+        password: str,
+        from_email: str,
+        verification_url: str,
+        reset_url: str,
+    ):
         self.smtp_host = smtp_host
         self.smtp_port = smtp_port
         self.username = username
@@ -36,12 +45,12 @@ class SMTPEmailService(EmailService):
 
     def _send_email(self, to_email: str, subject: str, body_html: str) -> None:
         """Send email via SMTP"""
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = self.from_email
-        msg['To'] = to_email
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = self.from_email
+        msg["To"] = to_email
 
-        html_part = MIMEText(body_html, 'html')
+        html_part = MIMEText(body_html, "html")
         msg.attach(html_part)
 
         with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
@@ -91,16 +100,8 @@ class MockEmailService(EmailService):
 
     def send_verification_email(self, email: str, verification_token: str) -> None:
         """Record verification email"""
-        self.sent_emails.append({
-            'type': 'verification',
-            'to': email,
-            'token': verification_token
-        })
+        self.sent_emails.append({"type": "verification", "to": email, "token": verification_token})
 
     def send_password_reset_email(self, email: str, reset_token: str) -> None:
         """Record password reset email"""
-        self.sent_emails.append({
-            'type': 'reset',
-            'to': email,
-            'token': reset_token
-        }) 
+        self.sent_emails.append({"type": "reset", "to": email, "token": reset_token})

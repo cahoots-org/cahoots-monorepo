@@ -1,4 +1,5 @@
 """Mock implementation of task management service for testing."""
+
 import uuid
 from typing import Dict, List, Optional
 
@@ -40,11 +41,7 @@ class MockTaskManagementService(TaskManagementService):
     async def create_board(self, name: str, description: str) -> str:
         """Create a new board."""
         board_id = str(uuid.uuid4())
-        self.boards[board_id] = {
-            "name": name,
-            "description": description,
-            "lists": []
-        }
+        self.boards[board_id] = {"name": name, "description": description, "lists": []}
         return board_id
 
     async def create_list(self, board_id: str, name: str) -> str:
@@ -53,41 +50,30 @@ class MockTaskManagementService(TaskManagementService):
             raise ValueError(f"Board {board_id} not found")
 
         list_id = str(uuid.uuid4())
-        self.lists[list_id] = {
-            "name": name,
-            "board_id": board_id,
-            "cards": []
-        }
+        self.lists[list_id] = {"name": name, "board_id": board_id, "cards": []}
         self.boards[board_id]["lists"].append(list_id)
         return list_id
 
     async def _get_or_create_list(self, board_id: str, list_name: str) -> str:
         """Get existing list by name or create new one."""
         for list_id, list_data in self.lists.items():
-            if (list_data["board_id"] == board_id and 
-                list_data["name"] == list_name):
+            if list_data["board_id"] == board_id and list_data["name"] == list_name:
                 return list_id
         return await self.create_list(board_id, list_name)
 
-    async def create_card(
-        self, 
-        name: str, 
-        description: str, 
-        board_id: str, 
-        list_name: str
-    ) -> str:
+    async def create_card(self, name: str, description: str, board_id: str, list_name: str) -> str:
         """Create a new card in a list."""
         if board_id not in self.boards:
             raise ValueError(f"Board {board_id} not found")
 
         list_id = await self._get_or_create_list(board_id, list_name)
         card_id = str(uuid.uuid4())
-        
+
         self.cards[card_id] = {
             "name": name,
             "description": description,
             "board_id": board_id,
-            "list_id": list_id
+            "list_id": list_id,
         }
         self.lists[list_id]["cards"].append(card_id)
-        return card_id 
+        return card_id

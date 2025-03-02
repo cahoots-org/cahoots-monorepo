@@ -1,4 +1,5 @@
 """Authentication domain aggregates"""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -6,14 +7,22 @@ from uuid import UUID
 
 from ..events import Event
 from .events import (
-    UserCreated, UserVerified, UserLoggedIn, PasswordResetRequested,
-    PasswordReset, PasswordChanged, TokenRefreshed, UserLoggedOut, SessionRevoked
+    PasswordChanged,
+    PasswordReset,
+    PasswordResetRequested,
+    SessionRevoked,
+    TokenRefreshed,
+    UserCreated,
+    UserLoggedIn,
+    UserLoggedOut,
+    UserVerified,
 )
 
 
 @dataclass
 class UserSession:
     """Value object for user session"""
+
     session_id: UUID
     access_token: str
     refresh_token: str
@@ -25,9 +34,10 @@ class UserSession:
 @dataclass
 class User:
     """Aggregate root for users"""
+
     user_id: UUID
-    email: str = ''
-    password_hash: str = ''
+    email: str = ""
+    password_hash: str = ""
     is_verified: bool = False
     verification_token: Optional[str] = None
     reset_token: Optional[str] = None
@@ -65,7 +75,7 @@ class User:
                 access_token=event.access_token,
                 refresh_token=event.refresh_token,
                 created_at=event.timestamp,
-                last_used_at=event.timestamp
+                last_used_at=event.timestamp,
             )
             self.sessions[event.session_id] = session
             self.updated_at = event.timestamp
@@ -87,8 +97,7 @@ class User:
         elif isinstance(event, TokenRefreshed):
             # Find session by refresh token
             session = next(
-                (s for s in self.sessions.values() if s.refresh_token == event.refresh_token),
-                None
+                (s for s in self.sessions.values() if s.refresh_token == event.refresh_token), None
             )
             if session and session.is_active:
                 session.access_token = event.access_token
@@ -122,8 +131,7 @@ class User:
     def can_refresh_token(self, refresh_token: str) -> bool:
         """Check if token can be refreshed"""
         session = next(
-            (s for s in self.sessions.values() if s.refresh_token == refresh_token),
-            None
+            (s for s in self.sessions.values() if s.refresh_token == refresh_token), None
         )
         return session is not None and session.is_active
 
@@ -140,11 +148,12 @@ class User:
         """Remove expired sessions"""
         now = datetime.utcnow()
         self.sessions = {
-            sid: session for sid, session in self.sessions.items() 
+            sid: session
+            for sid, session in self.sessions.items()
             if now - session.last_used_at <= max_age
         }
         self.updated_at = datetime.utcnow()
 
     def clear_pending_events(self):
         """Clear the list of pending events"""
-        self.pending_events.clear() 
+        self.pending_events.clear()

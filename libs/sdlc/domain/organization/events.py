@@ -9,13 +9,22 @@ from ..events import Event, EventMetadata
 @dataclass
 class OrganizationCreated(Event):
     """Event emitted when a new organization is created"""
+
     organization_id: UUID
     name: str
     description: str
     created_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 organization_id: UUID, name: str, description: str, created_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        organization_id: UUID,
+        name: str,
+        description: str,
+        created_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.organization_id = organization_id
         self.name = name
@@ -31,14 +40,24 @@ class OrganizationCreated(Event):
 @dataclass
 class OrganizationNameUpdated(Event):
     """Event emitted when an organization's name is updated"""
+
     organization_id: UUID
     old_name: str
     new_name: str
     reason: str
     updated_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 organization_id: UUID, old_name: str, new_name: str, reason: str, updated_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        organization_id: UUID,
+        old_name: str,
+        new_name: str,
+        reason: str,
+        updated_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.organization_id = organization_id
         self.old_name = old_name
@@ -55,13 +74,22 @@ class OrganizationNameUpdated(Event):
 @dataclass
 class OrganizationMemberAdded(Event):
     """Event emitted when a member is added to an organization"""
+
     organization_id: UUID
     user_id: UUID
     role: str
     added_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 organization_id: UUID, user_id: UUID, role: str, added_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        organization_id: UUID,
+        user_id: UUID,
+        role: str,
+        added_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.organization_id = organization_id
         self.user_id = user_id
@@ -77,13 +105,22 @@ class OrganizationMemberAdded(Event):
 @dataclass
 class OrganizationMemberRemoved(Event):
     """Event emitted when a member is removed from an organization"""
+
     organization_id: UUID
     user_id: UUID
     removed_by: UUID
     reason: Optional[str] = None
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 organization_id: UUID, user_id: UUID, removed_by: UUID, reason: Optional[str] = None):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        organization_id: UUID,
+        user_id: UUID,
+        removed_by: UUID,
+        reason: Optional[str] = None,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.organization_id = organization_id
         self.user_id = user_id
@@ -99,6 +136,7 @@ class OrganizationMemberRemoved(Event):
 @dataclass
 class OrganizationMemberRoleChanged(Event):
     """Event emitted when a member's role is changed"""
+
     organization_id: UUID
     user_id: UUID
     old_role: str
@@ -106,9 +144,18 @@ class OrganizationMemberRoleChanged(Event):
     changed_by: UUID
     reason: str
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 organization_id: UUID, user_id: UUID, old_role: str, new_role: str,
-                 changed_by: UUID, reason: str):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        organization_id: UUID,
+        user_id: UUID,
+        old_role: str,
+        new_role: str,
+        changed_by: UUID,
+        reason: str,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.organization_id = organization_id
         self.user_id = user_id
@@ -126,13 +173,22 @@ class OrganizationMemberRoleChanged(Event):
 @dataclass
 class OrganizationArchived(Event):
     """Event emitted when an organization is archived"""
+
     organization_id: UUID
     reason: str
     archived_by: UUID
     archived_at: datetime
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 organization_id: UUID, reason: str, archived_by: UUID, archived_at: datetime):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        organization_id: UUID,
+        reason: str,
+        archived_by: UUID,
+        archived_at: datetime,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.organization_id = organization_id
         self.reason = reason
@@ -142,4 +198,4 @@ class OrganizationArchived(Event):
     @property
     def aggregate_id(self) -> UUID:
         """Get the aggregate ID for this event"""
-        return self.organization_id 
+        return self.organization_id

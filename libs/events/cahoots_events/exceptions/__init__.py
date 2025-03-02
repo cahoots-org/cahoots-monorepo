@@ -1,11 +1,12 @@
 """Event exceptions package."""
+
 from .events import (
     EventError,
-    EventPublishError,
-    EventSubscriptionError,
     EventHandlingError,
+    EventPublishError,
+    EventSizeLimitExceeded,
+    EventSubscriptionError,
     EventValidationError,
-    EventSizeLimitExceeded
 )
 
 __all__ = [
@@ -14,5 +15,5 @@ __all__ = [
     "EventSubscriptionError",
     "EventHandlingError",
     "EventValidationError",
-    "EventSizeLimitExceeded"
+    "EventSizeLimitExceeded",
 ]

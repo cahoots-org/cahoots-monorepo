@@ -1,18 +1,21 @@
 """Project management service."""
-from typing import Optional, List
-from uuid import UUID
+
 import logging
 from datetime import datetime
+from typing import List, Optional
+from uuid import UUID
+
+from schemas.projects import ProjectCreate, ProjectUpdate
+from utils.config import ServiceConfig
 
 from cahoots_core.models.db_models import Project
-from schemas.projects import ProjectCreate, ProjectUpdate
+from cahoots_core.services.github_service import GitHubService
 from cahoots_core.utils.infrastructure.database.manager import DatabaseManager
 from cahoots_core.utils.infrastructure.k8s.client import KubernetesClient
 from cahoots_core.utils.infrastructure.redis.manager import RedisManager
-from cahoots_core.services.github_service import GitHubService
-from utils.config import ServiceConfig
 
 logger = logging.getLogger(__name__)
+
 
 class ProjectService:
     """Service for managing projects."""
@@ -23,7 +26,7 @@ class ProjectService:
         db_manager: DatabaseManager,
         redis_manager: RedisManager,
         k8s_client: KubernetesClient,
-        github_service: GitHubService
+        github_service: GitHubService,
     ):
         """Initialize project service."""
         self.settings = settings
@@ -33,10 +36,7 @@ class ProjectService:
         self.github_service = github_service
 
     async def create_project(
-        self,
-        organization_id: UUID,
-        project_data: ProjectCreate,
-        user_id: UUID
+        self, organization_id: UUID, project_data: ProjectCreate, user_id: UUID
     ) -> Project:
         """Create a new project."""
         try:
@@ -55,13 +55,13 @@ class ProjectService:
                 labels={
                     "resource-type": "project",
                     "organization-id": str(organization_id),
-                    "project-id": str(project_id)
-                }
+                    "project-id": str(project_id),
+                },
             )
             await self.k8s_client.create_resource_quota(
                 namespace=namespace,
                 cpu=project_data.resource_limits["cpu"],
-                memory=project_data.resource_limits["memory"]
+                memory=project_data.resource_limits["memory"],
             )
 
             # Initialize Redis namespace
@@ -76,9 +76,7 @@ class ProjectService:
             repo = None
             if project_data.agent_config:
                 repo = await self.github_service.create_repository(
-                    name=project_data.name,
-                    organization=str(organization_id),
-                    private=True
+                    name=project_data.name, organization=str(organization_id), private=True
                 )
 
             # Create project links
@@ -86,7 +84,7 @@ class ProjectService:
                 "self": f"{self.settings.api_base_url}/projects/{project_id}",
                 "github_repo": repo.html_url if repo else "",
                 "monitoring": f"{self.settings.api_base_url}/projects/{project_id}/monitoring",
-                "logs": f"{self.settings.api_base_url}/projects/{project_id}/logs"
+                "logs": f"{self.settings.api_base_url}/projects/{project_id}/logs",
             }
 
             # Create project
@@ -99,7 +97,7 @@ class ProjectService:
                 resource_limits=project_data.resource_limits,
                 status="ready",
                 progress=100.0,
-                links=links
+                links=links,
             )
 
             return project
@@ -110,10 +108,7 @@ class ProjectService:
             raise
 
     async def update_project(
-        self,
-        project_id: UUID,
-        update_data: ProjectUpdate,
-        user_id: UUID
+        self, project_id: UUID, update_data: ProjectUpdate, user_id: UUID
     ) -> Project:
         """Update a project."""
         try:
@@ -132,13 +127,13 @@ class ProjectService:
             if update_data.resource_limits is not None:
                 await self._validate_resource_limits(update_data.resource_limits)
                 project.resource_limits = update_data.resource_limits
-                
+
                 # Update Kubernetes resources
                 namespace = f"project-{project_id}"
                 await self.k8s_client.update_resource_quota(
                     namespace=namespace,
                     cpu=update_data.resource_limits["cpu"],
-                    memory=update_data.resource_limits["memory"]
+                    memory=update_data.resource_limits["memory"],
                 )
 
             return project
@@ -147,11 +142,7 @@ class ProjectService:
             logger.error(f"Failed to update project: {str(e)}")
             raise
 
-    async def delete_project(
-        self,
-        project_id: UUID,
-        user_id: UUID
-    ) -> bool:
+    async def delete_project(self, project_id: UUID, user_id: UUID) -> bool:
         """Delete a project."""
         try:
             # Get project
@@ -168,10 +159,7 @@ class ProjectService:
             logger.error(f"Failed to delete project: {str(e)}")
             raise
 
-    async def get_project(
-        self,
-        project_id: UUID
-    ) -> Optional[Project]:
+    async def get_project(self, project_id: UUID) -> Optional[Project]:
         """Get a project by ID."""
         try:
             # Get project from database
@@ -218,4 +206,4 @@ class ProjectService:
 
         except Exception as e:
             logger.error(f"Failed to clean up resources: {str(e)}")
-            raise 
+            raise

@@ -1,18 +1,20 @@
 """View store implementation"""
-from typing import Dict, Optional, Type, TypeVar, Generic
+
+from typing import Dict, Generic, Optional, Type, TypeVar
 from uuid import UUID
 
-from ..auth.views import UserView, SessionView
-from ..organization.views import OrganizationView
-from ..team.views import TeamView
-from ..project.views import ProjectOverviewView, RequirementsView, TaskBoardView
+from ..auth.views import SessionView, UserView
 from ..code_changes.views import CodeChangeView
+from ..organization.views import OrganizationView
+from ..project.views import ProjectOverviewView, RequirementsView, TaskBoardView
+from ..team.views import TeamView
 
+T = TypeVar("T")
 
-T = TypeVar('T')
 
 class ViewCollection(Generic[T]):
     """Generic collection for managing views of a specific type"""
+
     def __init__(self):
         self.views: Dict[UUID, T] = {}
 
@@ -116,22 +118,22 @@ class InMemoryViewStore:
     def apply_event(self, event):
         """Apply an event to all relevant views"""
         # Get entity ID and relevant view types based on event type
-        if hasattr(event, 'user_id'):
+        if hasattr(event, "user_id"):
             self.get_or_create_view(UserView, event.user_id).apply_event(event)
-            if hasattr(event, 'session_id'):
+            if hasattr(event, "session_id"):
                 self.get_or_create_view(SessionView, event.user_id).apply_event(event)
 
-        if hasattr(event, 'organization_id'):
+        if hasattr(event, "organization_id"):
             self.get_or_create_view(OrganizationView, event.organization_id).apply_event(event)
 
-        if hasattr(event, 'team_id'):
+        if hasattr(event, "team_id"):
             self.get_or_create_view(TeamView, event.team_id).apply_event(event)
 
-        if hasattr(event, 'project_id'):
+        if hasattr(event, "project_id"):
             self.get_or_create_view(ProjectOverviewView, event.project_id).apply_event(event)
             self.get_or_create_view(RequirementsView, event.project_id).apply_event(event)
             self.get_or_create_view(TaskBoardView, event.project_id).apply_event(event)
-            if hasattr(event, 'change_id'):
+            if hasattr(event, "change_id"):
                 self.get_or_create_view(CodeChangeView, event.project_id).apply_event(event)
 
     def save_view(self, view_id: UUID, view: T) -> None:
@@ -146,6 +148,6 @@ class InMemoryViewStore:
         result = {}
         for key, view in self._views.items():
             if key.startswith(prefix):
-                view_id = key[len(prefix):]
+                view_id = key[len(prefix) :]
                 result[view_id] = view
-        return result 
+        return result

@@ -7,6 +7,7 @@ from uuid import UUID
 @dataclass
 class Command:
     """Base class for all commands"""
+
     command_id: UUID
     correlation_id: UUID  # For tracking related commands/events
 
@@ -161,4 +162,4 @@ class ImplementCodeChange(Command):
     change_id: UUID
     implemented_by: UUID
     final_diff: str
-    affected_files: List[str] 
+    affected_files: List[str]

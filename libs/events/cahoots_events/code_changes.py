@@ -1,4 +1,5 @@
 """Code changes domain events"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -10,6 +11,7 @@ from .base import Event, EventMetadata
 @dataclass
 class CodeChangeProposed(Event):
     """Event when a code change is proposed"""
+
     project_id: UUID
     change_id: UUID
     files: List[str]
@@ -17,9 +19,18 @@ class CodeChangeProposed(Event):
     reasoning: str
     proposed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, change_id: UUID, files: List[str],
-                 description: str, reasoning: str, proposed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        change_id: UUID,
+        files: List[str],
+        description: str,
+        reasoning: str,
+        proposed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.change_id = change_id
@@ -37,6 +48,7 @@ class CodeChangeProposed(Event):
 @dataclass
 class CodeChangeReviewed(Event):
     """Event when a code change is reviewed"""
+
     project_id: UUID
     change_id: UUID
     status: str
@@ -44,9 +56,18 @@ class CodeChangeReviewed(Event):
     suggested_changes: str
     reviewed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, change_id: UUID, status: str,
-                 comments: str, suggested_changes: str, reviewed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        change_id: UUID,
+        status: str,
+        comments: str,
+        suggested_changes: str,
+        reviewed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.change_id = change_id
@@ -64,12 +85,20 @@ class CodeChangeReviewed(Event):
 @dataclass
 class CodeChangeImplemented(Event):
     """Event when a code change is implemented"""
+
     project_id: UUID
     change_id: UUID
     implemented_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, change_id: UUID, implemented_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        change_id: UUID,
+        implemented_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.change_id = change_id
@@ -78,4 +107,4 @@ class CodeChangeImplemented(Event):
     @property
     def aggregate_id(self) -> UUID:
         """Get the aggregate ID for this event"""
-        return self.project_id 
+        return self.project_id

@@ -1,41 +1,42 @@
 """View store implementations"""
+
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Type, TypeVar, Generic
+from typing import Dict, Generic, Optional, Type, TypeVar
 from uuid import UUID
 
-from sdlc.domain.events import Event
-from sdlc.domain.views import ProjectOverviewView, RequirementsView, TaskBoardView
+from sdlc.domain.auth.events import UserCreated
+from sdlc.domain.auth.views import SessionView, UserView
 from sdlc.domain.code_changes.views import CodeChangesView
+from sdlc.domain.events import Event
 from sdlc.domain.organization.views import (
-    OrganizationDetailsView, OrganizationMembersView,
-    OrganizationAuditLogView
+    OrganizationAuditLogView,
+    OrganizationDetailsView,
+    OrganizationMembersView,
 )
 from sdlc.domain.team.views import TeamView
-from sdlc.domain.auth.views import UserView, SessionView
-from sdlc.domain.auth.events import UserCreated
+from sdlc.domain.views import ProjectOverviewView, RequirementsView, TaskBoardView
 
-
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class ViewStore(ABC):
     """Abstract base class for view stores"""
-    
+
     @abstractmethod
     def create_view(self, view_type: Type[T], entity_id: UUID, **kwargs) -> T:
         """Create a new view instance"""
         pass
-    
+
     @abstractmethod
     def get_or_create_view(self, view_type: Type[T], entity_id: UUID, **kwargs) -> T:
         """Get or create a view for the given entity"""
         pass
-    
+
     @abstractmethod
     def get_view(self, entity_id: UUID, view_type: Type[T]) -> Optional[T]:
         """Get a view by type and entity ID"""
         pass
-    
+
     @abstractmethod
     def apply_event(self, event: Event) -> None:
         """Apply an event to all relevant views"""
@@ -44,6 +45,7 @@ class ViewStore(ABC):
 
 class ViewCollection(Generic[T]):
     """Generic collection for managing views of a specific type"""
+
     def __init__(self):
         self.views: Dict[UUID, T] = {}
 
@@ -100,8 +102,8 @@ class InMemoryViewStore(ViewStore):
             raise ValueError(f"Unknown view type: {view_type}")
 
         # Apply any initial event if provided
-        if 'initial_event' in kwargs:
-            view.apply_event(kwargs['initial_event'])
+        if "initial_event" in kwargs:
+            view.apply_event(kwargs["initial_event"])
 
         return view_collection.add(entity_id, view)
 
@@ -149,7 +151,7 @@ class InMemoryViewStore(ViewStore):
 
     def apply_event(self, event: Event) -> None:
         """Apply an event to all relevant views"""
-        if hasattr(event, 'project_id'):
+        if hasattr(event, "project_id"):
             # Project events
             project_id = event.project_id
             self.get_or_create_view(ProjectOverviewView, project_id).apply_event(event)
@@ -157,19 +159,19 @@ class InMemoryViewStore(ViewStore):
             self.get_or_create_view(TaskBoardView, project_id).apply_event(event)
             self.get_or_create_view(CodeChangesView, project_id).apply_event(event)
 
-        elif hasattr(event, 'organization_id'):
+        elif hasattr(event, "organization_id"):
             # Organization events
             org_id = event.organization_id
             self.get_or_create_view(OrganizationDetailsView, org_id).apply_event(event)
             self.get_or_create_view(OrganizationMembersView, org_id).apply_event(event)
             self.get_or_create_view(OrganizationAuditLogView, org_id).apply_event(event)
 
-        elif hasattr(event, 'team_id'):
+        elif hasattr(event, "team_id"):
             # Team events
             team_id = event.team_id
             self.get_or_create_view(TeamView, team_id).apply_event(event)
 
-        elif hasattr(event, 'user_id'):
+        elif hasattr(event, "user_id"):
             # User events
             user_id = event.user_id
             # For UserCreated events, create a new view
@@ -178,5 +180,5 @@ class InMemoryViewStore(ViewStore):
             else:
                 # For other user events, get or create the view and apply the event
                 self.get_or_create_view(UserView, user_id).apply_event(event)
-                if hasattr(event, 'session_id'):
-                    self.get_or_create_view(SessionView, user_id).apply_event(event) 
+                if hasattr(event, "session_id"):
+                    self.get_or_create_view(SessionView, user_id).apply_event(event)

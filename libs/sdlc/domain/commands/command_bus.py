@@ -1,18 +1,21 @@
 """Command bus for handling commands"""
+
 from dataclasses import dataclass
-from typing import Dict, Type, Callable
+from typing import Callable, Dict, Type
 from uuid import UUID
 
 
 @dataclass
 class Command:
     """Base class for all commands"""
+
     command_id: UUID
     correlation_id: UUID
 
 
 class CommandBus:
     """Command bus for routing commands to their handlers"""
+
     _handlers: Dict[Type[Command], Callable] = {}
 
     @classmethod
@@ -26,4 +29,4 @@ class CommandBus:
         handler = cls._handlers.get(type(command))
         if not handler:
             raise ValueError(f"No handler registered for command type {type(command)}")
-        handler(command) 
+        handler(command)

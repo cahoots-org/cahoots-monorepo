@@ -1,1 +1,1 @@
-"""Team management domain package""" 
+"""Team management domain package"""

@@ -1,29 +1,36 @@
 """Billing service for managing subscriptions and payments."""
+
 import logging
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from cahoots_core.exceptions import ServiceError
-from cahoots_core.models.db_models import Organization, Subscription, Invoice, UsageRecord
 from cahoots_core.models.billing import (
     Customer,
     PaymentMethod,
+    PaymentStatus,
     SubscriptionPlan,
     SubscriptionStatus,
-    PaymentStatus,
-    SubscriptionTier
+    SubscriptionTier,
+)
+from cahoots_core.models.db_models import (
+    Invoice,
+    Organization,
+    Subscription,
+    UsageRecord,
 )
 from cahoots_core.utils.infrastructure.stripe.client import StripeClient
 
 logger = logging.getLogger(__name__)
 
+
 class BillingService:
     """Service for managing billing operations."""
-    
+
     def __init__(self, stripe_client: StripeClient):
         """Initialize billing service."""
         self.stripe = stripe_client
-        
+
     async def create_customer(self, user_id: UUID, email: str, name: str) -> Customer:
         """Create a new customer."""
         try:
@@ -41,7 +48,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error creating customer: {e}")
             raise ServiceError(f"Failed to create customer: {e}")
-            
+
     async def get_customer(self, customer_id: str) -> Optional[Customer]:
         """Get customer details."""
         try:
@@ -57,7 +64,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error getting customer: {e}")
             raise ServiceError(f"Failed to get customer: {e}")
-            
+
     async def update_customer(self, customer_id: str, **kwargs) -> Customer:
         """Update customer details."""
         try:
@@ -71,7 +78,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error updating customer: {e}")
             raise ServiceError(f"Failed to update customer: {e}")
-            
+
     async def delete_customer(self, customer_id: str) -> bool:
         """Delete a customer."""
         try:
@@ -79,10 +86,8 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error deleting customer: {e}")
             raise ServiceError(f"Failed to delete customer: {e}")
-            
-    async def create_payment_method(
-        self, customer_id: str, payment_token: str
-    ) -> PaymentMethod:
+
+    async def create_payment_method(self, customer_id: str, payment_token: str) -> PaymentMethod:
         """Create a new payment method."""
         try:
             payment = await self.stripe.create_payment_method(
@@ -100,7 +105,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error creating payment method: {e}")
             raise ServiceError(f"Failed to create payment method: {e}")
-            
+
     async def create_subscription(
         self,
         customer_id: str,
@@ -125,7 +130,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error creating subscription: {e}")
             raise ServiceError(f"Failed to create subscription: {e}")
-            
+
     async def get_subscription(self, subscription_id: str) -> Optional[Subscription]:
         """Get subscription details."""
         try:
@@ -143,7 +148,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error getting subscription: {e}")
             raise ServiceError(f"Failed to get subscription: {e}")
-            
+
     async def cancel_subscription(self, subscription_id: str) -> bool:
         """Cancel a subscription."""
         try:
@@ -151,7 +156,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error canceling subscription: {e}")
             raise ServiceError(f"Failed to cancel subscription: {e}")
-            
+
     async def list_subscriptions(self, customer_id: str) -> List[Subscription]:
         """List all subscriptions for a customer."""
         try:
@@ -170,7 +175,7 @@ class BillingService:
         except Exception as e:
             logger.error(f"Error listing subscriptions: {e}")
             raise ServiceError(f"Failed to list subscriptions: {e}")
-            
+
     async def get_subscription_plans(self) -> List[SubscriptionPlan]:
         """Get available subscription plans."""
         try:
@@ -187,4 +192,4 @@ class BillingService:
             ]
         except Exception as e:
             logger.error(f"Error getting subscription plans: {e}")
-            raise ServiceError(f"Failed to get subscription plans: {e}") 
+            raise ServiceError(f"Failed to get subscription plans: {e}")

@@ -1,4 +1,5 @@
 """Validation exceptions for the Cahoots system."""
+
 from typing import Any, Dict, Optional, Union
 
 from .base import CahootsError, ErrorCategory, ErrorSeverity
@@ -6,17 +7,12 @@ from .base import CahootsError, ErrorCategory, ErrorSeverity
 
 class ValidationError(CahootsError):
     """Base class for validation-related errors."""
-    
+
     def __init__(
-        self,
-        message: str,
-        *,
-        field: Optional[str] = None,
-        value: Optional[Any] = None,
-        **kwargs
+        self, message: str, *, field: Optional[str] = None, value: Optional[Any] = None, **kwargs
     ):
         """Initialize validation error.
-        
+
         Args:
             message: Error message
             field: Name of the field that failed validation
@@ -26,42 +22,33 @@ class ValidationError(CahootsError):
         super().__init__(
             message,
             category=ErrorCategory.VALIDATION,
-            details={
-                "field": field,
-                "value": value,
-                **(kwargs.pop("details", {}) or {})
-            },
-            **kwargs
+            details={"field": field, "value": value, **(kwargs.pop("details", {}) or {})},
+            **kwargs,
         )
 
 
 class DataValidationError(ValidationError):
     """Data validation error."""
-    
-    def __init__(
-        self,
-        message: str,
-        errors: Optional[Dict[str, Any]] = None,
-        **kwargs
-    ):
+
+    def __init__(self, message: str, errors: Optional[Dict[str, Any]] = None, **kwargs):
         super().__init__(
             message,
             code="DATA_VALIDATION_ERROR",
             severity=ErrorSeverity.WARNING,
             details={"validation_errors": errors, **(kwargs.pop("details", {}) or {})},
-            **kwargs
+            **kwargs,
         )
 
 
 class SchemaValidationError(ValidationError):
     """Schema validation error."""
-    
+
     def __init__(
         self,
         message: str,
         schema_name: Optional[str] = None,
         errors: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
@@ -70,21 +57,21 @@ class SchemaValidationError(ValidationError):
             details={
                 "schema_name": schema_name,
                 "validation_errors": errors,
-                **(kwargs.pop("details", {}) or {})
+                **(kwargs.pop("details", {}) or {}),
             },
-            **kwargs
+            **kwargs,
         )
 
 
 class TypeValidationError(ValidationError):
     """Type validation error."""
-    
+
     def __init__(
         self,
         message: str,
         expected_type: Optional[Union[str, type]] = None,
         actual_type: Optional[Union[str, type]] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
@@ -93,21 +80,21 @@ class TypeValidationError(ValidationError):
             details={
                 "expected_type": str(expected_type),
                 "actual_type": str(actual_type),
-                **(kwargs.pop("details", {}) or {})
+                **(kwargs.pop("details", {}) or {}),
             },
-            **kwargs
+            **kwargs,
         )
 
 
 class FormatValidationError(ValidationError):
     """Format validation error."""
-    
+
     def __init__(
         self,
         message: str,
         format_name: Optional[str] = None,
         pattern: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             message,
@@ -116,7 +103,7 @@ class FormatValidationError(ValidationError):
             details={
                 "format": format_name,
                 "pattern": pattern,
-                **(kwargs.pop("details", {}) or {})
+                **(kwargs.pop("details", {}) or {}),
             },
-            **kwargs
-        ) 
+            **kwargs,
+        )

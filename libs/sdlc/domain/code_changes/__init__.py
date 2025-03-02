@@ -1,1 +1,1 @@
-"""Code changes domain package""" 
+"""Code changes domain package"""

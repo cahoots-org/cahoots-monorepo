@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from uuid import UUID
+
 from ..commands import Command
 
 
@@ -46,4 +47,4 @@ class TransferTeamLeadership(Command):
 class ArchiveTeam(Command):
     team_id: UUID
     reason: str
-    archived_by: UUID 
+    archived_by: UUID

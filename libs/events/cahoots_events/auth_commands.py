@@ -1,4 +1,5 @@
 """Authentication domain commands"""
+
 from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
@@ -7,6 +8,7 @@ from uuid import UUID
 @dataclass
 class RegisterUser:
     """Command to register a new user"""
+
     command_id: UUID
     correlation_id: UUID
     email: str
@@ -18,6 +20,7 @@ class RegisterUser:
 @dataclass
 class VerifyEmail:
     """Command to verify a user's email"""
+
     command_id: UUID
     correlation_id: UUID
     user_id: UUID
@@ -27,6 +30,7 @@ class VerifyEmail:
 @dataclass
 class LoginUser:
     """Command to log in a user"""
+
     command_id: UUID
     correlation_id: UUID
     email: str
@@ -36,6 +40,7 @@ class LoginUser:
 @dataclass
 class RequestPasswordReset:
     """Command to request a password reset"""
+
     command_id: UUID
     correlation_id: UUID
     email: str
@@ -44,6 +49,7 @@ class RequestPasswordReset:
 @dataclass
 class ResetPassword:
     """Command to reset a password"""
+
     command_id: UUID
     correlation_id: UUID
     user_id: UUID
@@ -54,6 +60,7 @@ class ResetPassword:
 @dataclass
 class RefreshToken:
     """Command to refresh an access token"""
+
     command_id: UUID
     correlation_id: UUID
     user_id: UUID
@@ -63,6 +70,7 @@ class RefreshToken:
 @dataclass
 class LogoutUser:
     """Command to log out a user"""
+
     command_id: UUID
     correlation_id: UUID
     user_id: UUID
@@ -72,6 +80,7 @@ class LogoutUser:
 @dataclass
 class RevokeSession:
     """Command to revoke a session"""
+
     command_id: UUID
     correlation_id: UUID
     user_id: UUID

@@ -1,4 +1,5 @@
 """Project management domain commands"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -10,6 +11,7 @@ from ..base import Command
 @dataclass
 class CreateProject(Command):
     """Command to create a new project"""
+
     name: str
     description: str
     repository: str
@@ -20,6 +22,7 @@ class CreateProject(Command):
 @dataclass
 class UpdateProjectStatus(Command):
     """Command to update project status"""
+
     project_id: UUID
     status: str
     reason: str
@@ -29,6 +32,7 @@ class UpdateProjectStatus(Command):
 @dataclass
 class SetProjectTimeline(Command):
     """Command to set project timeline"""
+
     project_id: UUID
     start_date: datetime
     target_date: datetime
@@ -39,6 +43,7 @@ class SetProjectTimeline(Command):
 @dataclass
 class AddRequirement(Command):
     """Command to add a requirement"""
+
     project_id: UUID
     title: str
     description: str
@@ -50,6 +55,7 @@ class AddRequirement(Command):
 @dataclass
 class CompleteRequirement(Command):
     """Command to complete a requirement"""
+
     project_id: UUID
     requirement_id: UUID
     completed_by: UUID
@@ -58,6 +64,7 @@ class CompleteRequirement(Command):
 @dataclass
 class BlockRequirement(Command):
     """Command to block a requirement"""
+
     project_id: UUID
     requirement_id: UUID
     blocker_description: str
@@ -67,6 +74,7 @@ class BlockRequirement(Command):
 @dataclass
 class UnblockRequirement(Command):
     """Command to unblock a requirement"""
+
     project_id: UUID
     requirement_id: UUID
     resolution: str
@@ -76,6 +84,7 @@ class UnblockRequirement(Command):
 @dataclass
 class ChangeRequirementPriority(Command):
     """Command to change requirement priority"""
+
     project_id: UUID
     requirement_id: UUID
     new_priority: str
@@ -86,6 +95,7 @@ class ChangeRequirementPriority(Command):
 @dataclass
 class CreateTask(Command):
     """Command to create a task"""
+
     project_id: UUID
     requirement_id: UUID
     title: str
@@ -97,6 +107,7 @@ class CreateTask(Command):
 @dataclass
 class CompleteTask(Command):
     """Command to complete a task"""
+
     project_id: UUID
     task_id: UUID
     requirement_id: UUID
@@ -106,6 +117,7 @@ class CompleteTask(Command):
 @dataclass
 class AssignTask(Command):
     """Command to assign a task"""
+
     project_id: UUID
     task_id: UUID
     requirement_id: UUID
@@ -116,6 +128,7 @@ class AssignTask(Command):
 @dataclass
 class BlockTask(Command):
     """Command to block a task"""
+
     project_id: UUID
     task_id: UUID
     requirement_id: UUID
@@ -126,6 +139,7 @@ class BlockTask(Command):
 @dataclass
 class UnblockTask(Command):
     """Command to unblock a task"""
+
     project_id: UUID
     task_id: UUID
     requirement_id: UUID
@@ -136,9 +150,10 @@ class UnblockTask(Command):
 @dataclass
 class ChangeTaskPriority(Command):
     """Command to change task priority"""
+
     project_id: UUID
     task_id: UUID
     requirement_id: UUID
     new_priority: str
     reason: str
-    changed_by: UUID 
+    changed_by: UUID

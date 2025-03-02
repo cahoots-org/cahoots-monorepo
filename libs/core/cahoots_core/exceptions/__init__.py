@@ -1,56 +1,58 @@
 """Cahoots exception handling system."""
 
-from .base import CahootsError, ErrorCategory, ErrorSeverity, AIDTException
 from .api import (
     APIError,
-    NotFoundError,
-    ValidationError as APIValidationError,
     ConflictError,
+    NotFoundError,
     RateLimitError,
     ServerError,
     ServiceError,
 )
+from .api import ValidationError as APIValidationError
 from .auth import (
-    AuthError,
     AuthenticationError,
-    InvalidTokenError,
+    AuthError,
     AuthorizationError,
+    InvalidTokenError,
     RoleError,
 )
+from .base import AIDTException, CahootsError, ErrorCategory, ErrorSeverity
+from .domain import (
+    BusinessRuleError,
+    DomainError,
+    DuplicateEntityError,
+    EntityNotFoundError,
+    StateError,
+)
 from .infrastructure import (
-    InfrastructureError,
-    DatabaseError,
     CacheError,
+    DatabaseError,
+    ExternalServiceException,
+    InfrastructureError,
+    NetworkError,
     QueueError,
     StorageError,
-    NetworkError,
-    ExternalServiceException,
-)
-from .domain import (
-    DomainError,
-    BusinessRuleError,
-    StateError,
-    EntityNotFoundError,
-    DuplicateEntityError,
 )
 from .validation import (
-    ValidationError,
     DataValidationError,
+    FormatValidationError,
     SchemaValidationError,
     TypeValidationError,
-    FormatValidationError,
+    ValidationError,
 )
+
 
 class ContextLimitError(AIDTException):
     """Raised when context limits are exceeded."""
+
     pass
+
 
 __all__ = [
     # Base
     "CahootsError",
     "ErrorCategory",
     "ErrorSeverity",
-    
     # API
     "APIError",
     "NotFoundError",
@@ -59,14 +61,12 @@ __all__ = [
     "RateLimitError",
     "ServerError",
     "ServiceError",
-    
     # Auth
     "AuthError",
     "AuthenticationError",
     "InvalidTokenError",
     "AuthorizationError",
     "RoleError",
-    
     # Infrastructure
     "InfrastructureError",
     "DatabaseError",
@@ -75,19 +75,17 @@ __all__ = [
     "StorageError",
     "NetworkError",
     "ExternalServiceException",
-    
     # Domain
     "DomainError",
     "BusinessRuleError",
     "StateError",
     "EntityNotFoundError",
     "DuplicateEntityError",
-    
     # Validation
     "ValidationError",
     "DataValidationError",
     "SchemaValidationError",
     "TypeValidationError",
     "FormatValidationError",
-    "ContextLimitError"
-] 
+    "ContextLimitError",
+]

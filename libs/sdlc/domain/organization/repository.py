@@ -1,4 +1,5 @@
 """Organization domain repositories"""
+
 from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
@@ -48,9 +49,7 @@ class EventStoreOrganizationRepository(OrganizationRepository):
         # Get all organization creation events
         events = self.event_store.get_all_events()
         creation_event = next(
-            (e for e in events 
-             if isinstance(e, OrganizationCreated) and e.name == name),
-            None
+            (e for e in events if isinstance(e, OrganizationCreated) and e.name == name), None
         )
         if not creation_event:
             return None
@@ -60,4 +59,4 @@ class EventStoreOrganizationRepository(OrganizationRepository):
     def save(self, organization: Organization) -> None:
         """Save organization aggregate - no-op for event store"""
         # No need to save the aggregate since we're using event sourcing
-        pass 
+        pass

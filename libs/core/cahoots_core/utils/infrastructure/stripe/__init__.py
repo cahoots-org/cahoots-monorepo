@@ -1,11 +1,12 @@
 """Stripe infrastructure module."""
+
 from .client import (
+    CustomerError,
+    PaymentError,
     StripeClient,
     StripeClientError,
-    PaymentError,
     SubscriptionError,
-    CustomerError,
-    get_stripe_client
+    get_stripe_client,
 )
 
 __all__ = [
@@ -14,5 +15,5 @@ __all__ = [
     "PaymentError",
     "SubscriptionError",
     "CustomerError",
-    "get_stripe_client"
-] 
+    "get_stripe_client",
+]

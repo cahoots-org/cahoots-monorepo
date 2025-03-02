@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List
 from uuid import UUID
+
 from ..commands import Command
 
 
@@ -27,4 +28,4 @@ class ReviewCodeChange(Command):
 class ImplementCodeChange(Command):
     project_id: UUID
     change_id: UUID
-    implemented_by: UUID 
+    implemented_by: UUID

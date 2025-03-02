@@ -1,31 +1,32 @@
 """QA Tester agent implementation."""
 
 import asyncio
+import json
 import logging
 import time
-from typing import Dict, Any, List, Optional, Union
 import uuid
-import json
 from enum import Enum
+from typing import Any, Dict, List, Optional, Union
 
+from cahoots_agents.base import BaseAgent
+from cahoots_core.ai import AIProvider
+from cahoots_core.exceptions import ExternalServiceException
 from cahoots_core.models.qa_suite import (
+    QATest,
     QATestCase,
-    QATestSuite,
     QATestResult,
     QATestStatus,
-    TestStatus,
+    QATestSuite,
     QATestType,
-    QATest,
-    TestStep
+    TestStatus,
+    TestStep,
 )
 from cahoots_core.models.task import Task
 from cahoots_core.services.github_service import GitHubService
-from cahoots_core.exceptions import ExternalServiceException
-from cahoots_events.bus.system import EventSystem
-from cahoots_core.ai import AIProvider
-from cahoots_core.utils.metrics import MetricsCollector
 from cahoots_core.services.qa_runner import QARunner
-from cahoots_agents.base import BaseAgent
+from cahoots_core.utils.metrics import MetricsCollector
+from cahoots_events.bus.system import EventSystem
+
 
 class QATester(BaseAgent):
     """QA Tester agent responsible for testing and quality assurance."""
@@ -35,10 +36,10 @@ class QATester(BaseAgent):
         event_system: EventSystem,
         config: Optional[Dict[str, Any]] = None,
         ai_provider: Optional[AIProvider] = None,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Initialize the QA tester.
-        
+
         Args:
             event_system: Event system for communication
             config: Optional configuration dictionary
@@ -50,7 +51,7 @@ class QATester(BaseAgent):
             event_system=event_system,
             config=config,
             ai_provider=ai_provider,
-            **kwargs
+            **kwargs,
         )
         self.logger = logging.getLogger(__name__)
         self.metrics = MetricsCollector(service_name="qa_tester")
@@ -71,10 +72,10 @@ class QATester(BaseAgent):
 
     async def run_test_case(self, test_case: QATestCase) -> Dict[str, Any]:
         """Run a test case.
-        
+
         Args:
             test_case: Test case to run
-            
+
         Returns:
             Test results
         """
@@ -114,7 +115,7 @@ class QATester(BaseAgent):
         try:
             response = await self.generate_response(prompt)
             suite_data = json.loads(response)
-            
+
             # Convert steps to TestStep objects
             for test in suite_data.get("tests", []):
                 steps = test.get("steps", [])
@@ -123,10 +124,11 @@ class QATester(BaseAgent):
                         id=step.get("id", f"step_{i+1}"),
                         description=step["description"],
                         expected_result=step["expected_result"],
-                        status=TestStatus.NOT_STARTED
-                    ) for i, step in enumerate(steps)
+                        status=TestStatus.NOT_STARTED,
+                    )
+                    for i, step in enumerate(steps)
                 ]
-            
+
             return QATestSuite.from_dict(suite_data)
         except Exception as e:
             self.logger.error(f"Error generating test suite: {str(e)}")
@@ -134,10 +136,10 @@ class QATester(BaseAgent):
 
     async def run_test_suite(self, suite: Union[QATestSuite, Dict[str, Any]]) -> Dict[str, Any]:
         """Run a test suite.
-        
+
         Args:
             suite: Test suite to run
-            
+
         Returns:
             Test suite results
         """
@@ -174,7 +176,7 @@ class QATester(BaseAgent):
 
     async def handle_test_request(self, event: Dict[str, Any]) -> None:
         """Handle test request event.
-        
+
         Args:
             event: Event data containing test request
         """
@@ -191,7 +193,7 @@ class QATester(BaseAgent):
 
     async def handle_test_feedback(self, event: Dict[str, Any]) -> None:
         """Handle test feedback event.
-        
+
         Args:
             event: Event data containing test feedback
         """
@@ -203,7 +205,7 @@ class QATester(BaseAgent):
 
     async def process_test_feedback(self, test_id: str, feedback: str) -> None:
         """Process feedback for a test.
-        
+
         Args:
             test_id: ID of the test
             feedback: Test feedback
@@ -227,7 +229,7 @@ class QATester(BaseAgent):
         try:
             response = await self.generate_response(prompt)
             actions = json.loads(response)
-            
+
             for action in actions.get("actions", []):
                 if action["type"] == "update_test":
                     await self.update_test(test_id, action["details"])
@@ -235,7 +237,7 @@ class QATester(BaseAgent):
                     await self.create_test(action["details"])
                 elif action["type"] == "delete_test":
                     await self.delete_test(test_id)
-            
+
         except Exception as e:
             self.logger.error(f"Error processing test feedback: {str(e)}")
             raise
@@ -246,10 +248,7 @@ class QATester(BaseAgent):
         Args:
             results: Test results to report
         """
-        await self.event_system.publish("test.results", {
-            "status": "completed",
-            "results": results
-        })
+        await self.event_system.publish("test.results", {"status": "completed", "results": results})
 
     async def update_test(self, test_id: str, details: Dict[str, Any]) -> None:
         """Update a test case.
@@ -263,7 +262,7 @@ class QATester(BaseAgent):
 
     async def create_test(self, details: Dict[str, Any]) -> None:
         """Create a new test case.
-        
+
         Args:
             details: Test case details
         """
@@ -312,68 +311,67 @@ class QATester(BaseAgent):
     def _create_test_plan(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         """Create a test plan based on task requirements."""
         planning_config = self.get_capability_config("test_planning")
-        
+
         # Map task priority to test strategies
         priority = task_data.get("priority", "medium")
         required_strategies = planning_config.get("priority_mapping", {}).get(priority, [])
-        
+
         return {
             "strategies": required_strategies,
             "requirements": task_data.get("requirements", []),
-            "priority": priority
+            "priority": priority,
         }
 
     def _determine_test_scope(self, pr_data: Dict[str, Any]) -> List[str]:
         """Determine which types of tests to run based on PR content."""
         scope = ["unit"]  # Always run unit tests
-        
+
         # Add integration tests if multiple components affected
         if len(pr_data.get("files", [])) > 1:
             scope.append("integration")
-            
+
         # Add e2e tests if critical paths affected
         if any(f.startswith("src/core") for f in pr_data.get("files", [])):
             scope.append("e2e")
-            
+
         # Add performance tests if performance-critical code changed
         if pr_data.get("labels", {}).get("performance", False):
             scope.append("performance")
-            
+
         return scope
 
     def _create_bug_report(self, test_results: Dict[str, Any]) -> Dict[str, Any]:
         """Create a bug report from test results."""
         report_config = self.get_capability_config("reporting")
         template = report_config.get("bug_template", {})
-        
+
         # Extract failed tests and create bug reports
         bugs = []
         for test_type, results in test_results.items():
             if not results.get("passed", True):
-                bugs.append({
-                    field: results.get(field, "N/A")
-                    for field in template.get("fields", [])
-                })
-                
+                bugs.append(
+                    {field: results.get(field, "N/A") for field in template.get("fields", [])}
+                )
+
         return {"bugs": bugs}
 
     def _analyze_test_results(
-        self,
-        results: Dict[str, Any],
-        metrics_config: Dict[str, Any]
+        self, results: Dict[str, Any], metrics_config: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Analyze test results against quality metrics."""
         analysis = {}
-        
+
         # Check coverage requirements
-        for test_type, min_coverage in metrics_config.get("coverage", {}).get("minimum", {}).items():
+        for test_type, min_coverage in (
+            metrics_config.get("coverage", {}).get("minimum", {}).items()
+        ):
             actual_coverage = results.get(test_type, {}).get("coverage", 0)
             analysis[f"{test_type}_coverage"] = {
                 "actual": actual_coverage,
                 "required": min_coverage,
-                "passed": actual_coverage >= min_coverage
+                "passed": actual_coverage >= min_coverage,
             }
-            
+
         # Check performance metrics
         if "performance" in results:
             perf_metrics = metrics_config.get("performance", {})
@@ -381,24 +379,21 @@ class QATester(BaseAgent):
                 metric: {
                     "actual": results["performance"].get(metric),
                     "required": requirement,
-                    "passed": self._compare_metric(
-                        results["performance"].get(metric),
-                        requirement
-                    )
+                    "passed": self._compare_metric(results["performance"].get(metric), requirement),
                 }
                 for metric, requirement in perf_metrics.items()
             }
-            
+
         return analysis
 
     def _compare_metric(self, actual: Any, requirement: str) -> bool:
         """Compare a metric against its requirement."""
         if not actual:
             return False
-            
+
         operator = requirement[:2]
         value = float(requirement[2:])
-        
+
         if operator == "< ":
             return actual < value
         elif operator == "> ":
@@ -407,30 +402,22 @@ class QATester(BaseAgent):
             return actual == value
 
     def _generate_reports(
-        self,
-        analysis: Dict[str, Any],
-        report_config: Dict[str, Any]
+        self, analysis: Dict[str, Any], report_config: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Generate test reports in configured formats."""
         reports = {}
-        
+
         for format in report_config["formats"]:
             reports[format] = self._format_report(analysis, format)
-            
+
         return reports
 
     def _format_report(self, data: Dict[str, Any], format: str) -> Dict[str, Any]:
         """Format report data in specified format."""
-        return {
-            "format": format,
-            "data": data
-        }
+        return {"format": format, "data": data}
 
     def _generate_test_suite_prompt(
-        self,
-        title: str,
-        description: str,
-        requirements: List[str]
+        self, title: str, description: str, requirements: List[str]
     ) -> str:
         """Generate prompt for test suite creation."""
         return f"""Generate test cases for:
@@ -459,10 +446,10 @@ EXPECTED: <expected result>
         test_cases = []
         current_test_case = None
         steps = []
-        
+
         for line in response.split("\n"):
             line = line.strip()
-            
+
             if not line or line == "---":
                 if current_test_case and steps:
                     current_test_case.steps = steps
@@ -470,51 +457,45 @@ EXPECTED: <expected result>
                     current_test_case = None
                     steps = []
                 continue
-                
+
             if line.startswith("TEST CASE:"):
                 if current_test_case and steps:
                     current_test_case.steps = steps
                     test_cases.append(current_test_case)
                     steps = []
-                    
+
                 current_test_case = QATestCase(
-                    title=line[10:].strip(),
-                    description="",
-                    steps=[],
-                    expected_result=""
+                    title=line[10:].strip(), description="", steps=[], expected_result=""
                 )
-                
+
             elif line.startswith("DESCRIPTION:") and current_test_case:
                 current_test_case.description = line[12:].strip()
-                
+
             elif line.startswith("STEPS:"):
                 continue
-                
+
             elif line[0].isdigit() and ". " in line and current_test_case:
                 steps.append(line.split(". ", 1)[1].strip())
-                
+
             elif line.startswith("EXPECTED:") and current_test_case:
                 current_test_case.expected_result = line[9:].strip()
-                
+
         # Handle the last test case
         if current_test_case and steps:
             current_test_case.steps = steps
             test_cases.append(current_test_case)
-            
+
         return test_cases
 
     def _create_default_test_suite(
-        self,
-        story_id: str,
-        title: str,
-        description: str
+        self, story_id: str, title: str, description: str
     ) -> QATestSuite:
         """Create a default test suite when generation fails."""
         return QATestSuite(
             story_id=story_id,
             title=f"Test Suite for {title}",
             description=f"Test suite generated for story: {description}",
-            test_cases=[self._create_default_test_case()]
+            test_cases=[self._create_default_test_case()],
         )
 
     def _create_default_test_case(self) -> QATestCase:
@@ -523,15 +504,10 @@ EXPECTED: <expected result>
             title="Test Case",
             description="Basic test case",
             steps=["1. Verify basic functionality"],
-            expected_result="Test should complete successfully"
+            expected_result="Test should complete successfully",
         )
 
-    def _generate_step_prompt(
-        self,
-        test_case: QATestCase,
-        step: str,
-        step_number: int
-    ) -> str:
+    def _generate_step_prompt(self, test_case: QATestCase, step: str, step_number: int) -> str:
         """Generate prompt for test step execution."""
         return f"""Execute test step {step_number} of {len(test_case.steps)}:
 Test: {test_case.title}
@@ -548,7 +524,7 @@ Details: <additional details>"""
         status = None
         actual_result = None
         details = None
-        
+
         for line in lines:
             line = line.strip()
             if line.startswith("Status:"):
@@ -557,20 +533,20 @@ Details: <additional details>"""
                 actual_result = line[14:].strip()
             elif line.startswith("Details:"):
                 details = line[8:].strip()
-                
+
         return QATestResult(
             test_case_title="Step Execution",
             status=status or TestStatus.FAILED,
             actual_result=actual_result or "No result provided",
-            error_details={"details": details} if details else None
+            error_details={"details": details} if details else None,
         )
 
     async def execute_test_plan(self, test_plan: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a test plan.
-        
+
         Args:
             test_plan: Test plan to execute
-            
+
         Returns:
             Test execution results
         """
@@ -584,8 +560,7 @@ Details: <additional details>"""
         """Generate a test report from results."""
         try:
             response = await self.ai.generate_response(
-                f"Generate test report for results: {json.dumps(test_results)}",
-                temperature=0.7
+                f"Generate test report for results: {json.dumps(test_results)}", temperature=0.7
             )
             return json.loads(response)
         except Exception as e:
@@ -593,15 +568,15 @@ Details: <additional details>"""
             return {
                 "summary": f"{test_results.get('passed', 0)}/{test_results.get('executed', 0)} tests passed",
                 "coverage_analysis": "Coverage data available",
-                "recommendations": []
+                "recommendations": [],
             }
 
     async def analyze_test_failures(self, failures: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze test failures and provide insights.
-        
+
         Args:
             failures: List of test failures to analyze
-            
+
         Returns:
             Analysis of failures
         """
@@ -627,24 +602,19 @@ Details: <additional details>"""
         """Validate test coverage against requirements."""
         try:
             response = await self.ai.generate_response(
-                f"Analyze test coverage: {json.dumps(coverage_data)}",
-                temperature=0.7
+                f"Analyze test coverage: {json.dumps(coverage_data)}", temperature=0.7
             )
             return json.loads(response)
         except Exception as e:
             self.logger.error(f"Error validating test coverage: {e}")
-            return {
-                "meets_requirements": True,
-                "gaps": [],
-                "recommendations": []
-            }
+            return {"meets_requirements": True, "gaps": [], "recommendations": []}
 
     async def monitor_test_execution(self, test_run: Dict[str, Any]) -> Dict[str, Any]:
         """Monitor the execution of a test run.
-        
+
         Args:
             test_run: Test run to monitor
-            
+
         Returns:
             Test run status
         """
@@ -656,11 +626,11 @@ Details: <additional details>"""
 
     async def generate_test_plan(self, target: str, requirements: List[str]) -> Dict[str, Any]:
         """Generate a test plan for a target.
-        
+
         Args:
             target: Target to test
             requirements: List of requirements to test against
-            
+
         Returns:
             Test plan
         """
@@ -685,4 +655,4 @@ Details: <additional details>"""
             return json.loads(response)
         except Exception as e:
             self.logger.error(f"Error generating test plan: {str(e)}")
-            raise 
+            raise

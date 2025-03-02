@@ -1,46 +1,44 @@
 """Task management functionality for the developer agent."""
-from typing import List, Dict, Any
+
 import json
 import logging
 import uuid
+from typing import Any, Dict, List
 
-from cahoots_core.models.task import Task
 from cahoots_core.models.story import Story
+from cahoots_core.models.task import Task
+
 
 class TaskManager:
     """Handles task breakdown and management."""
-    
+
     def __init__(self, agent):
         """Initialize the task manager.
-        
+
         Args:
             agent: The developer agent instance
         """
         self.agent = agent
         self.logger = logging.getLogger(__name__)
-        
+
     async def break_down_story(
-        self,
-        story: Story,
-        *,
-        requirements: List[str] = None,
-        dependencies: List[str] = None
+        self, story: Story, *, requirements: List[str] = None, dependencies: List[str] = None
     ) -> List[Task]:
         """Break down a user story into smaller technical tasks.
-        
+
         Args:
             story: Story object to break down
             requirements: Optional list of specific requirements to consider
             dependencies: Optional list of external dependencies to consider
-            
+
         Returns:
             List[Task]: List of tasks to implement the story
-            
+
         Raises:
             ValueError: If task breakdown fails or response is invalid
         """
         self.logger.info(f"Breaking down story: {story.title}")
-        
+
         # Generate tasks using AI
         prompt = f"""
         Story Title: {story.title}
@@ -64,7 +62,7 @@ class TaskManager:
             }}
         }}
         """
-        
+
         try:
             response = await self.agent.generate_response(prompt)
             try:
@@ -88,8 +86,8 @@ class TaskManager:
                     metadata={
                         **task_data.get("metadata", {}),
                         "requirements": requirements or [],
-                        "dependencies": dependencies or []
-                    }
+                        "dependencies": dependencies or [],
+                    },
                 )
                 tasks.append(task)
 
@@ -101,37 +99,37 @@ class TaskManager:
         except Exception as e:
             self.logger.error(f"Unexpected error breaking down story: {str(e)}")
             raise ValueError("Failed to break down story into tasks")
-            
+
     def _validate_task_breakdown(self, tasks: List[Task]) -> None:
         """Validate the task breakdown for completeness and consistency.
-        
+
         Args:
             tasks: List of tasks to validate
-            
+
         Raises:
             ValueError: If validation fails
         """
         if not tasks:
             self.logger.error("No tasks found in breakdown")
             raise ValueError("Task breakdown validation failed: No tasks found")
-            
+
         # Check for minimum required tasks
-        if not any(t.metadata['type'] == 'setup' for t in tasks):
+        if not any(t.metadata["type"] == "setup" for t in tasks):
             self.logger.warning("No setup tasks found in breakdown")
-            
-        if not any(t.metadata['type'] == 'testing' for t in tasks):
+
+        if not any(t.metadata["type"] == "testing" for t in tasks):
             self.logger.warning("No testing tasks found in breakdown")
-            
+
         # Check complexity distribution
-        complexities = [t.metadata['complexity'] for t in tasks]
+        complexities = [t.metadata["complexity"] for t in tasks]
         avg_complexity = sum(complexities) / len(complexities)
         if avg_complexity > 3:
             self.logger.warning(f"High average task complexity: {avg_complexity}")
-            
+
         # Check for balanced skill requirements
         all_skills = set()
         for task in tasks:
-            all_skills.update(task.metadata['required_skills'])
-            
+            all_skills.update(task.metadata["required_skills"])
+
         if len(all_skills) < 2:
-            self.logger.warning("Limited skill requirements in task breakdown") 
+            self.logger.warning("Limited skill requirements in task breakdown")

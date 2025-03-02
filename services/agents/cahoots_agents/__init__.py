@@ -1,10 +1,6 @@
 """Cahoots Agents package."""
 
-from .services import run_agent, main
 from .factory import AgentFactory
+from .services import main, run_agent
 
-__all__ = [
-    "AgentFactory",
-    "run_agent",
-    "main"
-]
+__all__ = ["AgentFactory", "run_agent", "main"]
