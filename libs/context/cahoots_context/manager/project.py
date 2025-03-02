@@ -1,18 +1,21 @@
 """Project context management."""
-from typing import Optional
-from contextlib import asynccontextmanager
 
-from cahoots_core.utils.infrastructure.database.client import DatabaseClient
-from cahoots_core.utils.infrastructure.redis.client import RedisClient
-from cahoots_core.utils.infrastructure.database.client import get_db_client
-from cahoots_core.utils.infrastructure.redis.client import get_redis_client
+from contextlib import asynccontextmanager
+from typing import Optional
+
+from cahoots_core.utils.infrastructure.database.client import (
+    DatabaseClient,
+    get_db_client,
+)
+from cahoots_core.utils.infrastructure.redis.client import RedisClient, get_redis_client
+
 
 class ProjectContext:
     """Context manager for project-specific resources."""
 
     def __init__(self, project_id: str):
         """Initialize project context.
-        
+
         Args:
             project_id: The project ID to scope resources to
         """
@@ -25,17 +28,14 @@ class ProjectContext:
         # Get project details including shard info
         self._db_client = get_db_client()
         project = await self._db_client.get_project(self.project_id)
-        
+
         # Initialize sharded database client
         self._db_client = get_db_client(
-            schema=f"project_{self.project_id}",
-            shard=project.database_shard
+            schema=f"project_{self.project_id}", shard=project.database_shard
         )
-        
+
         # Initialize namespaced Redis client
-        self._redis_client = get_redis_client(
-            namespace=f"project:{self.project_id}"
-        )
+        self._redis_client = get_redis_client(namespace=f"project:{self.project_id}")
 
     async def cleanup(self):
         """Cleanup all project resources."""
@@ -58,10 +58,11 @@ class ProjectContext:
             raise RuntimeError("Redis client not initialized")
         return self._redis_client
 
+
 @asynccontextmanager
 async def project_context(project_id: str):
     """Async context manager for project resources.
-    
+
     Usage:
         async with project_context("project-123") as ctx:
             await ctx.db.query(...)
@@ -73,4 +74,4 @@ async def project_context(project_id: str):
         await ctx.init()
         yield ctx
     finally:
-        await ctx.cleanup() 
+        await ctx.cleanup()

@@ -2,9 +2,9 @@ from datetime import datetime
 from typing import List
 from uuid import UUID, uuid4
 
-from .commands import ProposeCodeChange, ReviewCodeChange, ImplementCodeChange
-from .events import CodeChangeProposed, CodeChangeReviewed, CodeChangeImplemented
 from ..events import EventMetadata
+from .commands import ImplementCodeChange, ProposeCodeChange, ReviewCodeChange
+from .events import CodeChangeImplemented, CodeChangeProposed, CodeChangeReviewed
 
 
 class CodeChangesHandler:
@@ -27,7 +27,7 @@ class CodeChangesHandler:
             files=cmd.files,
             description=cmd.description,
             reasoning=cmd.reasoning,
-            proposed_by=cmd.proposed_by
+            proposed_by=cmd.proposed_by,
         )
 
         self.event_store.append(event)
@@ -44,11 +44,14 @@ class CodeChangesHandler:
 
         # Find the proposal event for this change
         proposed_event = next(
-            (e for e in events 
-             if isinstance(e, CodeChangeProposed) and e.change_id == cmd.change_id),
-            None
+            (
+                e
+                for e in events
+                if isinstance(e, CodeChangeProposed) and e.change_id == cmd.change_id
+            ),
+            None,
         )
-        
+
         if not proposed_event:
             raise ValueError(f"No code change found with id {cmd.change_id}")
 
@@ -65,7 +68,7 @@ class CodeChangesHandler:
             status=cmd.status,
             comments=cmd.comments,
             suggested_changes=cmd.suggested_changes,
-            reviewed_by=cmd.reviewed_by
+            reviewed_by=cmd.reviewed_by,
         )
 
         self.event_store.append(event)
@@ -82,21 +85,19 @@ class CodeChangesHandler:
 
         # Find relevant events for this change
         change_events = [
-            e for e in events
+            e
+            for e in events
             if isinstance(e, (CodeChangeProposed, CodeChangeReviewed))
-            and getattr(e, 'change_id', None) == cmd.change_id
+            and getattr(e, "change_id", None) == cmd.change_id
         ]
 
         if not change_events:
             raise ValueError(f"No code change found with id {cmd.change_id}")
 
         # Check if change is approved
-        review_event = next(
-            (e for e in change_events if isinstance(e, CodeChangeReviewed)),
-            None
-        )
-        
-        if not review_event or review_event.status != 'approved':
+        review_event = next((e for e in change_events if isinstance(e, CodeChangeReviewed)), None)
+
+        if not review_event or review_event.status != "approved":
             raise ValueError("Code change must be approved before implementation")
 
         event = CodeChangeImplemented(
@@ -105,10 +106,10 @@ class CodeChangesHandler:
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             project_id=cmd.project_id,
             change_id=cmd.change_id,
-            implemented_by=cmd.implemented_by
+            implemented_by=cmd.implemented_by,
         )
 
         self.event_store.append(event)
         self.view_store.apply_event(event)
 
-        return [event] 
+        return [event]

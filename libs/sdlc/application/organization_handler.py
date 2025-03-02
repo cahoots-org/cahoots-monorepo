@@ -2,28 +2,42 @@ from datetime import datetime
 from typing import List
 from uuid import UUID, uuid4
 
+from ..domain.events import Event, EventMetadata
 from ..domain.organization.aggregates import Organization
 from ..domain.organization.commands import (
-    CreateOrganization, UpdateOrganizationName,
-    AddOrganizationMember, RemoveOrganizationMember,
-    ChangeOrganizationMemberRole, ArchiveOrganization
+    AddOrganizationMember,
+    ArchiveOrganization,
+    ChangeOrganizationMemberRole,
+    CreateOrganization,
+    RemoveOrganizationMember,
+    UpdateOrganizationName,
 )
 from ..domain.organization.events import (
-    OrganizationCreated, OrganizationNameUpdated,
-    OrganizationMemberAdded, OrganizationMemberRemoved,
-    OrganizationMemberRoleChanged, OrganizationArchived
+    OrganizationArchived,
+    OrganizationCreated,
+    OrganizationMemberAdded,
+    OrganizationMemberRemoved,
+    OrganizationMemberRoleChanged,
+    OrganizationNameUpdated,
 )
 from ..domain.organization.repository import OrganizationRepository
 from ..domain.team.commands import (
-    CreateTeam, AddTeamMember, UpdateTeamMemberRole,
-    RemoveTeamMember, TransferTeamLeadership, ArchiveTeam
+    AddTeamMember,
+    ArchiveTeam,
+    CreateTeam,
+    RemoveTeamMember,
+    TransferTeamLeadership,
+    UpdateTeamMemberRole,
 )
 from ..domain.team.events import (
-    TeamCreated, TeamMemberAdded, TeamMemberRoleChanged,
-    TeamMemberRemoved, TeamLeadershipTransferred, TeamArchived
+    TeamArchived,
+    TeamCreated,
+    TeamLeadershipTransferred,
+    TeamMemberAdded,
+    TeamMemberRemoved,
+    TeamMemberRoleChanged,
 )
 from ..domain.team.views import TeamView
-from ..domain.events import Event, EventMetadata
 
 
 class OrganizationHandler:
@@ -44,19 +58,20 @@ class OrganizationHandler:
         organization_id = uuid4()
         organization = Organization(organization_id=organization_id)
 
-        event = OrganizationCreated(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=organization_id,
-            name=cmd.name,
-            description=cmd.description,
-            created_by=cmd.created_by
-        ).triggered_by(cmd.created_by).with_context(
-            command_id=cmd.command_id,
-            organization_name=cmd.name
+        event = (
+            OrganizationCreated(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=organization_id,
+                name=cmd.name,
+                description=cmd.description,
+                created_by=cmd.created_by,
+            )
+            .triggered_by(cmd.created_by)
+            .with_context(command_id=cmd.command_id, organization_name=cmd.name)
         )
-        
+
         organization.apply_event(event)
         self.event_store.append(event)
         self.view_store.apply_event(event)
@@ -77,20 +92,21 @@ class OrganizationHandler:
         if existing_org and existing_org.organization_id != cmd.organization_id:
             raise ValueError(f"Organization with name '{cmd.new_name}' already exists")
 
-        event = OrganizationNameUpdated(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=cmd.organization_id,
-            old_name=organization.name,
-            new_name=cmd.new_name,
-            reason=cmd.reason,
-            updated_by=cmd.updated_by
-        ).triggered_by(cmd.updated_by).with_context(
-            command_id=cmd.command_id,
-            reason=cmd.reason
+        event = (
+            OrganizationNameUpdated(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=cmd.organization_id,
+                old_name=organization.name,
+                new_name=cmd.new_name,
+                reason=cmd.reason,
+                updated_by=cmd.updated_by,
+            )
+            .triggered_by(cmd.updated_by)
+            .with_context(command_id=cmd.command_id, reason=cmd.reason)
         )
-        
+
         organization.apply_event(event)
         self.event_store.append(event)
         self.view_store.apply_event(event)
@@ -109,26 +125,29 @@ class OrganizationHandler:
         if cmd.user_id in organization.members:
             raise ValueError("User is already a member")
 
-        event = OrganizationMemberAdded(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=cmd.organization_id,
-            user_id=cmd.user_id,
-            role=cmd.role,
-            added_by=cmd.added_by
-        ).triggered_by(cmd.added_by).with_context(
-            command_id=cmd.command_id,
-            member_role=cmd.role
+        event = (
+            OrganizationMemberAdded(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=cmd.organization_id,
+                user_id=cmd.user_id,
+                role=cmd.role,
+                added_by=cmd.added_by,
+            )
+            .triggered_by(cmd.added_by)
+            .with_context(command_id=cmd.command_id, member_role=cmd.role)
         )
-        
+
         organization.apply_event(event)
         self.event_store.append(event)
         self.view_store.apply_event(event)
 
         return [event]
 
-    def handle_remove_member(self, cmd: RemoveOrganizationMember) -> List[OrganizationMemberRemoved]:
+    def handle_remove_member(
+        self, cmd: RemoveOrganizationMember
+    ) -> List[OrganizationMemberRemoved]:
         """Handle RemoveOrganizationMember command"""
         organization = self.organization_repository.get_by_id(cmd.organization_id)
         if not organization:
@@ -137,17 +156,18 @@ class OrganizationHandler:
         if not organization.can_remove_member(cmd.removed_by, cmd.user_id):
             raise ValueError("Cannot remove the last admin")
 
-        event = OrganizationMemberRemoved(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=cmd.organization_id,
-            user_id=cmd.user_id,
-            removed_by=cmd.removed_by,
-            reason=cmd.reason
-        ).triggered_by(cmd.removed_by).with_context(
-            command_id=cmd.command_id,
-            reason=cmd.reason
+        event = (
+            OrganizationMemberRemoved(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=cmd.organization_id,
+                user_id=cmd.user_id,
+                removed_by=cmd.removed_by,
+                reason=cmd.reason,
+            )
+            .triggered_by(cmd.removed_by)
+            .with_context(command_id=cmd.command_id, reason=cmd.reason)
         )
         organization.apply_event(event)
 
@@ -156,7 +176,9 @@ class OrganizationHandler:
 
         return [event]
 
-    def handle_change_member_role(self, cmd: ChangeOrganizationMemberRole) -> List[OrganizationMemberRoleChanged]:
+    def handle_change_member_role(
+        self, cmd: ChangeOrganizationMemberRole
+    ) -> List[OrganizationMemberRoleChanged]:
         """Handle ChangeOrganizationMemberRole command"""
         organization = self.organization_repository.get_by_id(cmd.organization_id)
         if not organization:
@@ -168,19 +190,20 @@ class OrganizationHandler:
         if cmd.user_id not in organization.members:
             raise ValueError("User is not a member")
 
-        event = OrganizationMemberRoleChanged(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=cmd.organization_id,
-            user_id=cmd.user_id,
-            old_role=organization.members[cmd.user_id].role,
-            new_role=cmd.new_role,
-            reason=cmd.reason,
-            changed_by=cmd.changed_by
-        ).triggered_by(cmd.changed_by).with_context(
-            command_id=cmd.command_id,
-            reason=cmd.reason
+        event = (
+            OrganizationMemberRoleChanged(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=cmd.organization_id,
+                user_id=cmd.user_id,
+                old_role=organization.members[cmd.user_id].role,
+                new_role=cmd.new_role,
+                reason=cmd.reason,
+                changed_by=cmd.changed_by,
+            )
+            .triggered_by(cmd.changed_by)
+            .with_context(command_id=cmd.command_id, reason=cmd.reason)
         )
         organization.apply_event(event)
 
@@ -198,17 +221,18 @@ class OrganizationHandler:
         if not organization.can_modify(cmd.archived_by):
             raise ValueError("Insufficient permissions")
 
-        event = OrganizationArchived(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=cmd.organization_id,
-            reason=cmd.reason,
-            archived_by=cmd.archived_by,
-            archived_at=datetime.utcnow()
-        ).triggered_by(cmd.archived_by).with_context(
-            command_id=cmd.command_id,
-            reason=cmd.reason
+        event = (
+            OrganizationArchived(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=cmd.organization_id,
+                reason=cmd.reason,
+                archived_by=cmd.archived_by,
+                archived_at=datetime.utcnow(),
+            )
+            .triggered_by(cmd.archived_by)
+            .with_context(command_id=cmd.command_id, reason=cmd.reason)
         )
         organization.apply_event(event)
 
@@ -230,25 +254,24 @@ class OrganizationHandler:
         team_id = uuid4()
 
         # Create the team
-        team_created_event = TeamCreated(
-            event_id=uuid4(),
-            timestamp=datetime.utcnow(),
-            metadata=EventMetadata(correlation_id=cmd.correlation_id),
-            organization_id=cmd.organization_id,
-            team_id=team_id,
-            name=cmd.name,
-            description=cmd.description,
-            created_by=cmd.created_by
-        ).triggered_by(cmd.created_by).with_context(
-            command_id=cmd.command_id,
-            team_name=cmd.name
+        team_created_event = (
+            TeamCreated(
+                event_id=uuid4(),
+                timestamp=datetime.utcnow(),
+                metadata=EventMetadata(correlation_id=cmd.correlation_id),
+                organization_id=cmd.organization_id,
+                team_id=team_id,
+                name=cmd.name,
+                description=cmd.description,
+                created_by=cmd.created_by,
+            )
+            .triggered_by(cmd.created_by)
+            .with_context(command_id=cmd.command_id, team_name=cmd.name)
         )
 
         # Create the team view using the view store interface
         team_view = self.view_store.create_view(
-            TeamView,
-            team_id,
-            organization_id=cmd.organization_id
+            TeamView, team_id, organization_id=cmd.organization_id
         )
 
         # Apply and store the event
@@ -268,19 +291,19 @@ class OrganizationHandler:
         # Check if the user adding the member is a lead or the team creator
         if cmd.added_by not in team_view.members:
             raise ValueError("Insufficient permissions")
-        
-        member_role = team_view.members[cmd.added_by]['role']
-        if member_role != 'lead':
+
+        member_role = team_view.members[cmd.added_by]["role"]
+        if member_role != "lead":
             raise ValueError("Insufficient permissions")
 
         events = []
 
         # If adding a new lead, first demote the current lead to member
-        if cmd.role == 'lead':
+        if cmd.role == "lead":
             # Find the current lead
             old_lead_id = None
             for member_id, member in team_view.members.items():
-                if member['role'] == 'lead':
+                if member["role"] == "lead":
                     old_lead_id = member_id
                     break
 
@@ -293,7 +316,7 @@ class OrganizationHandler:
                     team_id=cmd.team_id,
                     old_lead_id=old_lead_id,
                     new_lead_id=cmd.member_id,
-                    transferred_by=cmd.added_by
+                    transferred_by=cmd.added_by,
                 )
                 events.append(transfer_event)
                 self.event_store.append(transfer_event)
@@ -307,7 +330,7 @@ class OrganizationHandler:
             team_id=cmd.team_id,
             member_id=cmd.member_id,
             role=cmd.role,
-            added_by=cmd.added_by
+            added_by=cmd.added_by,
         )
         events.append(add_event)
         self.event_store.append(add_event)
@@ -315,7 +338,9 @@ class OrganizationHandler:
 
         return events
 
-    def handle_update_team_member_role(self, cmd: UpdateTeamMemberRole) -> List[TeamMemberRoleChanged]:
+    def handle_update_team_member_role(
+        self, cmd: UpdateTeamMemberRole
+    ) -> List[TeamMemberRoleChanged]:
         """Handle UpdateTeamMemberRole command"""
         event = TeamMemberRoleChanged(
             event_id=uuid4(),
@@ -325,7 +350,7 @@ class OrganizationHandler:
             member_id=cmd.member_id,
             new_role=cmd.new_role,
             reason=cmd.reason,
-            updated_by=cmd.updated_by
+            updated_by=cmd.updated_by,
         )
 
         self.event_store.append(event)
@@ -341,7 +366,7 @@ class OrganizationHandler:
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             team_id=cmd.team_id,
             member_id=cmd.member_id,
-            removed_by=cmd.removed_by
+            removed_by=cmd.removed_by,
         )
 
         self.event_store.append(event)
@@ -349,7 +374,9 @@ class OrganizationHandler:
 
         return [event]
 
-    def handle_transfer_team_leadership(self, cmd: TransferTeamLeadership) -> List[TeamLeadershipTransferred]:
+    def handle_transfer_team_leadership(
+        self, cmd: TransferTeamLeadership
+    ) -> List[TeamLeadershipTransferred]:
         """Handle TransferTeamLeadership command"""
         # Get the team view to find the current lead
         team_view = self.view_store.get_view(cmd.team_id, TeamView)
@@ -359,7 +386,7 @@ class OrganizationHandler:
         # Find the current lead
         old_lead_id = None
         for member_id, member in team_view.members.items():
-            if member['role'] == 'lead':
+            if member["role"] == "lead":
                 old_lead_id = member_id
                 break
 
@@ -373,7 +400,7 @@ class OrganizationHandler:
             team_id=cmd.team_id,
             old_lead_id=old_lead_id,
             new_lead_id=cmd.new_lead_id,
-            transferred_by=cmd.transferred_by
+            transferred_by=cmd.transferred_by,
         )
 
         self.event_store.append(event)
@@ -389,10 +416,10 @@ class OrganizationHandler:
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             team_id=cmd.team_id,
             reason=cmd.reason,
-            archived_by=cmd.archived_by
+            archived_by=cmd.archived_by,
         )
 
         self.event_store.append(event)
         self.view_store.apply_event(event)
 
-        return [event] 
+        return [event]

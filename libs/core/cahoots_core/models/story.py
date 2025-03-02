@@ -1,25 +1,32 @@
 # src/models/story.py
-from typing import Dict, Any, Optional
-from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
 
 class StoryPriority(Enum):
     """Story priority enum."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
+
 class StoryStatus(Enum):
     """Story status enum."""
+
     OPEN = "open"
     IN_PROGRESS = "in_progress"
     REVIEW = "review"
     TESTING = "testing"
     DONE = "done"
 
+
 class Story(BaseModel):
     """A user story that needs to be implemented."""
+
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
@@ -28,7 +35,7 @@ class Story(BaseModel):
                 "description": "Implement user authentication system",
                 "priority": "medium",
                 "status": "open",
-                "metadata": {}
+                "metadata": {},
             }
         }
     )
@@ -36,9 +43,13 @@ class Story(BaseModel):
     id: str = Field(description="Unique identifier for the story")
     title: str = Field(description="Title of the story")
     description: str = Field(description="Detailed description of the story")
-    priority: StoryPriority = Field(default=StoryPriority.MEDIUM, description="Priority of the story")
+    priority: StoryPriority = Field(
+        default=StoryPriority.MEDIUM, description="Priority of the story"
+    )
     status: StoryStatus = Field(default=StoryStatus.OPEN, description="Current status of the story")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata for the story")
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict, description="Additional metadata for the story"
+    )
 
     def model_dump(
         self,
@@ -54,7 +65,7 @@ class Story(BaseModel):
         warnings: bool = True,
     ) -> Dict[str, Any]:
         """Convert story to dictionary format.
-        
+
         Args:
             mode: Output mode. Either 'json' or 'python'.
             include: Fields to include in output
@@ -65,7 +76,7 @@ class Story(BaseModel):
             exclude_none: Whether to exclude fields with None values
             round_trip: Whether to include information for converting back to model
             warnings: Whether to emit warnings
-            
+
         Returns:
             Dictionary representation of the story
         """
@@ -78,7 +89,7 @@ class Story(BaseModel):
             exclude_defaults=exclude_defaults,
             exclude_none=exclude_none,
             round_trip=round_trip,
-            warnings=warnings
+            warnings=warnings,
         )
 
         # Convert enums to strings

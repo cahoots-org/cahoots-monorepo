@@ -1,28 +1,43 @@
 """Authentication command handlers"""
+
+import hashlib
+import secrets
 from datetime import datetime
 from typing import List
 from uuid import UUID, uuid4
-import hashlib
-import secrets
 
+from ..events import EventMetadata
+from .aggregates import User
 from .commands import (
-    RegisterUser, VerifyEmail, Login, RequestPasswordReset,
-    ResetPassword, RefreshToken, Logout, RevokeSession
+    Login,
+    Logout,
+    RefreshToken,
+    RegisterUser,
+    RequestPasswordReset,
+    ResetPassword,
+    RevokeSession,
+    VerifyEmail,
 )
 from .events import (
-    UserCreated, UserVerified, UserLoggedIn, PasswordResetRequested,
-    PasswordReset, TokenRefreshed, UserLoggedOut, SessionRevoked
+    PasswordReset,
+    PasswordResetRequested,
+    SessionRevoked,
+    TokenRefreshed,
+    UserCreated,
+    UserLoggedIn,
+    UserLoggedOut,
+    UserVerified,
 )
-from .repository import UserRepository
 from .notifications import EmailService
-from .aggregates import User
-from ..events import EventMetadata
+from .repository import UserRepository
 
 
 class AuthHandler:
     """Handler for authentication-related commands"""
 
-    def __init__(self, event_store, view_store, user_repository: UserRepository, email_service: EmailService):
+    def __init__(
+        self, event_store, view_store, user_repository: UserRepository, email_service: EmailService
+    ):
         self.event_store = event_store
         self.view_store = view_store
         self.user_repository = user_repository
@@ -51,7 +66,7 @@ class AuthHandler:
             user_id=user_id,
             email=cmd.email,
             password_hash=password_hash,
-            verification_token=verification_token
+            verification_token=verification_token,
         ).triggered_by(user_id)
 
         # Apply the event to update the aggregate state
@@ -78,7 +93,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            verification_token=cmd.verification_token
+            verification_token=cmd.verification_token,
         ).triggered_by(cmd.user_id)
 
         user.pending_events.append(event)
@@ -113,7 +128,7 @@ class AuthHandler:
             user_id=user.user_id,
             session_id=session_id,
             access_token=access_token,
-            refresh_token=refresh_token
+            refresh_token=refresh_token,
         ).triggered_by(user.user_id)
 
         user.pending_events.append(event)
@@ -121,7 +136,9 @@ class AuthHandler:
 
         return [event]
 
-    def handle_request_password_reset(self, cmd: RequestPasswordReset) -> List[PasswordResetRequested]:
+    def handle_request_password_reset(
+        self, cmd: RequestPasswordReset
+    ) -> List[PasswordResetRequested]:
         """Handle RequestPasswordReset command"""
         user = self.user_repository.get_by_email(cmd.email)
         if not user:
@@ -134,7 +151,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=user.user_id,
-            reset_token=reset_token
+            reset_token=reset_token,
         ).triggered_by(user.user_id)
 
         # Save the event first
@@ -164,7 +181,7 @@ class AuthHandler:
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
             password_hash=password_hash,
-            reset_token=cmd.reset_token
+            reset_token=cmd.reset_token,
         ).triggered_by(cmd.user_id)
 
         user.pending_events.append(event)
@@ -180,9 +197,12 @@ class AuthHandler:
 
         # Find session by refresh token
         session = next(
-            (s for s in user.sessions.values() 
-             if s.refresh_token == cmd.refresh_token and s.is_active),
-            None
+            (
+                s
+                for s in user.sessions.values()
+                if s.refresh_token == cmd.refresh_token and s.is_active
+            ),
+            None,
         )
         if not session:
             raise ValueError("Invalid or expired refresh token")
@@ -195,7 +215,7 @@ class AuthHandler:
             user_id=cmd.user_id,
             session_id=session.session_id,
             access_token=access_token,
-            refresh_token=cmd.refresh_token
+            refresh_token=cmd.refresh_token,
         ).triggered_by(cmd.user_id)
 
         user.pending_events.append(event)
@@ -210,9 +230,8 @@ class AuthHandler:
             raise ValueError(f"No user found with id {cmd.user_id}")
 
         session = next(
-            (s for s in user.sessions.values() 
-             if s.session_id == cmd.session_id and s.is_active),
-            None
+            (s for s in user.sessions.values() if s.session_id == cmd.session_id and s.is_active),
+            None,
         )
         if not session:
             raise ValueError("Invalid or expired session")
@@ -222,7 +241,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            session_id=cmd.session_id
+            session_id=cmd.session_id,
         ).triggered_by(cmd.user_id)
 
         user.pending_events.append(event)
@@ -237,9 +256,8 @@ class AuthHandler:
             raise ValueError(f"No user found with id {cmd.user_id}")
 
         session = next(
-            (s for s in user.sessions.values() 
-             if s.session_id == cmd.session_id and s.is_active),
-            None
+            (s for s in user.sessions.values() if s.session_id == cmd.session_id and s.is_active),
+            None,
         )
         if not session:
             raise ValueError("Invalid or expired session")
@@ -249,10 +267,10 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(correlation_id=cmd.correlation_id),
             user_id=cmd.user_id,
-            session_id=cmd.session_id
+            session_id=cmd.session_id,
         ).triggered_by(cmd.user_id)
 
         user.pending_events.append(event)
         self.user_repository.save_user(user)
 
-        return [event] 
+        return [event]

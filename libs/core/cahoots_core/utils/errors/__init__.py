@@ -1,29 +1,29 @@
 """Error handling package."""
+
 from .exceptions import (
-    BaseError,
-    ValidationError,
-    ConfigurationError,
-    ExternalServiceException,
-    ConnectionError,
-    ProcessingError,
     AuthenticationError,
     AuthorizationError,
-    ResourceNotFoundError,
-    ResourceExistsError,
-    TimeoutError,
-    DependencyError,
+    BaseError,
+    ConfigurationError,
+    ConnectionError,
     ContextLimitExceeded,
-    EventSizeLimitExceeded
+    DependencyError,
+    EventSizeLimitExceeded,
+    ExternalServiceException,
+    ProcessingError,
+    ResourceExistsError,
+    ResourceNotFoundError,
+    TimeoutError,
+    ValidationError,
 )
-
 from .handling import (
-    ErrorSeverity,
     ErrorCategory,
-    RecoveryStrategy,
     ErrorContext,
-    SystemError,
     ErrorHandler,
-    with_error_handling
+    ErrorSeverity,
+    RecoveryStrategy,
+    SystemError,
+    with_error_handling,
 )
 
 __all__ = [
@@ -42,7 +42,6 @@ __all__ = [
     "DependencyError",
     "ContextLimitExceeded",
     "EventSizeLimitExceeded",
-    
     # Error Handling
     "ErrorSeverity",
     "ErrorCategory",
@@ -50,5 +49,5 @@ __all__ = [
     "ErrorContext",
     "SystemError",
     "ErrorHandler",
-    "with_error_handling"
-] 
+    "with_error_handling",
+]

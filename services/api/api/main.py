@@ -1,39 +1,37 @@
 """Main application router."""
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
-from starlette.exceptions import HTTPException
 
 from api.error_handlers import (
+    base_error_handler,
     http_exception_handler,
-    validation_exception_handler,
     service_error_handler,
-    base_error_handler
-)
-from api.v1 import router as v1_router
-from utils.config import get_settings
-from core.exceptions import (
-    BaseError,
-    ServiceError
+    validation_exception_handler,
 )
 from api.middleware.request_tracking import RequestTrackingMiddleware
+from api.v1 import router as v1_router
+from core.exceptions import BaseError, ServiceError
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException
+from utils.config import get_settings
+
 
 def create_app() -> FastAPI:
     """Create FastAPI application.
-    
+
     Returns:
         FastAPI: Application instance
     """
     settings = get_settings()
-    
+
     app = FastAPI(
         title="Cahoots Service",
         description="API for Cahoots service",
         version="1.0.0",
         docs_url="/api/docs",
         redoc_url="/api/redoc",
-        openapi_url="/api/openapi.json"
+        openapi_url="/api/openapi.json",
     )
 
     # Configure CORS
@@ -44,7 +42,7 @@ def create_app() -> FastAPI:
         allow_methods=settings.cors_allow_methods,
         allow_headers=settings.cors_allow_headers,
     )
-    
+
     # Add request tracking
     app.add_middleware(RequestTrackingMiddleware)
 
@@ -58,5 +56,6 @@ def create_app() -> FastAPI:
     app.include_router(v1_router)
 
     return app
+
 
 app = create_app()

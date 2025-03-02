@@ -1,25 +1,27 @@
 """QA test suite generator service."""
+
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
 from cahoots_core.exceptions import ServiceError
 from cahoots_core.models.qa_suite import (
     QASuite,
     QATest,
-    QATestSuite,
-    QATestType,
     QATestResult,
     QATestStatus,
+    QATestSuite,
+    QATestType,
     TestStatus,
-    TestStep
+    TestStep,
 )
 
 logger = logging.getLogger(__name__)
 
+
 class QASuiteGenerator:
     """Service for generating QA test suites."""
-    
+
     def __init__(self):
         """Initialize QA suite generator."""
         self.test_templates = {
@@ -28,7 +30,7 @@ class QASuiteGenerator:
             QATestType.PERFORMANCE: self._generate_performance_test,
             QATestType.SECURITY: self._generate_security_test,
         }
-        
+
     async def generate_suite(
         self,
         name: str,
@@ -39,13 +41,13 @@ class QASuiteGenerator:
         """Generate a QA test suite."""
         try:
             test_suites = []
-            
+
             # Generate test suites for each type
             for test_type in test_types:
                 suite = await self._generate_test_suite(test_type, context)
                 if suite:
                     test_suites.append(suite)
-                    
+
             return QASuite(
                 id=uuid4(),
                 name=name,
@@ -53,11 +55,11 @@ class QASuiteGenerator:
                 test_suites=test_suites,
                 context=context,
             )
-            
+
         except Exception as e:
             logger.error(f"Error generating QA suite: {e}")
             raise ServiceError(f"Failed to generate QA suite: {e}")
-            
+
     async def _generate_test_suite(
         self,
         test_type: QATestType,
@@ -69,9 +71,9 @@ class QASuiteGenerator:
             if not generator:
                 logger.warning(f"No generator found for test type: {test_type}")
                 return None
-                
+
             tests = []
-            
+
             # Generate tests based on context
             if test_type == QATestType.API:
                 tests.extend(await self._generate_api_tests(context))
@@ -81,10 +83,10 @@ class QASuiteGenerator:
                 tests.extend(await self._generate_performance_tests(context))
             elif test_type == QATestType.SECURITY:
                 tests.extend(await self._generate_security_tests(context))
-                
+
             if not tests:
                 return None
-                
+
             return QATestSuite(
                 id=uuid4(),
                 name=f"{test_type.value} Tests",
@@ -93,24 +95,24 @@ class QASuiteGenerator:
                 tests=tests,
                 parallel=test_type in [QATestType.API, QATestType.PERFORMANCE],
             )
-            
+
         except Exception as e:
             logger.error(f"Error generating test suite for {test_type}: {e}")
             return None
-            
+
     async def _generate_api_tests(self, context: Dict[str, Any]) -> List[QATest]:
         """Generate API tests based on context."""
         tests = []
-        
+
         # Extract API endpoints from context
         endpoints = context.get("endpoints", [])
         for endpoint in endpoints:
             test = await self._generate_api_test(endpoint)
             if test:
                 tests.append(test)
-                
+
         return tests
-        
+
     async def _generate_api_test(self, endpoint: Dict[str, Any]) -> Optional[QATest]:
         """Generate an API test for an endpoint."""
         try:
@@ -118,7 +120,7 @@ class QASuiteGenerator:
             path = endpoint.get("path")
             if not path:
                 return None
-                
+
             return QATest(
                 id=uuid4(),
                 name=f"{method} {path}",
@@ -150,31 +152,31 @@ class QASuiteGenerator:
                     },
                 ],
             )
-            
+
         except Exception as e:
             logger.error(f"Error generating API test: {e}")
             return None
-            
+
     async def _generate_integration_tests(self, context: Dict[str, Any]) -> List[QATest]:
         """Generate integration tests based on context."""
         tests = []
-        
+
         # Extract integration flows from context
         flows = context.get("flows", [])
         for flow in flows:
             test = await self._generate_integration_test(flow)
             if test:
                 tests.append(test)
-                
+
         return tests
-        
+
     async def _generate_integration_test(self, flow: Dict[str, Any]) -> Optional[QATest]:
         """Generate an integration test for a flow."""
         try:
             name = flow.get("name")
             if not name:
                 return None
-                
+
             steps = []
             for step in flow.get("steps", []):
                 step_config = {
@@ -183,7 +185,7 @@ class QASuiteGenerator:
                 }
                 step_config.update(step.get("config", {}))
                 steps.append(step_config)
-                
+
             return QATest(
                 id=uuid4(),
                 name=f"Flow: {name}",
@@ -191,31 +193,31 @@ class QASuiteGenerator:
                 test_type=QATestType.INTEGRATION,
                 steps=steps,
             )
-            
+
         except Exception as e:
             logger.error(f"Error generating integration test: {e}")
             return None
-            
+
     async def _generate_performance_tests(self, context: Dict[str, Any]) -> List[QATest]:
         """Generate performance tests based on context."""
         tests = []
-        
+
         # Extract performance scenarios from context
         scenarios = context.get("performance_scenarios", [])
         for scenario in scenarios:
             test = await self._generate_performance_test(scenario)
             if test:
                 tests.append(test)
-                
+
         return tests
-        
+
     async def _generate_performance_test(self, scenario: Dict[str, Any]) -> Optional[QATest]:
         """Generate a performance test for a scenario."""
         try:
             name = scenario.get("name")
             if not name:
                 return None
-                
+
             return QATest(
                 id=uuid4(),
                 name=f"Performance: {name}",
@@ -235,31 +237,31 @@ class QASuiteGenerator:
                     },
                 ],
             )
-            
+
         except Exception as e:
             logger.error(f"Error generating performance test: {e}")
             return None
-            
+
     async def _generate_security_tests(self, context: Dict[str, Any]) -> List[QATest]:
         """Generate security tests based on context."""
         tests = []
-        
+
         # Extract security checks from context
         checks = context.get("security_checks", [])
         for check in checks:
             test = await self._generate_security_test(check)
             if test:
                 tests.append(test)
-                
+
         return tests
-        
+
     async def _generate_security_test(self, check: Dict[str, Any]) -> Optional[QATest]:
         """Generate a security test for a check."""
         try:
             name = check.get("name")
             if not name:
                 return None
-                
+
             return QATest(
                 id=uuid4(),
                 name=f"Security: {name}",
@@ -278,7 +280,7 @@ class QASuiteGenerator:
                     },
                 ],
             )
-            
+
         except Exception as e:
             logger.error(f"Error generating security test: {e}")
-            return None 
+            return None

@@ -1,16 +1,18 @@
 """Factory for creating AI providers."""
-from typing import Dict, Optional, Type, Any, AsyncGenerator, List
-import os
 
-from .base import AIProvider
-from .openai_provider import OpenAIProvider
+import os
+from typing import Any, AsyncGenerator, Dict, List, Optional, Type
+
 from .anthropic_provider import AnthropicProvider
+from .base import AIProvider
 from .hybrid_provider import HybridProvider
+from .openai_provider import OpenAIProvider
 from .test_provider import TestProvider
+
 
 class AIProviderFactory:
     """Factory for creating AI providers."""
-    
+
     _providers: Dict[str, Type[AIProvider]] = {
         "openai": OpenAIProvider,
         "anthropic": AnthropicProvider,
@@ -19,26 +21,22 @@ class AIProviderFactory:
         # Add more providers here as they're implemented
         # "local": LocalProvider,
     }
-    
+
     @classmethod
     def create(
-        cls,
-        provider: str,
-        api_key: Optional[str] = None,
-        model: Optional[str] = None,
-        **kwargs
+        cls, provider: str, api_key: Optional[str] = None, model: Optional[str] = None, **kwargs
     ) -> AIProvider:
         """Create an AI provider instance.
-        
+
         Args:
             provider: Provider type ("openai", "hybrid", etc)
             api_key: Optional API key
             model: Optional default model
             **kwargs: Additional provider-specific args
-            
+
         Returns:
             AIProvider: Configured provider instance
-            
+
         Raises:
             ValueError: If provider type is not supported
         """
@@ -47,36 +45,32 @@ class AIProviderFactory:
                 f"Unsupported provider: {provider}. "
                 f"Supported providers: {list(cls._providers.keys())}"
             )
-            
+
         provider_cls = cls._providers[provider]
-        
+
         # Handle provider-specific initialization
         if provider == "openai":
-            return provider_cls(
-                api_key=api_key,
-                default_model=model,
-                **kwargs
-            )
+            return provider_cls(api_key=api_key, default_model=model, **kwargs)
         elif provider == "hybrid":
             return provider_cls(
                 mistral_api_key=api_key,  # Primary API key is for Mistral
                 default_model=model,
-                **kwargs
+                **kwargs,
             )
-            
+
         # Add other provider initialization here
-        
+
         return provider_cls(**kwargs)
-        
+
     @classmethod
     def register_provider(cls, name: str, provider_cls: Type[AIProvider]):
         """Register a new provider type.
-        
+
         Args:
             name: Provider name
             provider_cls: Provider class
         """
-        cls._providers[name] = provider_cls 
+        cls._providers[name] = provider_cls
 
     @staticmethod
     def create_provider(provider_type: str = "openai", api_key: Optional[str] = None) -> AIProvider:
@@ -105,7 +99,10 @@ class AIProviderFactory:
         elif provider_type == "test":
             return TestProvider()
         else:
-            raise ValueError(f"Unsupported provider: {provider_type}. Supported providers: ['openai', 'anthropic', 'test']")
+            raise ValueError(
+                f"Unsupported provider: {provider_type}. Supported providers: ['openai', 'anthropic', 'test']"
+            )
+
 
 class TestProvider(AIProvider):
     """Test AI provider for use in tests."""
@@ -143,4 +140,4 @@ class TestProvider(AIProvider):
         Returns:
             Mock embeddings
         """
-        return [0.1, 0.2, 0.3] 
+        return [0.1, 0.2, 0.3]

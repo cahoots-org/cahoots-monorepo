@@ -1,11 +1,12 @@
 """Infrastructure package for event sourcing."""
+
 from .client import (
+    ConnectionError,
     EventClient,
     EventClientError,
-    ConnectionError,
     PublishError,
     SubscriptionError,
-    get_event_client
+    get_event_client,
 )
 
 __all__ = [
@@ -14,5 +15,5 @@ __all__ = [
     "ConnectionError",
     "PublishError",
     "SubscriptionError",
-    "get_event_client"
+    "get_event_client",
 ]

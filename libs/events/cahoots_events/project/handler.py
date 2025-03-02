@@ -1,22 +1,43 @@
 """Project management domain handlers"""
+
 from datetime import datetime
 from typing import List
 from uuid import UUID, uuid4
 
+from ..base import EventMetadata
 from .commands import (
-    CreateProject, UpdateProjectStatus, SetProjectTimeline,
-    AddRequirement, CompleteRequirement, BlockRequirement, UnblockRequirement,
-    ChangeRequirementPriority, CreateTask, CompleteTask, AssignTask,
-    BlockTask, UnblockTask, ChangeTaskPriority
+    AddRequirement,
+    AssignTask,
+    BlockRequirement,
+    BlockTask,
+    ChangeRequirementPriority,
+    ChangeTaskPriority,
+    CompleteRequirement,
+    CompleteTask,
+    CreateProject,
+    CreateTask,
+    SetProjectTimeline,
+    UnblockRequirement,
+    UnblockTask,
+    UpdateProjectStatus,
 )
 from .events import (
-    ProjectCreated, ProjectStatusUpdated, ProjectTimelineSet,
-    RequirementAdded, RequirementCompleted, RequirementBlocked, RequirementUnblocked,
-    RequirementPriorityChanged, TaskCreated, TaskCompleted, TaskAssigned,
-    TaskBlocked, TaskUnblocked, TaskPriorityChanged
+    ProjectCreated,
+    ProjectStatusUpdated,
+    ProjectTimelineSet,
+    RequirementAdded,
+    RequirementBlocked,
+    RequirementCompleted,
+    RequirementPriorityChanged,
+    RequirementUnblocked,
+    TaskAssigned,
+    TaskBlocked,
+    TaskCompleted,
+    TaskCreated,
+    TaskPriorityChanged,
+    TaskUnblocked,
 )
 from .repository import ProjectRepository
-from ..base import EventMetadata
 
 
 class ProjectHandler:
@@ -44,7 +65,7 @@ class ProjectHandler:
             description=cmd.description,
             repository=cmd.repository,
             tech_stack=cmd.tech_stack,
-            created_by=cmd.created_by
+            created_by=cmd.created_by,
         )
 
         self.event_store.append(event)
@@ -68,7 +89,7 @@ class ProjectHandler:
             project_id=cmd.project_id,
             status=cmd.status,
             reason=cmd.reason,
-            updated_by=cmd.updated_by
+            updated_by=cmd.updated_by,
         )
 
         self.event_store.append(event)
@@ -90,7 +111,7 @@ class ProjectHandler:
             start_date=cmd.start_date,
             target_date=cmd.target_date,
             milestones=cmd.milestones,
-            set_by=cmd.set_by
+            set_by=cmd.set_by,
         )
 
         self.event_store.append(event)
@@ -120,7 +141,7 @@ class ProjectHandler:
             description=cmd.description,
             priority=cmd.priority,
             dependencies=cmd.dependencies,
-            added_by=cmd.added_by
+            added_by=cmd.added_by,
         )
 
         self.event_store.append(event)
@@ -143,7 +164,7 @@ class ProjectHandler:
             metadata=EventMetadata(),
             project_id=cmd.project_id,
             requirement_id=cmd.requirement_id,
-            completed_by=cmd.completed_by
+            completed_by=cmd.completed_by,
         )
 
         self.event_store.append(event)
@@ -167,7 +188,7 @@ class ProjectHandler:
             project_id=cmd.project_id,
             requirement_id=cmd.requirement_id,
             blocker_description=cmd.blocker_description,
-            blocked_by=cmd.blocked_by
+            blocked_by=cmd.blocked_by,
         )
 
         self.event_store.append(event)
@@ -191,7 +212,7 @@ class ProjectHandler:
             project_id=cmd.project_id,
             requirement_id=cmd.requirement_id,
             resolution=cmd.resolution,
-            unblocked_by=cmd.unblocked_by
+            unblocked_by=cmd.unblocked_by,
         )
 
         self.event_store.append(event)
@@ -199,7 +220,9 @@ class ProjectHandler:
 
         return [event]
 
-    def handle_change_requirement_priority(self, cmd: ChangeRequirementPriority) -> List[RequirementPriorityChanged]:
+    def handle_change_requirement_priority(
+        self, cmd: ChangeRequirementPriority
+    ) -> List[RequirementPriorityChanged]:
         """Handle ChangeRequirementPriority command"""
         project = self.project_repository.get_by_id(cmd.project_id)
         if not project:
@@ -218,7 +241,7 @@ class ProjectHandler:
             old_priority=requirement.priority,
             new_priority=cmd.new_priority,
             reason=cmd.reason,
-            changed_by=cmd.changed_by
+            changed_by=cmd.changed_by,
         )
 
         self.event_store.append(event)
@@ -246,7 +269,7 @@ class ProjectHandler:
             title=cmd.title,
             description=cmd.description,
             complexity=cmd.complexity,
-            created_by=cmd.created_by
+            created_by=cmd.created_by,
         )
 
         self.event_store.append(event)
@@ -278,7 +301,7 @@ class ProjectHandler:
             project_id=cmd.project_id,
             task_id=cmd.task_id,
             requirement_id=cmd.requirement_id,
-            completed_by=cmd.completed_by
+            completed_by=cmd.completed_by,
         )
 
         self.event_store.append(event)
@@ -307,7 +330,7 @@ class ProjectHandler:
             task_id=cmd.task_id,
             requirement_id=cmd.requirement_id,
             assignee_id=cmd.assignee_id,
-            assigned_by=cmd.assigned_by
+            assigned_by=cmd.assigned_by,
         )
 
         self.event_store.append(event)
@@ -336,7 +359,7 @@ class ProjectHandler:
             task_id=cmd.task_id,
             requirement_id=cmd.requirement_id,
             blocker_description=cmd.blocker_description,
-            blocked_by=cmd.blocked_by
+            blocked_by=cmd.blocked_by,
         )
 
         self.event_store.append(event)
@@ -365,7 +388,7 @@ class ProjectHandler:
             task_id=cmd.task_id,
             requirement_id=cmd.requirement_id,
             resolution=cmd.resolution,
-            unblocked_by=cmd.unblocked_by
+            unblocked_by=cmd.unblocked_by,
         )
 
         self.event_store.append(event)
@@ -397,10 +420,10 @@ class ProjectHandler:
             old_priority=task.priority,
             new_priority=cmd.new_priority,
             reason=cmd.reason,
-            changed_by=cmd.changed_by
+            changed_by=cmd.changed_by,
         )
 
         self.event_store.append(event)
         self.view_store.apply_event(event)
 
-        return [event] 
+        return [event]

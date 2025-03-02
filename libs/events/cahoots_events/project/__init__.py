@@ -1,1 +1,1 @@
-"""Project management domain package""" 
+"""Project management domain package"""

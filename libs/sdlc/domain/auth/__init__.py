@@ -1,1 +1,1 @@
-"""Authentication domain package""" 
+"""Authentication domain package"""
