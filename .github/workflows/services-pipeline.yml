@@ -45,6 +45,11 @@ permissions:
   contents: read
   packages: write
 
+# Add permissions for the workflow
+permissions:
+  contents: read
+  packages: write
+
 env:
   PYTHON_VERSION: "3.11"
   AWS_REGION: us-west-2
@@ -218,6 +223,7 @@ jobs:
           echo "GitHub Repository: ${{ github.repository }}"
           echo "GitHub Repository Owner: ${{ github.repository_owner }}"
           echo "Token permissions should include 'packages: write'"
+
           echo "Checking if GitHub Container Registry is enabled for this repository..."
           echo "Note: If this fails, you may need to enable GitHub Container Registry in your organization settings."
           echo "See: https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry"
@@ -242,6 +248,7 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/cahoots-base:latest
             ghcr.io/${{ github.repository_owner }}/cahoots-base:${{ github.sha }}
+
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
