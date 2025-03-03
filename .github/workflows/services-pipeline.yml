@@ -292,6 +292,8 @@ jobs:
           civo kubernetes config cahoots-prod --save
 
       - name: Deploy to Kubernetes
+        env:
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
           # Create namespace first
           kubectl apply -f k8s/base/namespace.yaml
@@ -317,12 +319,13 @@ jobs:
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           for service in "${services[@]}"; do
             echo "Deploying $service..."
-            # Replace image tag and add image pull secret
-            sed -i "s|image: .*$service:.*|image: ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
-            # Add imagePullSecrets if it doesn't exist
-            if ! grep -q "imagePullSecrets:" k8s/base/$service.yaml; then
-              sed -i '/spec:/a\      imagePullSecrets:\n      - name: ghcr-pull-secret' k8s/base/$service.yaml
-            fi
+            # Create a temporary file with variables replaced
+            envsubst < k8s/base/$service.yaml > k8s/base/$service.yaml.tmp
+            mv k8s/base/$service.yaml.tmp k8s/base/$service.yaml
+            
+            # Replace image tag
+            sed -i "s|image: .*$service:.*|image: ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
+            
             # Apply the updated manifest
             kubectl apply -f k8s/base/$service.yaml
             
