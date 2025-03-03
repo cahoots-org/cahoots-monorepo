@@ -1,4 +1,5 @@
-FROM cahoots-base:latest
+ARG GITHUB_REPOSITORY_OWNER
+FROM ghcr.io/${GITHUB_REPOSITORY_OWNER}/cahoots-base:latest
 
 WORKDIR /app
 
