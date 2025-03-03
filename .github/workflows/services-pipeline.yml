@@ -294,11 +294,13 @@ jobs:
       - name: Deploy to Kubernetes
         env:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           # Create namespace first
           kubectl apply -f k8s/base/namespace.yaml
 
           # Create image pull secret for GitHub Container Registry
+          kubectl delete secret ghcr-pull-secret -n cahoots --ignore-not-found
           kubectl create secret docker-registry ghcr-pull-secret \
             --namespace=cahoots \
             --docker-server=ghcr.io \
@@ -308,6 +310,11 @@ jobs:
 
           # Apply Redis configuration
           kubectl apply -f k8s/base/redis-config.yaml
+          
+          # Apply PostgreSQL configuration and wait for it to be ready
+          kubectl apply -f k8s/base/postgres.yaml
+          echo "Waiting for PostgreSQL to be ready..."
+          kubectl rollout status deployment/postgres -n cahoots --timeout=300s
           
           # Apply middleware configurations
           kubectl apply -f k8s/base/middleware.yaml
@@ -319,12 +326,13 @@ jobs:
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           for service in "${services[@]}"; do
             echo "Deploying $service..."
+            
+            # Delete existing pods to force pull of new image
+            kubectl delete pods -n cahoots -l app=$service --force --grace-period=0 || true
+            
             # Create a temporary file with variables replaced
             envsubst < k8s/base/$service.yaml > k8s/base/$service.yaml.tmp
             mv k8s/base/$service.yaml.tmp k8s/base/$service.yaml
-            
-            # Replace image tag
-            sed -i "s|image: .*$service:.*|image: ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
             
             # Apply the updated manifest
             kubectl apply -f k8s/base/$service.yaml
@@ -336,9 +344,13 @@ jobs:
               echo "Pod status for $service:"
               kubectl get pods -n cahoots -l app=$service
               echo "Pod logs for $service:"
-              kubectl logs -n cahoots -l app=$service --tail=50
+              kubectl logs -n cahoots -l app=$service --tail=50 || true
+              echo "Init container logs for $service:"
+              kubectl logs -n cahoots -l app=$service -c wait-for-postgres --tail=50 || true
               echo "Pod events for $service:"
               kubectl get events -n cahoots --field-selector involvedObject.name=$service
+              echo "Checking pod description:"
+              kubectl describe pod -n cahoots -l app=$service
               exit 1
             fi
           done

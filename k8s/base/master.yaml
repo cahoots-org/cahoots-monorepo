@@ -15,12 +15,24 @@ spec:
     spec:
       imagePullSecrets:
       - name: ghcr-pull-secret
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15
+        command: ['sh', '-c', 
+          'until pg_isready -h db -p 5432; do echo waiting for postgres; sleep 2; done;']
       containers:
       - name: master
-        image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/cahoots-master:latest
+        image: ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-master:$GITHUB_SHA
         envFrom:
         - configMapRef:
             name: redis-config
+        - configMapRef:
+            name: postgres-config
+        - secretRef:
+            name: postgres-secret
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@db:5432/$(POSTGRES_DB)"
         resources:
           requests:
             cpu: 200m
