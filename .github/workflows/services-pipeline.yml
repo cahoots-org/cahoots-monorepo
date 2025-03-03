@@ -311,12 +311,42 @@ jobs:
           # Apply Redis configuration
           kubectl apply -f k8s/base/redis-config.yaml
           
+          # Check available storage classes
+          echo "Available storage classes:"
+          kubectl get storageclass
+          
+          # Delete existing PVC if it's stuck
+          echo "Cleaning up any stuck PVCs..."
+          kubectl delete pvc postgres-data -n cahoots --ignore-not-found
+          
           # Apply PostgreSQL configuration and wait for it to be ready
           echo "Setting up PostgreSQL..."
           kubectl apply -f k8s/base/postgres.yaml
           
           echo "Waiting for PostgreSQL PVC..."
-          kubectl wait --for=condition=Bound pvc/postgres-data -n cahoots --timeout=2m
+          for i in {1..12}; do
+            if kubectl get pvc postgres-data -n cahoots | grep -q Bound; then
+              echo "PVC is bound!"
+              break
+            fi
+            echo "Waiting for PVC to bind... Attempt $i/12"
+            kubectl describe pvc postgres-data -n cahoots
+            sleep 10
+          done
+          
+          # Verify PVC status
+          echo "PVC Status:"
+          kubectl get pvc postgres-data -n cahoots
+          
+          if ! kubectl get pvc postgres-data -n cahoots | grep -q Bound; then
+            echo "Failed to bind PVC. Current state:"
+            kubectl describe pvc postgres-data -n cahoots
+            echo "Storage Classes:"
+            kubectl get storageclass
+            echo "Storage Class Details:"
+            kubectl describe storageclass civo-csi
+            exit 1
+          fi
           
           echo "Waiting for PostgreSQL deployment..."
           kubectl rollout status deployment/postgres -n cahoots --timeout=5m
