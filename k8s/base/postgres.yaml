@@ -31,7 +31,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: "civo-csi"  # This is Civo's default storage class
+  storageClassName: civo-volume
   resources:
     requests:
       storage: 10Gi

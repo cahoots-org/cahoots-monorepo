@@ -319,40 +319,25 @@ jobs:
           echo "Cleaning up any stuck PVCs..."
           kubectl delete pvc postgres-data -n cahoots --ignore-not-found
           
-          # Apply PostgreSQL configuration and wait for it to be ready
+          # Apply PostgreSQL configuration
           echo "Setting up PostgreSQL..."
           kubectl apply -f k8s/base/postgres.yaml
           
-          echo "Waiting for PostgreSQL PVC..."
-          for i in {1..12}; do
-            if kubectl get pvc postgres-data -n cahoots | grep -q Bound; then
-              echo "PVC is bound!"
-              break
-            fi
-            echo "Waiting for PVC to bind... Attempt $i/12"
-            kubectl describe pvc postgres-data -n cahoots
-            sleep 10
-          done
+          echo "Waiting for PostgreSQL deployment to create pod..."
+          kubectl rollout status deployment/postgres -n cahoots --timeout=2m || true
           
-          # Verify PVC status
-          echo "PVC Status:"
+          echo "Checking PVC status..."
           kubectl get pvc postgres-data -n cahoots
           
-          if ! kubectl get pvc postgres-data -n cahoots | grep -q Bound; then
-            echo "Failed to bind PVC. Current state:"
-            kubectl describe pvc postgres-data -n cahoots
-            echo "Storage Classes:"
-            kubectl get storageclass
-            echo "Storage Class Details:"
-            kubectl describe storageclass civo-csi
-            exit 1
-          fi
+          echo "Checking pod status..."
+          kubectl get pods -n cahoots -l app=postgres
           
-          echo "Waiting for PostgreSQL deployment..."
-          kubectl rollout status deployment/postgres -n cahoots --timeout=5m
+          echo "Pod events:"
+          kubectl get events -n cahoots --field-selector involvedObject.kind=Pod,involvedObject.name~=postgres
           
-          echo "Verifying PostgreSQL is responding..."
-          kubectl wait --for=condition=ready pod -l app=postgres -n cahoots --timeout=2m
+          # Wait for PostgreSQL to be ready
+          echo "Waiting for PostgreSQL pod to be ready..."
+          kubectl wait --for=condition=ready pod -l app=postgres -n cahoots --timeout=5m
           
           # Apply middleware configurations
           kubectl apply -f k8s/base/middleware.yaml
