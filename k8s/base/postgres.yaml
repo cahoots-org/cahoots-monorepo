@@ -17,16 +17,17 @@ data:
   POSTGRES_PASSWORD: "Y2Fob290cy1wYXNzd29yZA==" # cahoots-password in base64
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: postgres
   namespace: cahoots
 spec:
-  serviceName: db
-  replicas: 1
   selector:
     matchLabels:
       app: postgres
+  replicas: 1
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
@@ -49,17 +50,18 @@ spec:
           limits:
             cpu: 500m
             memory: 512Mi
-        volumeMounts:
-        - name: postgres-data
-          mountPath: /var/lib/postgresql/data
-  volumeClaimTemplates:
-  - metadata:
-      name: postgres-data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      resources:
-        requests:
-          storage: 10Gi
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "cahoots"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 1
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "cahoots"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 1
 ---
 apiVersion: v1
 kind: Service
