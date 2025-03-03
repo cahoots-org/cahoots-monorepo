@@ -260,9 +260,13 @@ jobs:
             dockerfile_path="${dockerfile_paths[$service]:-docker/agent/Dockerfile}"
             echo "Building $service using $dockerfile_path"
             
-            docker build -t ghcr.io/${{ github.repository_owner }}/cahoots-$service:latest \
-                        -t ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }} \
-                        -f $dockerfile_path .
+            # Build with proper base image reference
+            docker build \
+              --build-arg GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }} \
+              -t ghcr.io/${{ github.repository_owner }}/cahoots-$service:latest \
+              -t ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }} \
+              -f $dockerfile_path .
+            
             docker push ghcr.io/${{ github.repository_owner }}/cahoots-$service:latest
             docker push ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}
           done
