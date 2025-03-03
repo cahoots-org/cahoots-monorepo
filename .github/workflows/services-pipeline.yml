@@ -293,7 +293,19 @@ jobs:
 
       - name: Deploy to Kubernetes
         run: |
-          # Update image tags in Kubernetes manifests
+          # Create namespace first
+          kubectl apply -f k8s/base/namespace.yaml
+
+          # Apply Redis configuration
+          kubectl apply -f k8s/base/redis-config.yaml
+          
+          # Apply middleware configurations
+          kubectl apply -f k8s/base/middleware.yaml
+          
+          # Apply ingress configuration
+          kubectl apply -f k8s/base/ingress.yaml
+          
+          # Update image tags in Kubernetes manifests and deploy services
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           for service in "${services[@]}"; do
             # Replace image tag in deployment
