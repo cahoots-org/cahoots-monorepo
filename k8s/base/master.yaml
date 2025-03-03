@@ -13,6 +13,8 @@ spec:
       labels:
         app: master
     spec:
+      imagePullSecrets:
+      - name: ghcr-pull-secret
       containers:
       - name: master
         image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/cahoots-master:latest
