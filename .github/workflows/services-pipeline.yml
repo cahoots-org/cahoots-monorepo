@@ -296,6 +296,14 @@ jobs:
           # Create namespace first
           kubectl apply -f k8s/base/namespace.yaml
 
+          # Create image pull secret for GitHub Container Registry
+          kubectl create secret docker-registry ghcr-pull-secret \
+            --namespace=cahoots \
+            --docker-server=ghcr.io \
+            --docker-username=${{ github.actor }} \
+            --docker-password=${{ secrets.GITHUB_TOKEN }} \
+            --dry-run=client -o yaml | kubectl apply -f -
+
           # Apply Redis configuration
           kubectl apply -f k8s/base/redis-config.yaml
           
@@ -305,15 +313,31 @@ jobs:
           # Apply ingress configuration
           kubectl apply -f k8s/base/ingress.yaml
           
-          # Update image tags in Kubernetes manifests and deploy services
+          # Update image tags and add image pull secret to Kubernetes manifests
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           for service in "${services[@]}"; do
-            # Replace image tag in deployment
+            echo "Deploying $service..."
+            # Replace image tag and add image pull secret
             sed -i "s|image: .*$service:.*|image: ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
+            # Add imagePullSecrets if it doesn't exist
+            if ! grep -q "imagePullSecrets:" k8s/base/$service.yaml; then
+              sed -i '/spec:/a\      imagePullSecrets:\n      - name: ghcr-pull-secret' k8s/base/$service.yaml
+            fi
             # Apply the updated manifest
             kubectl apply -f k8s/base/$service.yaml
-            # Wait for rollout
-            kubectl rollout status deployment/$service -n cahoots
+            
+            # Wait for rollout with timeout and debug information
+            timeout=300s  # 5 minute timeout
+            if ! kubectl rollout status deployment/$service -n cahoots --timeout=$timeout; then
+              echo "Deployment of $service timed out or failed. Checking pod status..."
+              echo "Pod status for $service:"
+              kubectl get pods -n cahoots -l app=$service
+              echo "Pod logs for $service:"
+              kubectl logs -n cahoots -l app=$service --tail=50
+              echo "Pod events for $service:"
+              kubectl get events -n cahoots --field-selector involvedObject.name=$service
+              exit 1
+            fi
           done
 
   coverage:
