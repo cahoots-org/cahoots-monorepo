@@ -312,9 +312,17 @@ jobs:
           kubectl apply -f k8s/base/redis-config.yaml
           
           # Apply PostgreSQL configuration and wait for it to be ready
+          echo "Setting up PostgreSQL..."
           kubectl apply -f k8s/base/postgres.yaml
-          echo "Waiting for PostgreSQL to be ready..."
-          kubectl rollout status deployment/postgres -n cahoots --timeout=300s
+          
+          echo "Waiting for PostgreSQL PVC..."
+          kubectl wait --for=condition=Bound pvc/postgres-data -n cahoots --timeout=2m
+          
+          echo "Waiting for PostgreSQL deployment..."
+          kubectl rollout status deployment/postgres -n cahoots --timeout=5m
+          
+          echo "Verifying PostgreSQL is responding..."
+          kubectl wait --for=condition=ready pod -l app=postgres -n cahoots --timeout=2m
           
           # Apply middleware configurations
           kubectl apply -f k8s/base/middleware.yaml
@@ -344,6 +352,8 @@ jobs:
               echo "Pod status for $service:"
               kubectl get pods -n cahoots -l app=$service
               echo "Pod logs for $service:"
+              kubectl logs -n cahoots -l app=$service --tail=50 --previous || true
+              echo "Current pod logs:"
               kubectl logs -n cahoots -l app=$service --tail=50 || true
               echo "Init container logs for $service:"
               kubectl logs -n cahoots -l app=$service -c wait-for-postgres --tail=50 || true
@@ -351,6 +361,9 @@ jobs:
               kubectl get events -n cahoots --field-selector involvedObject.name=$service
               echo "Checking pod description:"
               kubectl describe pod -n cahoots -l app=$service
+              echo "Checking PostgreSQL status:"
+              kubectl get pods -n cahoots -l app=postgres
+              kubectl logs -n cahoots -l app=postgres --tail=50 || true
               exit 1
             fi
           done
