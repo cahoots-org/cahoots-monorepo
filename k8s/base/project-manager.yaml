@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: project-manager
+  namespace: cahoots
+spec:
+  selector:
+    matchLabels:
+      app: project-manager
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: project-manager
+    spec:
+      containers:
+      - name: project-manager
+        image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/cahoots-project_manager:latest
+        envFrom:
+        - configMapRef:
+            name: redis-config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        ports:
+        - containerPort: 8000
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: project-manager
+  namespace: cahoots
+spec:
+  selector:
+    app: project-manager
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP 
