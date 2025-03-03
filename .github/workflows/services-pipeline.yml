@@ -252,10 +252,11 @@ jobs:
           dockerfile_paths["master"]="docker/master/Dockerfile"
           dockerfile_paths["context_manager"]="docker/services/context-manager.Dockerfile"
           dockerfile_paths["agent"]="docker/agent/Dockerfile"
+          dockerfile_paths["web-client"]="docker/web-client/Dockerfile"
           
           # Add other services if they exist in different locations
           # Check if the service has a dedicated Dockerfile, otherwise use the agent Dockerfile
-          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
+          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           for service in "${services[@]}"; do
             dockerfile_path="${dockerfile_paths[$service]:-docker/agent/Dockerfile}"
             echo "Building $service using $dockerfile_path"
@@ -271,44 +272,9 @@ jobs:
             docker push ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}
           done
 
-  deploy-staging:
-    name: Deploy to Staging
-    needs: [build]
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_only != 'true' && github.event.inputs.build_only != 'true')
-    runs-on: ubuntu-latest
-    environment:
-      name: staging
-      url: https://staging.cahoots.cc
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
-
-      - name: Configure kubectl
-        run: |
-          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
-          chmod 600 kubeconfig.yaml
-          export KUBECONFIG=kubeconfig.yaml
-
-      - name: Deploy to Kubernetes
-        run: |
-          # Update image tags in Kubernetes manifests
-          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
-          for service in "${services[@]}"; do
-            # Replace image tag in deployment
-            sed -i "s|image: .*$service:.*|image: ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
-            # Apply the updated manifest
-            kubectl apply -f k8s/base/$service.yaml
-            # Wait for rollout
-            kubectl rollout status deployment/$service -n default
-          done
-
   deploy-production:
     name: Deploy to Production
-    needs: [deploy-staging]
+    needs: [build]
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.event.inputs.test_only != 'true' && github.event.inputs.build_only != 'true')
     runs-on: ubuntu-latest
     environment:
@@ -317,28 +283,25 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
+      - name: Install Civo CLI
+        run: curl -sL https://civo.com/get | sh
 
-      - name: Configure kubectl
+      - name: Configure Civo CLI
         run: |
-          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
-          chmod 600 kubeconfig.yaml
-          export KUBECONFIG=kubeconfig.yaml
+          civo apikey add production-key ${{ secrets.CIVO_API_KEY }}
+          civo kubernetes config cahoots-prod --save
 
       - name: Deploy to Kubernetes
         run: |
           # Update image tags in Kubernetes manifests
-          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager")
+          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           for service in "${services[@]}"; do
             # Replace image tag in deployment
             sed -i "s|image: .*$service:.*|image: ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}|" k8s/base/$service.yaml
             # Apply the updated manifest
             kubectl apply -f k8s/base/$service.yaml
             # Wait for rollout
-            kubectl rollout status deployment/$service -n default
+            kubectl rollout status deployment/$service -n cahoots
           done
 
   coverage:

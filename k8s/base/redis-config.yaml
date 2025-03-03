@@ -4,6 +4,8 @@ metadata:
   name: redis-config
   namespace: cahoots
 data:
+  REDIS_HOST: "redis-master"
+  REDIS_PORT: "6379"
   redis.conf: |
     # Redis configuration
     port 6379
@@ -49,6 +51,47 @@ data:
     cluster-enabled no  # Enable for multi-node setup
     cluster-config-file nodes.conf
     cluster-node-timeout 5000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: cahoots
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.2
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-master
+  namespace: cahoots
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+  type: ClusterIP
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

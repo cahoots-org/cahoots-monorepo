@@ -2,6 +2,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: web-client
+  namespace: cahoots
   labels:
     app: web-client
 spec:
@@ -12,18 +13,20 @@ spec:
       name: http
   selector:
     app: web-client
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: web-client
+  namespace: cahoots
   labels:
     app: web-client
 spec:
-  replicas: 3
   selector:
     matchLabels:
       app: web-client
+  replicas: 2
   template:
     metadata:
       labels:
@@ -31,39 +34,31 @@ spec:
     spec:
       containers:
         - name: web-client
-          image: ${DOCKER_REGISTRY}/web-client:${IMAGE_TAG}
+          image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/cahoots-web-client:latest
           ports:
             - containerPort: 80
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: 100m
+              memory: 128Mi
             limits:
-              cpu: "200m"
-              memory: "256Mi"
+              cpu: 200m
+              memory: 256Mi
           livenessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 80
             initialDelaySeconds: 10
-            periodSeconds: 30
+            periodSeconds: 10
           readinessProbe:
             httpGet:
-              path: /health
+              path: /
               port: 80
             initialDelaySeconds: 5
-            periodSeconds: 10
+            periodSeconds: 5
           env:
-            - name: VITE_API_BASE_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: api_base_url
-            - name: VITE_WS_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: ws_url
+            - name: API_URL
+              value: "https://api.cahoots.cc"
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
