@@ -296,10 +296,12 @@ jobs:
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
-          # Create namespace
+          # Apply base infrastructure
           kubectl apply -f k8s/base/namespace.yaml
+          kubectl apply -f k8s/base/postgres.yaml
+          kubectl apply -f k8s/base/redis-config.yaml
           
-          # Set up container registry access
+          # Set up image pull secret
           kubectl create secret docker-registry ghcr-pull-secret \
             --namespace=cahoots \
             --docker-server=ghcr.io \
@@ -307,61 +309,35 @@ jobs:
             --docker-password=${{ secrets.GITHUB_TOKEN }} \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Deploy Redis
-          echo "Deploying Redis..."
-          kubectl apply -f k8s/base/redis-config.yaml
-          
-          # Deploy PostgreSQL
-          echo "Deploying PostgreSQL..."
-          kubectl delete deployment postgres -n cahoots --ignore-not-found
-          kubectl apply -f k8s/base/postgres.yaml
-          
-          # Wait for PostgreSQL
-          echo "Waiting for PostgreSQL..."
-          kubectl rollout status deployment/postgres -n cahoots --timeout=2m || {
-            echo "PostgreSQL deployment failed. Checking status..."
-            kubectl get pods -n cahoots -l app=postgres
-            kubectl describe pods -n cahoots -l app=postgres
+          # Wait for database to be ready
+          echo "Waiting for database to be ready..."
+          kubectl -n cahoots wait --for=condition=available --timeout=60s deployment/postgres || {
+            echo "Database failed to start. Logs:"
+            kubectl -n cahoots logs -l app=postgres
             exit 1
           }
-          
-          # Verify PostgreSQL is responding
-          echo "Verifying PostgreSQL connection..."
-          kubectl wait --for=condition=ready pod -l app=postgres -n cahoots --timeout=1m || {
-            echo "PostgreSQL is not ready. Checking logs..."
-            kubectl logs -n cahoots -l app=postgres
-            exit 1
-          }
-          
-          # Deploy core infrastructure
-          echo "Deploying core infrastructure..."
-          kubectl apply -f k8s/base/middleware.yaml
-          kubectl apply -f k8s/base/ingress.yaml
-          
-          # Deploy services
-          echo "Deploying services..."
+
+          # Deploy application services
           services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
           
           for service in "${services[@]}"; do
             echo "Deploying $service..."
             # Update image tag
             sed -i "s|image: .*$service:.*|image: ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-$service:$GITHUB_SHA|" k8s/base/$service.yaml
-            
-            # Apply and wait for deployment
             kubectl apply -f k8s/base/$service.yaml
-            
-            echo "Waiting for $service deployment..."
-            kubectl rollout status deployment/$service -n cahoots --timeout=2m || {
-              echo "$service deployment failed. Gathering information..."
-              kubectl describe deployment/$service -n cahoots
-              kubectl get pods -n cahoots -l app=$service
-              kubectl logs -n cahoots -l app=$service --all-containers --tail=50
-              exit 1
-            }
           done
-          
-          echo "All deployments completed successfully!"
-          kubectl get pods -n cahoots
+
+          # Apply ingress last
+          kubectl apply -f k8s/base/middleware.yaml
+          kubectl apply -f k8s/base/ingress.yaml
+
+          # Wait for all deployments
+          echo "Waiting for all deployments to be ready..."
+          kubectl -n cahoots wait --for=condition=available --timeout=120s deployment --all
+
+          # Show final status
+          echo "Deployment Status:"
+          kubectl -n cahoots get pods
 
   coverage:
     name: Coverage Report
