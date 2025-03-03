@@ -317,26 +317,25 @@ jobs:
             exit 1
           }
 
-          # Deploy application services
-          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
-          
-          for service in "${services[@]}"; do
-            echo "Deploying $service..."
-            # Update image tag
-            sed -i "s|image: .*$service:.*|image: ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-$service:$GITHUB_SHA|" k8s/base/$service.yaml
-            kubectl apply -f k8s/base/$service.yaml
-          done
+          # Deploy each service
+          echo "Deploying master service..."
+          kubectl apply -f k8s/base/master.yaml
+          kubectl set image deployment/master -n cahoots master=ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-master:$GITHUB_SHA
 
-          # Apply ingress last
+          echo "Deploying project manager..."
+          kubectl apply -f k8s/base/project-manager.yaml
+          kubectl set image deployment/project-manager -n cahoots project-manager=ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-project_manager:$GITHUB_SHA
+
+          # Apply ingress and middleware
           kubectl apply -f k8s/base/middleware.yaml
           kubectl apply -f k8s/base/ingress.yaml
 
-          # Wait for all deployments
-          echo "Waiting for all deployments to be ready..."
-          kubectl -n cahoots wait --for=condition=available --timeout=120s deployment --all
+          # Wait for deployments and show status
+          echo "Waiting for deployments to be ready..."
+          kubectl -n cahoots rollout status deployment/master
+          kubectl -n cahoots rollout status deployment/project-manager
 
-          # Show final status
-          echo "Deployment Status:"
+          echo "Current pod status:"
           kubectl -n cahoots get pods
 
   coverage:
