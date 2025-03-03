@@ -1,28 +1,40 @@
 """Project management domain aggregates"""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Set
 from uuid import UUID
 
 from .events import (
-    ProjectCreated, ProjectStatusUpdated, ProjectTimelineSet,
-    RequirementAdded, RequirementCompleted, RequirementBlocked, RequirementUnblocked,
-    RequirementPriorityChanged, TaskCreated, TaskCompleted, TaskAssigned,
-    TaskBlocked, TaskUnblocked, TaskPriorityChanged
+    ProjectCreated,
+    ProjectStatusUpdated,
+    ProjectTimelineSet,
+    RequirementAdded,
+    RequirementBlocked,
+    RequirementCompleted,
+    RequirementPriorityChanged,
+    RequirementUnblocked,
+    TaskAssigned,
+    TaskBlocked,
+    TaskCompleted,
+    TaskCreated,
+    TaskPriorityChanged,
+    TaskUnblocked,
 )
 
 
 @dataclass
 class Task:
     """Aggregate for tasks"""
+
     task_id: UUID
     requirement_id: UUID
     project_id: UUID
-    title: str = ''
-    description: str = ''
-    complexity: str = ''
-    status: str = 'active'  # active, blocked, completed
-    priority: str = 'medium'
+    title: str = ""
+    description: str = ""
+    complexity: str = ""
+    status: str = "active"  # active, blocked, completed
+    priority: str = "medium"
     assignee_id: Optional[UUID] = None
     blocker_description: Optional[str] = None
 
@@ -34,7 +46,7 @@ class Task:
             self.complexity = event.complexity
 
         elif isinstance(event, TaskCompleted):
-            self.status = 'completed'
+            self.status = "completed"
 
         elif isinstance(event, TaskAssigned):
             self.assignee_id = event.assignee_id
@@ -43,27 +55,28 @@ class Task:
             self.priority = event.new_priority
 
         elif isinstance(event, TaskBlocked):
-            self.status = 'blocked'
+            self.status = "blocked"
             self.blocker_description = event.blocker_description
 
         elif isinstance(event, TaskUnblocked):
-            self.status = 'active'
+            self.status = "active"
             self.blocker_description = None
 
     def can_complete(self) -> bool:
         """Check if the task can be completed"""
-        return self.status != 'blocked'
+        return self.status != "blocked"
 
 
 @dataclass
 class Requirement:
     """Aggregate for requirements"""
+
     requirement_id: UUID
     project_id: UUID
-    title: str = ''
-    description: str = ''
-    priority: str = ''
-    status: str = 'active'  # active, blocked, completed
+    title: str = ""
+    description: str = ""
+    priority: str = ""
+    status: str = "active"  # active, blocked, completed
     dependencies: List[UUID] = field(default_factory=list)
     tasks: Dict[UUID, Task] = field(default_factory=dict)
     blocker_description: Optional[str] = None
@@ -77,24 +90,24 @@ class Requirement:
             self.dependencies = event.dependencies
 
         elif isinstance(event, RequirementCompleted):
-            self.status = 'completed'
+            self.status = "completed"
 
         elif isinstance(event, RequirementPriorityChanged):
             self.priority = event.new_priority
 
         elif isinstance(event, RequirementBlocked):
-            self.status = 'blocked'
+            self.status = "blocked"
             self.blocker_description = event.blocker_description
 
         elif isinstance(event, RequirementUnblocked):
-            self.status = 'active'
+            self.status = "active"
             self.blocker_description = None
 
         elif isinstance(event, TaskCreated):
             task = Task(
                 task_id=event.task_id,
                 requirement_id=self.requirement_id,
-                project_id=self.project_id
+                project_id=self.project_id,
             )
             task.apply_event(event)
             self.tasks[event.task_id] = task
@@ -121,30 +134,31 @@ class Requirement:
 
     def can_complete(self) -> bool:
         """Check if the requirement can be completed"""
-        if self.status == 'blocked':
+        if self.status == "blocked":
             raise ValueError("Cannot complete blocked requirement")
-            
+
         # Check if all tasks are completed
-        active_tasks = [task for task in self.tasks.values() if task.status != 'completed']
+        active_tasks = [task for task in self.tasks.values() if task.status != "completed"]
         if active_tasks:
             raise ValueError("Cannot complete requirement with pending tasks")
-            
+
         return True
 
     def has_active_tasks(self) -> bool:
         """Check if the requirement has any active tasks"""
-        return any(task.status == 'active' for task in self.tasks.values())
+        return any(task.status == "active" for task in self.tasks.values())
 
 
 @dataclass
 class Project:
     """Aggregate root for projects"""
+
     project_id: UUID
-    name: str = ''
-    description: str = ''
-    repository: str = ''
+    name: str = ""
+    description: str = ""
+    repository: str = ""
     tech_stack: List[str] = field(default_factory=list)
-    status: str = 'planning'  # planning, in_progress, on_hold, completed
+    status: str = "planning"  # planning, in_progress, on_hold, completed
     start_date: Optional[datetime] = None
     target_date: Optional[datetime] = None
     milestones: List[Dict] = field(default_factory=list)
@@ -172,8 +186,7 @@ class Project:
 
         elif isinstance(event, RequirementAdded):
             requirement = Requirement(
-                requirement_id=event.requirement_id,
-                project_id=self.project_id
+                requirement_id=event.requirement_id, project_id=self.project_id
             )
             requirement.apply_event(event)
             self.requirements[event.requirement_id] = requirement
@@ -197,10 +210,18 @@ class Project:
                 self.completed_tasks += 1
 
         # Forward other events to requirements
-        elif any(isinstance(event, evt_type) for evt_type in [
-            RequirementPriorityChanged, RequirementBlocked, RequirementUnblocked,
-            TaskAssigned, TaskPriorityChanged, TaskBlocked, TaskUnblocked
-        ]):
+        elif any(
+            isinstance(event, evt_type)
+            for evt_type in [
+                RequirementPriorityChanged,
+                RequirementBlocked,
+                RequirementUnblocked,
+                TaskAssigned,
+                TaskPriorityChanged,
+                TaskBlocked,
+                TaskUnblocked,
+            ]
+        ):
             if event.requirement_id in self.requirements:
                 self.requirements[event.requirement_id].apply_event(event)
 
@@ -212,7 +233,7 @@ class Project:
 
     def can_change_status(self, new_status: str) -> bool:
         """Check if project status can be changed"""
-        valid_statuses = {'planning', 'in_progress', 'on_hold', 'completed'}
+        valid_statuses = {"planning", "in_progress", "on_hold", "completed"}
         if new_status not in valid_statuses:
             raise ValueError(f"Invalid status: {new_status}")
 
@@ -221,25 +242,25 @@ class Project:
             return False
 
         # Validate status transitions
-        if new_status == 'completed':
+        if new_status == "completed":
             # Can complete if there are no active requirements
             if self.active_requirements > 0:
                 raise ValueError("Cannot complete project with active requirements")
             return True
-        elif new_status == 'in_progress':
+        elif new_status == "in_progress":
             # Can start if in planning or coming back from hold
-            if self.status not in {'planning', 'on_hold'}:
+            if self.status not in {"planning", "on_hold"}:
                 raise ValueError("Can only start projects that are in planning or on hold")
             return True
-        elif new_status == 'on_hold':
+        elif new_status == "on_hold":
             # Can only put in-progress projects on hold
-            if self.status != 'in_progress':
+            if self.status != "in_progress":
                 raise ValueError("Can only put in-progress projects on hold")
             return True
-        elif new_status == 'planning':
+        elif new_status == "planning":
             # Can return to planning only from in_progress
-            if self.status != 'in_progress':
+            if self.status != "in_progress":
                 raise ValueError("Can only return to planning from in-progress status")
             return True
 
-        return True 
+        return True

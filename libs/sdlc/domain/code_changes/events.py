@@ -1,8 +1,7 @@
 from dataclasses import dataclass
-from typing import Dict, List
-from uuid import UUID
 from datetime import datetime
-from typing import Optional
+from typing import Dict, List, Optional
+from uuid import UUID
 
 from ..events import Event, EventMetadata
 
@@ -16,9 +15,18 @@ class CodeChangeProposed(Event):
     reasoning: str
     proposed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, change_id: UUID, files: List[str],
-                 description: str, reasoning: str, proposed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        change_id: UUID,
+        files: List[str],
+        description: str,
+        reasoning: str,
+        proposed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.change_id = change_id
@@ -42,9 +50,18 @@ class CodeChangeReviewed(Event):
     suggested_changes: str
     reviewed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, change_id: UUID, status: str,
-                 comments: str, suggested_changes: str, reviewed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        change_id: UUID,
+        status: str,
+        comments: str,
+        suggested_changes: str,
+        reviewed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.change_id = change_id
@@ -65,8 +82,15 @@ class CodeChangeImplemented(Event):
     change_id: UUID
     implemented_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, change_id: UUID, implemented_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        change_id: UUID,
+        implemented_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.change_id = change_id
@@ -75,4 +99,4 @@ class CodeChangeImplemented(Event):
     @property
     def aggregate_id(self) -> UUID:
         """Get the aggregate ID for this event"""
-        return self.project_id 
+        return self.project_id

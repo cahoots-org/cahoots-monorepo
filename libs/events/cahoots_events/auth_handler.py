@@ -1,27 +1,42 @@
 """Authentication command handlers"""
+
+import hashlib
+import secrets
 from datetime import datetime
 from typing import List
 from uuid import UUID, uuid4
-import hashlib
-import secrets
 
-from .auth_commands import (
-    RegisterUser, VerifyEmail, LoginUser, RequestPasswordReset,
-    ResetPassword, RefreshToken, LogoutUser, RevokeSession
-)
 from .auth import (
-    UserRegistered, EmailVerified, UserLoggedIn, PasswordResetRequested,
-    PasswordReset, TokenRefreshed, UserLoggedOut, SessionRevoked
+    EmailVerified,
+    PasswordReset,
+    PasswordResetRequested,
+    SessionRevoked,
+    TokenRefreshed,
+    UserLoggedIn,
+    UserLoggedOut,
+    UserRegistered,
 )
-from .base import EventMetadata
-from .auth_repository import UserRepository
+from .auth_commands import (
+    LoginUser,
+    LogoutUser,
+    RefreshToken,
+    RegisterUser,
+    RequestPasswordReset,
+    ResetPassword,
+    RevokeSession,
+    VerifyEmail,
+)
 from .auth_notifications import EmailService
+from .auth_repository import UserRepository
+from .base import EventMetadata
 
 
 class AuthHandler:
     """Handler for authentication-related commands"""
 
-    def __init__(self, event_store, view_store, user_repository: UserRepository, email_service: EmailService):
+    def __init__(
+        self, event_store, view_store, user_repository: UserRepository, email_service: EmailService
+    ):
         self.event_store = event_store
         self.view_store = view_store
         self.user_repository = user_repository
@@ -45,7 +60,7 @@ class AuthHandler:
             user_id=user_id,
             email=cmd.email,
             password_hash=password_hash,
-            verification_token=verification_token
+            verification_token=verification_token,
         )
 
         self.event_store.append(event)
@@ -70,7 +85,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(),
             user_id=cmd.user_id,
-            verification_token=cmd.verification_token
+            verification_token=cmd.verification_token,
         )
 
         self.event_store.append(event)
@@ -105,7 +120,7 @@ class AuthHandler:
             user_id=user.user_id,
             session_id=session_id,
             access_token=access_token,
-            refresh_token=refresh_token
+            refresh_token=refresh_token,
         )
 
         self.event_store.append(event)
@@ -113,7 +128,9 @@ class AuthHandler:
 
         return [event]
 
-    def handle_request_password_reset(self, cmd: RequestPasswordReset) -> List[PasswordResetRequested]:
+    def handle_request_password_reset(
+        self, cmd: RequestPasswordReset
+    ) -> List[PasswordResetRequested]:
         """Handle RequestPasswordReset command"""
         user = self.user_repository.get_by_email(cmd.email)
         if not user:
@@ -125,7 +142,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(),
             user_id=user.user_id,
-            reset_token=reset_token
+            reset_token=reset_token,
         )
 
         self.event_store.append(event)
@@ -154,7 +171,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(),
             user_id=cmd.user_id,
-            password_hash=password_hash
+            password_hash=password_hash,
         )
 
         # Store and apply the event
@@ -168,9 +185,12 @@ class AuthHandler:
         # Find user by refresh token
         events = self.event_store.get_all_events()
         login_event = next(
-            (e for e in events 
-             if isinstance(e, UserLoggedIn) and e.refresh_token == cmd.refresh_token),
-            None
+            (
+                e
+                for e in events
+                if isinstance(e, UserLoggedIn) and e.refresh_token == cmd.refresh_token
+            ),
+            None,
         )
         if not login_event:
             raise ValueError("Invalid refresh token")
@@ -186,7 +206,7 @@ class AuthHandler:
             metadata=EventMetadata(),
             user_id=login_event.user_id,
             access_token=new_access_token,
-            refresh_token=cmd.refresh_token
+            refresh_token=cmd.refresh_token,
         )
 
         self.event_store.append(event)
@@ -205,7 +225,7 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(),
             user_id=cmd.user_id,
-            session_id=cmd.session_id
+            session_id=cmd.session_id,
         )
 
         self.event_store.append(event)
@@ -224,10 +244,10 @@ class AuthHandler:
             timestamp=datetime.utcnow(),
             metadata=EventMetadata(),
             user_id=cmd.user_id,
-            session_id=cmd.session_id
+            session_id=cmd.session_id,
         )
 
         self.event_store.append(event)
         self.view_store.apply_event(event)
 
-        return [event] 
+        return [event]

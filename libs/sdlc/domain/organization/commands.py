@@ -8,6 +8,7 @@ from ..commands import Command
 @dataclass
 class CreateOrganization(Command):
     """Command to create a new organization"""
+
     name: str
     description: str
     created_by: UUID
@@ -16,6 +17,7 @@ class CreateOrganization(Command):
 @dataclass
 class UpdateOrganizationName(Command):
     """Command to update an organization's name"""
+
     organization_id: UUID
     new_name: str
     reason: str
@@ -25,6 +27,7 @@ class UpdateOrganizationName(Command):
 @dataclass
 class AddOrganizationMember(Command):
     """Command to add a member to an organization"""
+
     organization_id: UUID
     user_id: UUID
     role: str
@@ -34,6 +37,7 @@ class AddOrganizationMember(Command):
 @dataclass
 class RemoveOrganizationMember(Command):
     """Command to remove a member from an organization"""
+
     organization_id: UUID
     user_id: UUID
     removed_by: UUID
@@ -43,6 +47,7 @@ class RemoveOrganizationMember(Command):
 @dataclass
 class ChangeOrganizationMemberRole(Command):
     """Command to change a member's role"""
+
     organization_id: UUID
     user_id: UUID
     new_role: str
@@ -53,6 +58,7 @@ class ChangeOrganizationMemberRole(Command):
 @dataclass
 class ArchiveOrganization(Command):
     """Command to archive an organization"""
+
     organization_id: UUID
     reason: str
-    archived_by: UUID 
+    archived_by: UUID

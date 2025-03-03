@@ -15,7 +15,7 @@ class ContextLimitError(CahootsError):
         severity: ErrorSeverity = ErrorSeverity.ERROR,
         category: ErrorCategory = ErrorCategory.UNKNOWN,
         details: Optional[Dict[str, Any]] = None,
-        cause: Optional[Exception] = None
+        cause: Optional[Exception] = None,
     ):
         """Initialize the error.
 
@@ -27,9 +27,5 @@ class ContextLimitError(CahootsError):
             cause: Original exception that caused this error
         """
         super().__init__(
-            message,
-            severity=severity,
-            category=category,
-            details=details,
-            cause=cause
-        ) 
+            message, severity=severity, category=category, details=details, cause=cause
+        )

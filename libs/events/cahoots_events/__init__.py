@@ -1,29 +1,29 @@
 """Event system package for Cahoots."""
-from .models import Event, EventStatus, ContextEvent
-from .infrastructure.client import (
-    EventClient,
-    EventClientError,
-    ConnectionError,
-    PublishError,
-    SubscriptionError,
-    get_event_client
-)
+
+from .config import EventConfig
 from .exceptions import (
     EventError,
-    EventPublishError,
-    EventSubscriptionError,
     EventHandlingError,
+    EventPublishError,
+    EventSizeLimitExceeded,
+    EventSubscriptionError,
     EventValidationError,
-    EventSizeLimitExceeded
 )
-from .config import EventConfig
+from .infrastructure.client import (
+    ConnectionError,
+    EventClient,
+    EventClientError,
+    PublishError,
+    SubscriptionError,
+    get_event_client,
+)
+from .models import ContextEvent, Event, EventStatus
 
 __all__ = [
     # Models
     "Event",
     "EventStatus",
     "ContextEvent",
-    
     # Infrastructure
     "EventClient",
     "EventClientError",
@@ -31,7 +31,6 @@ __all__ = [
     "PublishError",
     "SubscriptionError",
     "get_event_client",
-    
     # Exceptions
     "EventError",
     "EventPublishError",
@@ -39,7 +38,6 @@ __all__ = [
     "EventHandlingError",
     "EventValidationError",
     "EventSizeLimitExceeded",
-    
     # Config
-    "EventConfig"
+    "EventConfig",
 ]

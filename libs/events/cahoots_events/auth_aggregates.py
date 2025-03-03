@@ -1,18 +1,26 @@
 """Authentication domain aggregates"""
+
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set
 from uuid import UUID
 
 from .auth import (
-    UserRegistered, EmailVerified, UserLoggedIn, PasswordResetRequested,
-    PasswordReset, TokenRefreshed, UserLoggedOut, SessionRevoked
+    EmailVerified,
+    PasswordReset,
+    PasswordResetRequested,
+    SessionRevoked,
+    TokenRefreshed,
+    UserLoggedIn,
+    UserLoggedOut,
+    UserRegistered,
 )
 
 
 @dataclass
 class UserSession:
     """Value object for user session"""
+
     session_id: UUID
     access_token: str
     refresh_token: str
@@ -24,6 +32,7 @@ class UserSession:
 @dataclass
 class User:
     """User aggregate"""
+
     user_id: UUID
     email: str = ""
     password_hash: str = ""
@@ -58,9 +67,9 @@ class User:
 
         elif isinstance(event, UserLoggedIn):
             session = {
-                'session_id': event.session_id,
-                'access_token': event.access_token,
-                'refresh_token': event.refresh_token,
+                "session_id": event.session_id,
+                "access_token": event.access_token,
+                "refresh_token": event.refresh_token,
             }
             self.sessions.append(session)
             self.updated_at = event.timestamp
@@ -79,14 +88,14 @@ class User:
         elif isinstance(event, TokenRefreshed):
             # Update the session with the new access token
             for session in self.sessions:
-                if session.get('refresh_token') == event.refresh_token:
-                    session['access_token'] = event.access_token
+                if session.get("refresh_token") == event.refresh_token:
+                    session["access_token"] = event.access_token
                     break
             self.updated_at = event.timestamp
 
         elif isinstance(event, UserLoggedOut) or isinstance(event, SessionRevoked):
             # Remove the session
-            self.sessions = [s for s in self.sessions if s.get('session_id') != event.session_id]
+            self.sessions = [s for s in self.sessions if s.get("session_id") != event.session_id]
             self.updated_at = event.timestamp
 
     def can_login(self) -> bool:
@@ -99,26 +108,24 @@ class User:
 
     def can_refresh_token(self, refresh_token: str) -> bool:
         """Check if token can be refreshed"""
-        session = next(
-            (s for s in self.sessions if s.get('refresh_token') == refresh_token),
-            None
-        )
+        session = next((s for s in self.sessions if s.get("refresh_token") == refresh_token), None)
         return session is not None
 
     def has_active_session(self, session_id: UUID) -> bool:
         """Check if session is active"""
-        session = next(
-            (s for s in self.sessions if s.get('session_id') == session_id),
-            None
-        )
+        session = next((s for s in self.sessions if s.get("session_id") == session_id), None)
         return session is not None
 
     def get_active_sessions(self) -> List[Dict]:
         """Get all active sessions"""
-        return [s for s in self.sessions if s.get('is_active', True)]
+        return [s for s in self.sessions if s.get("is_active", True)]
 
     def cleanup_expired_sessions(self, max_age: timedelta = timedelta(days=30)):
         """Remove expired sessions"""
         now = datetime.utcnow()
-        self.sessions = [s for s in self.sessions if now - datetime.fromtimestamp(s.get('last_used_at', 0)) < max_age]
-        self.updated_at = datetime.utcnow() 
+        self.sessions = [
+            s
+            for s in self.sessions
+            if now - datetime.fromtimestamp(s.get("last_used_at", 0)) < max_age
+        ]
+        self.updated_at = datetime.utcnow()

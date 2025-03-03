@@ -1,35 +1,35 @@
+from typing import Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from schemas.teams import RoleConfig, ServiceRole, TeamConfig
 from services.team_service import TeamService
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Dict, List, Optional
 
 from cahoots_core.models.service import ServiceTier
 
 router = APIRouter(prefix="/team", tags=["team"])
 
+
 @router.get("/config")
-async def get_team_configuration(
-    team_service: TeamService = Depends()
-) -> TeamConfig:
+async def get_team_configuration(team_service: TeamService = Depends()) -> TeamConfig:
     """Get the current team configuration."""
     return await team_service.get_team_config()
 
+
 @router.put("/config")
 async def update_team_configuration(
-    config: TeamConfig,
-    team_service: TeamService = Depends()
+    config: TeamConfig, team_service: TeamService = Depends()
 ) -> TeamConfig:
     """Update the entire team configuration."""
     return await team_service.update_team_config(config)
 
+
 @router.put("/roles/{role}")
 async def SeRoleConfigconfiguration(
-    role: ServiceRole,
-    config: RoleConfig,
-    team_service: TeamService = Depends()
+    role: ServiceRole, config: RoleConfig, team_service: TeamService = Depends()
 ) -> TeamConfig:
     """Update configuration for a specific role."""
     return await team_service.update_role_config(role, config)
+
 
 @router.get("/roles")
 async def list_available_roles() -> List[Dict]:
@@ -42,8 +42,8 @@ async def list_available_roles() -> List[Dict]:
                 "Code generation",
                 "Code review",
                 "Documentation",
-                "Dependency management"
-            ]
+                "Dependency management",
+            ],
         },
         {
             "role": ServiceRole.QA_TESTER,
@@ -52,8 +52,8 @@ async def list_available_roles() -> List[Dict]:
                 "Test generation",
                 "Test execution",
                 "Performance testing",
-                "Security scanning"
-            ]
+                "Security scanning",
+            ],
         },
         {
             "role": ServiceRole.UX_DESIGNER,
@@ -62,8 +62,8 @@ async def list_available_roles() -> List[Dict]:
                 "Layout design",
                 "Component generation",
                 "Accessibility validation",
-                "Design system compliance"
-            ]
+                "Design system compliance",
+            ],
         },
         {
             "role": ServiceRole.PROJECT_MANAGER,
@@ -72,10 +72,11 @@ async def list_available_roles() -> List[Dict]:
                 "Task breakdown",
                 "Resource allocation",
                 "Progress tracking",
-                "Risk assessment"
-            ]
-        }
+                "Risk assessment",
+            ],
+        },
     ]
+
 
 @router.get("/examples")
 async def get_configuration_examples() -> Dict[str, TeamConfig]:
@@ -89,11 +90,11 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     tier=ServiceTier.STANDARD,
                     context_retention_hours=48,
                     max_concurrent_tasks=3,
-                    capabilities={"code_review": True, "documentation": True}
+                    capabilities={"code_review": True, "documentation": True},
                 )
             },
             context_limit_mb=50,
-            event_retention_days=7
+            event_retention_days=7,
         ),
         "small_team": TeamConfig(
             project_id="example",
@@ -103,19 +104,19 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     tier=ServiceTier.STANDARD,
                     context_retention_hours=72,
                     max_concurrent_tasks=5,
-                    capabilities={"code_review": True, "documentation": True}
+                    capabilities={"code_review": True, "documentation": True},
                 ),
                 ServiceRole.QA_TESTER: RoleConfig(
                     instances=1,
                     tier=ServiceTier.STANDARD,
                     context_retention_hours=48,
                     max_concurrent_tasks=3,
-                    capabilities={"security_scanning": True, "performance_testing": True}
-                )
+                    capabilities={"security_scanning": True, "performance_testing": True},
+                ),
             },
             context_limit_mb=100,
             context_sharing_enabled=True,
-            event_retention_days=14
+            event_retention_days=14,
         ),
         "full_team": TeamConfig(
             project_id="example",
@@ -125,7 +126,7 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     tier=ServiceTier.PREMIUM,
                     context_retention_hours=168,
                     max_concurrent_tasks=10,
-                    capabilities={"risk_assessment": True, "resource_planning": True}
+                    capabilities={"risk_assessment": True, "resource_planning": True},
                 ),
                 ServiceRole.DEVELOPER: RoleConfig(
                     instances=3,
@@ -135,18 +136,15 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     capabilities={
                         "code_review": True,
                         "documentation": True,
-                        "architecture_design": True
-                    }
+                        "architecture_design": True,
+                    },
                 ),
                 ServiceRole.UX_DESIGNER: RoleConfig(
                     instances=1,
                     tier=ServiceTier.PREMIUM,
                     context_retention_hours=72,
                     max_concurrent_tasks=5,
-                    capabilities={
-                        "accessibility_testing": True,
-                        "design_system": True
-                    }
+                    capabilities={"accessibility_testing": True, "design_system": True},
                 ),
                 ServiceRole.QA_TESTER: RoleConfig(
                     instances=2,
@@ -156,13 +154,13 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     capabilities={
                         "security_scanning": True,
                         "performance_testing": True,
-                        "integration_testing": True
-                    }
-                )
+                        "integration_testing": True,
+                    },
+                ),
             },
             context_limit_mb=200,
             context_sharing_enabled=True,
-            event_retention_days=30
+            event_retention_days=30,
         ),
         "enterprise_team": TeamConfig(
             project_id="example",
@@ -175,8 +173,8 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     capabilities={
                         "risk_assessment": True,
                         "resource_planning": True,
-                        "portfolio_management": True
-                    }
+                        "portfolio_management": True,
+                    },
                 ),
                 ServiceRole.DEVELOPER: RoleConfig(
                     instances=5,
@@ -187,8 +185,8 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                         "code_review": True,
                         "documentation": True,
                         "architecture_design": True,
-                        "performance_optimization": True
-                    }
+                        "performance_optimization": True,
+                    },
                 ),
                 ServiceRole.UX_DESIGNER: RoleConfig(
                     instances=2,
@@ -198,8 +196,8 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                     capabilities={
                         "accessibility_testing": True,
                         "design_system": True,
-                        "user_research": True
-                    }
+                        "user_research": True,
+                    },
                 ),
                 ServiceRole.QA_TESTER: RoleConfig(
                     instances=3,
@@ -210,12 +208,12 @@ async def get_configuration_examples() -> Dict[str, TeamConfig]:
                         "security_scanning": True,
                         "performance_testing": True,
                         "integration_testing": True,
-                        "compliance_testing": True
-                    }
-                )
+                        "compliance_testing": True,
+                    },
+                ),
             },
             context_limit_mb=500,
             context_sharing_enabled=True,
-            event_retention_days=90
-        )
-    } 
+            event_retention_days=90,
+        ),
+    }

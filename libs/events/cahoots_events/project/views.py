@@ -1,26 +1,38 @@
 """Project management domain views"""
+
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
 from .events import (
-    ProjectCreated, ProjectStatusUpdated, ProjectTimelineSet,
-    RequirementAdded, RequirementCompleted, RequirementBlocked, RequirementUnblocked,
-    RequirementPriorityChanged, TaskCreated, TaskCompleted, TaskAssigned,
-    TaskBlocked, TaskUnblocked, TaskPriorityChanged
+    ProjectCreated,
+    ProjectStatusUpdated,
+    ProjectTimelineSet,
+    RequirementAdded,
+    RequirementBlocked,
+    RequirementCompleted,
+    RequirementPriorityChanged,
+    RequirementUnblocked,
+    TaskAssigned,
+    TaskBlocked,
+    TaskCompleted,
+    TaskCreated,
+    TaskPriorityChanged,
+    TaskUnblocked,
 )
 
 
 @dataclass
 class ProjectOverviewView:
     """Overview of project status"""
+
     project_id: UUID
-    name: str = ''
-    description: str = ''
-    repository: str = ''
+    name: str = ""
+    description: str = ""
+    repository: str = ""
     tech_stack: List[str] = field(default_factory=list)
-    status: str = 'planning'
+    status: str = "planning"
     start_date: Optional[datetime] = None
     target_date: Optional[datetime] = None
     milestones: List[Dict] = field(default_factory=list)
@@ -63,6 +75,7 @@ class ProjectOverviewView:
 @dataclass
 class RequirementsView:
     """View of project requirements"""
+
     project_id: UUID
     requirements: Dict[UUID, Dict] = field(default_factory=dict)
     requirement_dependencies: Dict[UUID, List[UUID]] = field(default_factory=dict)
@@ -71,85 +84,91 @@ class RequirementsView:
         """Update view based on events"""
         if isinstance(event, RequirementAdded):
             self.requirements[event.requirement_id] = {
-                'id': event.requirement_id,
-                'title': event.title,
-                'description': event.description,
-                'priority': event.priority,
-                'status': 'active',
-                'tasks': [],
-                'dependencies': event.dependencies,
-                'blocker_description': None
+                "id": event.requirement_id,
+                "title": event.title,
+                "description": event.description,
+                "priority": event.priority,
+                "status": "active",
+                "tasks": [],
+                "dependencies": event.dependencies,
+                "blocker_description": None,
             }
             # Store dependencies in both places
-            self.requirement_dependencies[event.requirement_id] = event.dependencies.copy() if event.dependencies else []
+            self.requirement_dependencies[event.requirement_id] = (
+                event.dependencies.copy() if event.dependencies else []
+            )
 
         elif isinstance(event, RequirementCompleted):
             if event.requirement_id in self.requirements:
-                self.requirements[event.requirement_id]['status'] = 'completed'
+                self.requirements[event.requirement_id]["status"] = "completed"
 
         elif isinstance(event, RequirementPriorityChanged):
             if event.requirement_id in self.requirements:
-                self.requirements[event.requirement_id]['priority'] = event.new_priority
+                self.requirements[event.requirement_id]["priority"] = event.new_priority
 
         elif isinstance(event, RequirementBlocked):
             if event.requirement_id in self.requirements:
-                self.requirements[event.requirement_id]['status'] = 'blocked'
-                self.requirements[event.requirement_id]['blocker_description'] = event.blocker_description
+                self.requirements[event.requirement_id]["status"] = "blocked"
+                self.requirements[event.requirement_id][
+                    "blocker_description"
+                ] = event.blocker_description
 
         elif isinstance(event, RequirementUnblocked):
             if event.requirement_id in self.requirements:
-                self.requirements[event.requirement_id]['status'] = 'active'
-                self.requirements[event.requirement_id]['blocker_description'] = None
+                self.requirements[event.requirement_id]["status"] = "active"
+                self.requirements[event.requirement_id]["blocker_description"] = None
 
         elif isinstance(event, TaskCreated):
             if event.requirement_id in self.requirements:
-                self.requirements[event.requirement_id]['tasks'].append({
-                    'id': event.task_id,
-                    'title': event.title,
-                    'description': event.description,
-                    'complexity': event.complexity,
-                    'status': 'active',
-                    'priority': 'medium',
-                    'assignee_id': None,
-                    'blocker_description': None
-                })
+                self.requirements[event.requirement_id]["tasks"].append(
+                    {
+                        "id": event.task_id,
+                        "title": event.title,
+                        "description": event.description,
+                        "complexity": event.complexity,
+                        "status": "active",
+                        "priority": "medium",
+                        "assignee_id": None,
+                        "blocker_description": None,
+                    }
+                )
 
         elif isinstance(event, TaskCompleted):
             if event.requirement_id in self.requirements:
                 requirement = self.requirements[event.requirement_id]
-                for task in requirement['tasks']:
-                    if task['id'] == event.task_id:
-                        task['status'] = 'completed'
+                for task in requirement["tasks"]:
+                    if task["id"] == event.task_id:
+                        task["status"] = "completed"
                         break
 
         elif isinstance(event, TaskAssigned):
             if event.requirement_id in self.requirements:
-                for task in self.requirements[event.requirement_id]['tasks']:
-                    if task['id'] == event.task_id:
-                        task['assignee_id'] = event.assignee_id
+                for task in self.requirements[event.requirement_id]["tasks"]:
+                    if task["id"] == event.task_id:
+                        task["assignee_id"] = event.assignee_id
                         break
 
         elif isinstance(event, TaskPriorityChanged):
             if event.requirement_id in self.requirements:
-                for task in self.requirements[event.requirement_id]['tasks']:
-                    if task['id'] == event.task_id:
-                        task['priority'] = event.new_priority
+                for task in self.requirements[event.requirement_id]["tasks"]:
+                    if task["id"] == event.task_id:
+                        task["priority"] = event.new_priority
                         break
 
         elif isinstance(event, TaskBlocked):
             if event.requirement_id in self.requirements:
-                for task in self.requirements[event.requirement_id]['tasks']:
-                    if task['id'] == event.task_id:
-                        task['status'] = 'blocked'
-                        task['blocker_description'] = event.blocker_description
+                for task in self.requirements[event.requirement_id]["tasks"]:
+                    if task["id"] == event.task_id:
+                        task["status"] = "blocked"
+                        task["blocker_description"] = event.blocker_description
                         break
 
         elif isinstance(event, TaskUnblocked):
             if event.requirement_id in self.requirements:
-                for task in self.requirements[event.requirement_id]['tasks']:
-                    if task['id'] == event.task_id:
-                        task['status'] = 'active'
-                        task['blocker_description'] = None
+                for task in self.requirements[event.requirement_id]["tasks"]:
+                    if task["id"] == event.task_id:
+                        task["status"] = "active"
+                        task["blocker_description"] = None
                         break
 
     def get_requirement(self, requirement_id: UUID) -> Optional[Dict]:
@@ -177,50 +196,45 @@ class RequirementsView:
 @dataclass
 class TaskBoardView:
     """Kanban-style view of tasks"""
+
     project_id: UUID
-    columns: Dict[str, List[Dict]] = field(default_factory=lambda: {
-        'backlog': [],
-        'in_progress': [],
-        'review': [],
-        'done': []
-    })
+    columns: Dict[str, List[Dict]] = field(
+        default_factory=lambda: {"backlog": [], "in_progress": [], "review": [], "done": []}
+    )
 
     def apply_event(self, event):
         """Update view based on events"""
         if isinstance(event, TaskCreated):
             task = {
-                'id': event.task_id,
-                'requirement_id': event.requirement_id,
-                'title': event.title,
-                'description': event.description,
-                'complexity': event.complexity,
-                'status': 'active',
-                'priority': 'medium',
-                'assignee_id': None,
-                'blocker_description': None
+                "id": event.task_id,
+                "requirement_id": event.requirement_id,
+                "title": event.title,
+                "description": event.description,
+                "complexity": event.complexity,
+                "status": "active",
+                "priority": "medium",
+                "assignee_id": None,
+                "blocker_description": None,
             }
-            self.columns['backlog'].append(task)
+            self.columns["backlog"].append(task)
 
         elif isinstance(event, TaskCompleted):
-            self._move_task_to_column(event.task_id, 'done')
+            self._move_task_to_column(event.task_id, "done")
 
         elif isinstance(event, TaskAssigned):
-            self._update_task(event.task_id, {'assignee_id': event.assignee_id})
+            self._update_task(event.task_id, {"assignee_id": event.assignee_id})
 
         elif isinstance(event, TaskPriorityChanged):
-            self._update_task(event.task_id, {'priority': event.new_priority})
+            self._update_task(event.task_id, {"priority": event.new_priority})
 
         elif isinstance(event, TaskBlocked):
-            self._update_task(event.task_id, {
-                'status': 'blocked',
-                'blocker_description': event.blocker_description
-            })
+            self._update_task(
+                event.task_id,
+                {"status": "blocked", "blocker_description": event.blocker_description},
+            )
 
         elif isinstance(event, TaskUnblocked):
-            self._update_task(event.task_id, {
-                'status': 'active',
-                'blocker_description': None
-            })
+            self._update_task(event.task_id, {"status": "active", "blocker_description": None})
 
     def _move_task_to_column(self, task_id: UUID, target_column: str):
         """Move a task to a specific column"""
@@ -230,7 +244,7 @@ class TaskBoardView:
         # Find the task
         for col_name, tasks in self.columns.items():
             for t in tasks:
-                if t['id'] == task_id:
+                if t["id"] == task_id:
                     task = t
                     source_column = col_name
                     break
@@ -246,6 +260,6 @@ class TaskBoardView:
         """Update task properties"""
         for tasks in self.columns.values():
             for task in tasks:
-                if task['id'] == task_id:
+                if task["id"] == task_id:
                     task.update(updates)
-                    break 
+                    break

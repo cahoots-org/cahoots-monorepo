@@ -1,14 +1,16 @@
 """Base event classes and utilities"""
+
 from abc import ABC
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 from uuid import UUID, uuid4
 
 
 @dataclass
 class EventMetadata:
     """Metadata for events"""
+
     correlation_id: Optional[UUID] = None
     causation_id: Optional[UUID] = None
     user_id: Optional[UUID] = None
@@ -19,6 +21,7 @@ class EventMetadata:
 
 class Event(ABC):
     """Abstract base class for all events"""
+
     def __init__(self, event_id: UUID, timestamp: Any, metadata: Optional[EventMetadata] = None):
         self.event_id = event_id
         self.timestamp = timestamp
@@ -32,18 +35,18 @@ class Event(ABC):
         if not isinstance(self.timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
 
-    def with_context(self, **kwargs) -> 'Event':
+    def with_context(self, **kwargs) -> "Event":
         """Add context to the event"""
         self.metadata.context.update(kwargs)
         return self
 
-    def caused_by(self, event: 'Event') -> 'Event':
+    def caused_by(self, event: "Event") -> "Event":
         """Set the causation ID from another event"""
         self.metadata.causation_id = event.event_id
         self.metadata.correlation_id = event.metadata.correlation_id
         return self
 
-    def triggered_by(self, actor_id: UUID) -> 'Event':
+    def triggered_by(self, actor_id: UUID) -> "Event":
         """Set the actor who triggered this event"""
         self.metadata.actor_id = actor_id
         return self

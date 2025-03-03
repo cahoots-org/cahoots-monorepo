@@ -1,16 +1,19 @@
 """Dependency health check implementations."""
-from typing import Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
-from redis.asyncio import Redis, from_url as redis_from_url
-import boto3
-import aio_pika
-import httpx
 
+from typing import Any, Dict
+
+import aio_pika
+import boto3
+import httpx
+from redis.asyncio import Redis
+from redis.asyncio import from_url as redis_from_url
 from schemas.health import HealthStatus
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from utils.config import get_settings
 
 settings = get_settings()
+
 
 async def check_database(db: AsyncSession) -> HealthStatus:
     """Check database connectivity and health."""
@@ -22,6 +25,7 @@ async def check_database(db: AsyncSession) -> HealthStatus:
     except Exception as e:
         return HealthStatus.UNHEALTHY
 
+
 async def check_redis(db: AsyncSession) -> HealthStatus:
     """Check Redis connectivity and health."""
     try:
@@ -32,6 +36,7 @@ async def check_redis(db: AsyncSession) -> HealthStatus:
     except Exception as e:
         return HealthStatus.UNHEALTHY
 
+
 async def check_message_queue(db: AsyncSession) -> HealthStatus:
     """Check message queue connectivity and health."""
     try:
@@ -41,6 +46,7 @@ async def check_message_queue(db: AsyncSession) -> HealthStatus:
     except Exception as e:
         return HealthStatus.UNHEALTHY
 
+
 async def check_storage(db: AsyncSession) -> HealthStatus:
     """Check storage service connectivity and health."""
     try:
@@ -49,12 +55,13 @@ async def check_storage(db: AsyncSession) -> HealthStatus:
             "s3",
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            endpoint_url=settings.S3_ENDPOINT_URL
+            endpoint_url=settings.S3_ENDPOINT_URL,
         ) as s3:
             await s3.head_bucket(Bucket=settings.S3_BUCKET)
         return HealthStatus.HEALTHY
     except Exception as e:
         return HealthStatus.UNHEALTHY
+
 
 async def check_external_apis(db: AsyncSession) -> HealthStatus:
     """Check external API dependencies health."""
@@ -62,47 +69,42 @@ async def check_external_apis(db: AsyncSession) -> HealthStatus:
         async with httpx.AsyncClient() as client:
             # Check each external API endpoint
             responses = await _check_external_endpoints(client)
-            
+
             # If any critical API is down, return UNHEALTHY
             if any(not resp["healthy"] for resp in responses if resp["critical"]):
                 return HealthStatus.UNHEALTHY
-                
+
             # If any non-critical API is down, return DEGRADED
             if any(not resp["healthy"] for resp in responses):
                 return HealthStatus.DEGRADED
-                
+
             return HealthStatus.HEALTHY
     except Exception as e:
         return HealthStatus.UNHEALTHY
 
+
 async def _check_external_endpoints(client: httpx.AsyncClient) -> list[Dict[str, Any]]:
     """Check health of external API endpoints."""
     endpoints = [
-        {
-            "url": settings.STRIPE_API_URL,
-            "critical": True
-        },
-        {
-            "url": settings.GITHUB_API_URL,
-            "critical": False
-        }
+        {"url": settings.STRIPE_API_URL, "critical": True},
+        {"url": settings.GITHUB_API_URL, "critical": False},
         # Add other external API endpoints as needed
     ]
-    
+
     results = []
     for endpoint in endpoints:
         try:
             response = await client.get(endpoint["url"])
-            results.append({
-                "url": endpoint["url"],
-                "healthy": response.status_code < 500,
-                "critical": endpoint["critical"]
-            })
+            results.append(
+                {
+                    "url": endpoint["url"],
+                    "healthy": response.status_code < 500,
+                    "critical": endpoint["critical"],
+                }
+            )
         except Exception:
-            results.append({
-                "url": endpoint["url"],
-                "healthy": False,
-                "critical": endpoint["critical"]
-            })
-    
-    return results 
+            results.append(
+                {"url": endpoint["url"], "healthy": False, "critical": endpoint["critical"]}
+            )
+
+    return results

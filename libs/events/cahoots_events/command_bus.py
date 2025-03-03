@@ -1,11 +1,13 @@
 """Command bus for handling commands"""
+
 from typing import Any, Callable, Dict, Type, TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class CommandBus:
     """Simple command bus for routing commands to handlers"""
+
     _handlers: Dict[Any, Callable] = {}
 
     @classmethod
@@ -19,4 +21,4 @@ class CommandBus:
         handler = cls._handlers.get(type(command))
         if not handler:
             raise ValueError(f"No handler registered for {type(command).__name__}")
-        return handler(command) 
+        return handler(command)

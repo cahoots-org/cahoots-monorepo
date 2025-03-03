@@ -1,26 +1,32 @@
 """Pull request management functionality for the developer agent."""
-from typing import Dict, Any, Optional, List
+
+import json
 import logging
 from enum import Enum
-import json
+from typing import Any, Dict, List, Optional
 
-from cahoots_core.services.github_service import GitHubService
 from cahoots_agents.base import BaseAgent
+from cahoots_core.services.github_service import GitHubService
+
 
 class PRStatus(str, Enum):
     """Status of a pull request."""
+
     DRAFT = "draft"
     OPEN = "open"
     CLOSED = "closed"
     MERGED = "merged"
 
+
 class PRReviewStatus(str, Enum):
     """Status of a pull request review."""
+
     PENDING = "pending"
     APPROVED = "approved"
     CHANGES_REQUESTED = "changes_requested"
     COMMENTED = "commented"
     DISMISSED = "dismissed"
+
 
 class PRManager:
     """Manager for pull request operations."""
@@ -51,10 +57,10 @@ class PRManager:
             Dictionary containing PR description
         """
         # Set defaults for optional fields
-        description = pr_data.get('description', '')
-        branch = pr_data.get('branch', 'main')
-        base = pr_data.get('base', 'main')
-        tasks = pr_data.get('tasks', [])
+        description = pr_data.get("description", "")
+        branch = pr_data.get("branch", "main")
+        base = pr_data.get("base", "main")
+        tasks = pr_data.get("tasks", [])
 
         prompt = f"""
         Title: {pr_data['title']}
@@ -192,77 +198,76 @@ class PRManager:
 
     async def create_pr(self, implementation_result: Dict[str, Any]) -> str:
         """Create a pull request with the implemented changes.
-        
+
         Args:
             implementation_result: Results from implement_tasks
-            
+
         Returns:
             str: URL of the created pull request
-            
+
         Raises:
             ValueError: If implementation validation fails
         """
         self.logger.info("Creating pull request")
-        
+
         # Validate implementations in isolated environment
         validation_results = await self._validate_implementations(implementation_result)
-        
+
         if not validation_results["valid"]:
             raise ValueError(
                 f"Implementation validation failed:\n{validation_results['error']}\n"
                 f"Logs:\n{validation_results.get('logs', 'No logs available')}"
             )
-        
+
         # Get first task ID for branch name
         first_task_id = next(iter(implementation_result["implementations"]))
         branch_name = f"feature/implementation-{first_task_id}"
-        
+
         # Create branch
         await self.github_service.create_branch(branch_name)
-        
+
         # Prepare changes
         changes = []
         for task_id, details in implementation_result["implementations"].items():
-            changes.append({
-                "file_path": details["file_path"],
-                "content": details["code"]
-            })
-            
+            changes.append({"file_path": details["file_path"], "content": details["code"]})
+
         # Commit changes
         await self.github_service.commit_changes(
             changes,
-            f"Implement tasks: {', '.join(details['task']['title'] for details in implementation_result['implementations'].values())}"
+            f"Implement tasks: {', '.join(details['task']['title'] for details in implementation_result['implementations'].values())}",
         )
-        
+
         # Prepare PR description with validation results
         pr_description = "## Implementation Details\n\n"
         for task_id, details in implementation_result["implementations"].items():
             pr_description += f"### {details['task']['title']}\n"
             pr_description += f"{details['task']['description']}\n\n"
             pr_description += "```python\n"
-            pr_description += details['code']
+            pr_description += details["code"]
             pr_description += "\n```\n\n"
-            
+
         # Add validation results
         pr_description += "## Validation Results\n\n"
         pr_description += "✅ All implementations passed validation checks\n\n"
-        
+
         # Create PR using GitHub API
         pr_url = await self.github_service.create_pr(
             title=f"Implementation of {len(implementation_result['implementations'])} tasks",
             body=pr_description,
             base="main",
-            head=branch_name
+            head=branch_name,
         )
-        
+
         return pr_url
-        
-    async def _validate_implementations(self, implementation_result: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def _validate_implementations(
+        self, implementation_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Validate all implementations in an isolated environment.
-        
+
         Args:
             implementation_result: Results from implement_tasks
-            
+
         Returns:
             Dict[str, Any]: Validation results
         """
@@ -271,7 +276,7 @@ class PRManager:
             if not details["validation"]["valid"]:
                 return {
                     "valid": False,
-                    "error": f"Task {task_id} validation failed: {details['validation']['errors']}"
+                    "error": f"Task {task_id} validation failed: {details['validation']['errors']}",
                 }
-                
-        return {"valid": True} 
+
+        return {"valid": True}

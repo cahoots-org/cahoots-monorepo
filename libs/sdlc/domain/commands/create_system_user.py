@@ -1,4 +1,5 @@
 """Command for creating system users"""
+
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -8,6 +9,7 @@ from .command_bus import Command
 @dataclass
 class CreateSystemUser(Command):
     """Command to create a system user"""
+
     agent_id: UUID
     email: str
     name: str
@@ -22,4 +24,5 @@ def handle_create_system_user(command: CreateSystemUser) -> None:
 
 # Register the handler
 from .command_bus import CommandBus
-CommandBus.register(CreateSystemUser, handle_create_system_user) 
+
+CommandBus.register(CreateSystemUser, handle_create_system_user)

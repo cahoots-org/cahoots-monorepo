@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 @dataclass
 class EventMetadata:
     """Metadata for event tracking and versioning"""
+
     schema_version: int = 1  # Schema version for event structure
     causation_id: Optional[UUID] = None  # ID of the event that caused this event
     correlation_id: Optional[UUID] = None  # ID linking related events
@@ -23,7 +24,10 @@ class EventMetadata:
 
 class Event(ABC):
     """Abstract base class for all events"""
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata] = None):
+
+    def __init__(
+        self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata] = None
+    ):
         self.event_id = event_id
         self.timestamp = timestamp
         self.metadata = metadata or EventMetadata()
@@ -36,18 +40,18 @@ class Event(ABC):
         if not isinstance(self.timestamp, datetime):
             raise ValueError("timestamp must be a datetime")
 
-    def with_context(self, **kwargs) -> 'Event':
+    def with_context(self, **kwargs) -> "Event":
         """Add context to the event"""
         self.metadata.context.update(kwargs)
         return self
 
-    def caused_by(self, event: 'Event') -> 'Event':
+    def caused_by(self, event: "Event") -> "Event":
         """Set the causation ID from another event"""
         self.metadata.causation_id = event.event_id
         self.metadata.correlation_id = event.metadata.correlation_id
         return self
 
-    def triggered_by(self, actor_id: UUID) -> 'Event':
+    def triggered_by(self, actor_id: UUID) -> "Event":
         """Set the actor who triggered this event"""
         self.metadata.actor_id = actor_id
         return self
@@ -66,6 +70,7 @@ class Event(ABC):
 @dataclass
 class OrganizationCreated(Event):
     """Event when a new organization is created"""
+
     organization_id: UUID
     name: str
     description: str
@@ -90,6 +95,7 @@ class OrganizationCreated(Event):
 @dataclass
 class OrganizationNameUpdated(Event):
     """Event when an organization's name is updated"""
+
     organization_id: UUID
     old_name: str
     new_name: str
@@ -99,6 +105,7 @@ class OrganizationNameUpdated(Event):
 @dataclass
 class OrganizationMemberAdded(Event):
     """Event when a member is added to an organization"""
+
     organization_id: UUID
     member_id: UUID
     role: str
@@ -108,6 +115,7 @@ class OrganizationMemberAdded(Event):
 @dataclass
 class OrganizationMemberRemoved(Event):
     """Event when a member is removed from an organization"""
+
     organization_id: UUID
     member_id: UUID
     removed_by: UUID
@@ -117,6 +125,7 @@ class OrganizationMemberRemoved(Event):
 @dataclass
 class TeamCreated(Event):
     """Event when a new team is created"""
+
     organization_id: UUID
     team_id: UUID
     name: str
@@ -139,6 +148,7 @@ class TeamCreated(Event):
 @dataclass
 class TeamMemberAdded(Event):
     """Event when a member is added to a team"""
+
     team_id: UUID
     member_id: UUID
     role: str
@@ -155,13 +165,14 @@ class TeamMemberAdded(Event):
             raise ValueError("added_by must be a UUID")
         if not self.role.strip():
             raise ValueError("role cannot be empty")
-        if self.role not in {'lead', 'member', 'developer', 'senior'}:
+        if self.role not in {"lead", "member", "developer", "senior"}:
             raise ValueError(f"Invalid role: {self.role}")
 
 
 @dataclass
 class TeamMemberRemoved(Event):
     """Event when a member is removed from a team"""
+
     team_id: UUID
     member_id: UUID
     removed_by: UUID
@@ -180,6 +191,7 @@ class TeamMemberRemoved(Event):
 @dataclass
 class TeamMemberRoleChanged(Event):
     """Event when a team member's role is changed"""
+
     team_id: UUID
     member_id: UUID
     new_role: str
@@ -199,13 +211,14 @@ class TeamMemberRoleChanged(Event):
             raise ValueError("new_role cannot be empty")
         if not self.reason.strip():
             raise ValueError("reason cannot be empty")
-        if self.new_role not in {'lead', 'member', 'developer', 'senior'}:
+        if self.new_role not in {"lead", "member", "developer", "senior"}:
             raise ValueError(f"Invalid role: {self.new_role}")
 
 
 @dataclass
 class TeamArchived(Event):
     """Event when a team is archived"""
+
     team_id: UUID
     archived_by: UUID
     reason: str
@@ -215,6 +228,7 @@ class TeamArchived(Event):
 @dataclass
 class ProjectCreated(Event):
     """Event when a new project is created"""
+
     project_id: UUID
     name: str
     description: str
@@ -222,9 +236,18 @@ class ProjectCreated(Event):
     tech_stack: List[str]
     created_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, name: str, description: str, repository: str,
-                 tech_stack: List[str], created_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        name: str,
+        description: str,
+        repository: str,
+        tech_stack: List[str],
+        created_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.name = name
@@ -246,8 +269,16 @@ class ProjectStatusUpdated(Event):
     reason: str
     updated_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, status: str, reason: str, updated_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        status: str,
+        reason: str,
+        updated_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.status = status
@@ -268,9 +299,17 @@ class ProjectTimelineSet(Event):
     milestones: List[Dict]
     set_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, start_date: datetime, target_date: datetime,
-                 milestones: List[Dict], set_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        start_date: datetime,
+        target_date: datetime,
+        milestones: List[Dict],
+        set_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.start_date = start_date
@@ -294,9 +333,19 @@ class RequirementAdded(Event):
     dependencies: List[UUID]
     added_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, requirement_id: UUID, title: str, description: str,
-                 priority: str, dependencies: List[UUID], added_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        requirement_id: UUID,
+        title: str,
+        description: str,
+        priority: str,
+        dependencies: List[UUID],
+        added_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.requirement_id = requirement_id
@@ -318,8 +367,15 @@ class RequirementCompleted(Event):
     requirement_id: UUID
     completed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, requirement_id: UUID, completed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        requirement_id: UUID,
+        completed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.requirement_id = requirement_id
@@ -338,8 +394,16 @@ class RequirementBlocked(Event):
     blocker_description: str
     blocked_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, requirement_id: UUID, blocker_description: str, blocked_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        requirement_id: UUID,
+        blocker_description: str,
+        blocked_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.requirement_id = requirement_id
@@ -359,8 +423,16 @@ class RequirementUnblocked(Event):
     resolution: str
     unblocked_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, requirement_id: UUID, resolution: str, unblocked_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        requirement_id: UUID,
+        resolution: str,
+        unblocked_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.requirement_id = requirement_id
@@ -382,9 +454,18 @@ class RequirementPriorityChanged(Event):
     reason: str
     changed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, requirement_id: UUID, old_priority: str,
-                 new_priority: str, reason: str, changed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        requirement_id: UUID,
+        old_priority: str,
+        new_priority: str,
+        reason: str,
+        changed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.requirement_id = requirement_id
@@ -409,9 +490,19 @@ class TaskCreated(Event):
     complexity: str
     created_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, task_id: UUID, requirement_id: UUID, title: str,
-                 description: str, complexity: str, created_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        task_id: UUID,
+        requirement_id: UUID,
+        title: str,
+        description: str,
+        complexity: str,
+        created_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.task_id = task_id
@@ -434,8 +525,16 @@ class TaskCompleted(Event):
     requirement_id: UUID
     completed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, task_id: UUID, requirement_id: UUID, completed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        task_id: UUID,
+        requirement_id: UUID,
+        completed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.task_id = task_id
@@ -456,9 +555,17 @@ class TaskAssigned(Event):
     assignee_id: UUID
     assigned_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, task_id: UUID, requirement_id: UUID,
-                 assignee_id: UUID, assigned_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        task_id: UUID,
+        requirement_id: UUID,
+        assignee_id: UUID,
+        assigned_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.task_id = task_id
@@ -480,9 +587,17 @@ class TaskBlocked(Event):
     blocker_description: str
     blocked_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, task_id: UUID, requirement_id: UUID,
-                 blocker_description: str, blocked_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        task_id: UUID,
+        requirement_id: UUID,
+        blocker_description: str,
+        blocked_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.task_id = task_id
@@ -504,9 +619,17 @@ class TaskUnblocked(Event):
     resolution: str
     unblocked_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, task_id: UUID, requirement_id: UUID,
-                 resolution: str, unblocked_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        task_id: UUID,
+        requirement_id: UUID,
+        resolution: str,
+        unblocked_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.task_id = task_id
@@ -530,9 +653,19 @@ class TaskPriorityChanged(Event):
     reason: str
     changed_by: UUID
 
-    def __init__(self, event_id: UUID, timestamp: datetime, metadata: Optional[EventMetadata],
-                 project_id: UUID, task_id: UUID, requirement_id: UUID,
-                 old_priority: str, new_priority: str, reason: str, changed_by: UUID):
+    def __init__(
+        self,
+        event_id: UUID,
+        timestamp: datetime,
+        metadata: Optional[EventMetadata],
+        project_id: UUID,
+        task_id: UUID,
+        requirement_id: UUID,
+        old_priority: str,
+        new_priority: str,
+        reason: str,
+        changed_by: UUID,
+    ):
         super().__init__(event_id, timestamp, metadata)
         self.project_id = project_id
         self.task_id = task_id
@@ -592,6 +725,7 @@ class TestResultRecorded(Event):
 @dataclass
 class TeamLeadershipTransferred(Event):
     """Event when team leadership is transferred"""
+
     team_id: UUID
     new_lead_id: UUID
     transferred_by: UUID
@@ -606,4 +740,4 @@ class TeamLeadershipTransferred(Event):
         if not isinstance(self.transferred_by, UUID):
             raise ValueError("transferred_by must be a UUID")
         if self.new_lead_id == self.transferred_by:
-            raise ValueError("Cannot transfer leadership to self") 
+            raise ValueError("Cannot transfer leadership to self")
