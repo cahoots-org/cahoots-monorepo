@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Default values
-REGISTRY=${REGISTRY:-"ghcr.io/cahoots-org"}
+REGISTRY=${REGISTRY:-"ghcr.io"}
+IMAGE_PREFIX=${IMAGE_PREFIX:-"cahoots-org"}
 TAG=${TAG:-"latest"}
 BUILDKIT_PROGRESS=${BUILDKIT_PROGRESS:-"auto"}
 DOCKER_BUILDKIT=1
@@ -33,10 +34,10 @@ build_master() {
     DOCKER_BUILDKIT=1 docker build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         -f docker/master/Dockerfile \
-        --cache-from $REGISTRY/cahoots-master:cache \
-        --cache-from $REGISTRY/cahoots-master:$TAG \
-        -t $REGISTRY/cahoots-master:$TAG \
-        -t $REGISTRY/cahoots-master:cache \
+        --cache-from $REGISTRY/$IMAGE_PREFIX/cahoots-master:cache \
+        --cache-from $REGISTRY/$IMAGE_PREFIX/cahoots-master:$TAG \
+        -t $REGISTRY/$IMAGE_PREFIX/cahoots-master:$TAG \
+        -t $REGISTRY/$IMAGE_PREFIX/cahoots-master:cache \
         .
 }
 
@@ -46,10 +47,10 @@ build_web_client() {
     DOCKER_BUILDKIT=1 docker build \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
         -f docker/web-client/Dockerfile \
-        --cache-from $REGISTRY/cahoots-web-client:cache \
-        --cache-from $REGISTRY/cahoots-web-client:$TAG \
-        -t $REGISTRY/cahoots-web-client:$TAG \
-        -t $REGISTRY/cahoots-web-client:cache \
+        --cache-from $REGISTRY/$IMAGE_PREFIX/cahoots-web-client:cache \
+        --cache-from $REGISTRY/$IMAGE_PREFIX/cahoots-web-client:$TAG \
+        -t $REGISTRY/$IMAGE_PREFIX/cahoots-web-client:$TAG \
+        -t $REGISTRY/$IMAGE_PREFIX/cahoots-web-client:cache \
         .
 }
 
@@ -72,6 +73,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --registry)
             REGISTRY="$2"
+            shift 2
+            ;;
+        --prefix)
+            IMAGE_PREFIX="$2"
             shift 2
             ;;
         --tag)

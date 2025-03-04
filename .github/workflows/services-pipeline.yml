@@ -224,7 +224,9 @@ jobs:
           context: .
           file: docker/web-client/Dockerfile
           push: true
-          tags: ${{ steps.web-meta.outputs.tags }}
+          tags: |
+            ${{ steps.web-meta.outputs.tags }}
+            ${{ env.REGISTRY }}/${{ env.WEB_CLIENT_IMAGE }}:latest
           labels: ${{ steps.web-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
