@@ -1,24 +1,28 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: context-manager
+  name: web-client
   namespace: cahoots
 spec:
   selector:
     matchLabels:
-      app: context-manager
+      app: web-client
   replicas: 1
   template:
     metadata:
       labels:
-        app: context-manager
+        app: web-client
     spec:
+      imagePullSecrets:
+      - name: ghcr-auth
       containers:
-      - name: context-manager
-        image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/cahoots-context_manager:latest
-        envFrom:
-        - configMapRef:
-            name: redis-config
+      - name: web-client
+        image: ghcr.io/cahoots-org/web-client:latest
+        env:
+        - name: API_URL
+          value: "https://cahoots.cc/api"
+        - name: PYTHONUNBUFFERED
+          value: "1"
         resources:
           requests:
             cpu: 100m
@@ -44,11 +48,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: context-manager
+  name: web-client
   namespace: cahoots
 spec:
   selector:
-    app: context-manager
+    app: web-client
   ports:
   - port: 80
     targetPort: 8000

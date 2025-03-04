@@ -21,10 +21,8 @@ spec:
   ingress:
   - from:
     - podSelector:
-        matchExpressions:
-        - key: app
-          operator: In
-          values: ["master", "project-manager", "developer", "ux-designer", "qa-tester", "context-manager"]
+        matchLabels:
+          app: master
     ports:
     - protocol: TCP
       port: 6379
@@ -42,7 +40,7 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: context-manager
+          app: master
     ports:
     - protocol: TCP
       port: 5432
