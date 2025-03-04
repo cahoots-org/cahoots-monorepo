@@ -27,37 +27,30 @@ error() {
     exit 1
 }
 
-# Build base image
-echo "Building base image..."
-DOCKER_BUILDKIT=1 docker build \
-  --build-arg BUILDKIT_INLINE_CACHE=1 \
-  -f docker/base/Dockerfile \
-  --cache-from $REGISTRY/cahoots-monorepo-base:cache \
-  --cache-from $REGISTRY/cahoots-monorepo-base:$TAG \
-  -t $REGISTRY/cahoots-monorepo-base:$TAG \
-  -t $REGISTRY/cahoots-monorepo-base:cache \
-  .
-
-# Build agent image
-build_agent() {
-    local agent_name=$1
-    log "Building agent image: $agent_name..."
-    
-    # Generate agent Dockerfile if it doesn't exist
-    if [ ! -f "docker/agents/${agent_name}.Dockerfile" ]; then
-        python docker/scripts/generate_agent_dockerfile.py "$agent_name"
-    fi
-    
-    echo "Building agent image for ${agent_name}..."
+# Build master image
+build_master() {
+    log "Building master image..."
     DOCKER_BUILDKIT=1 docker build \
-      --build-arg BUILDKIT_INLINE_CACHE=1 \
-      -f docker/agents/${agent_name}.Dockerfile \
-      --build-arg BASE_IMAGE=$REGISTRY/cahoots-monorepo-base:$TAG \
-      --cache-from $REGISTRY/cahoots-monorepo-agent-${agent_name}:cache \
-      --cache-from $REGISTRY/cahoots-monorepo-agent-${agent_name}:$TAG \
-      -t $REGISTRY/cahoots-monorepo-agent-${agent_name}:$TAG \
-      -t $REGISTRY/cahoots-monorepo-agent-${agent_name}:cache \
-      .
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -f docker/master/Dockerfile \
+        --cache-from $REGISTRY/cahoots-master:cache \
+        --cache-from $REGISTRY/cahoots-master:$TAG \
+        -t $REGISTRY/cahoots-master:$TAG \
+        -t $REGISTRY/cahoots-master:cache \
+        .
+}
+
+# Build web-client image
+build_web_client() {
+    log "Building web-client image..."
+    DOCKER_BUILDKIT=1 docker build \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -f docker/web-client/Dockerfile \
+        --cache-from $REGISTRY/cahoots-web-client:cache \
+        --cache-from $REGISTRY/cahoots-web-client:$TAG \
+        -t $REGISTRY/cahoots-web-client:$TAG \
+        -t $REGISTRY/cahoots-web-client:cache \
+        .
 }
 
 # Main build process
@@ -67,11 +60,9 @@ main() {
         error "Must run from project root"
     fi
     
-    # Build all agent images
-    for config in config/agents/*.yaml; do
-        agent_name=$(basename "$config" .yaml)
-        build_agent "$agent_name"
-    done
+    # Build images
+    build_master
+    build_web_client
     
     log "All builds completed successfully!"
 }
