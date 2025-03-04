@@ -27,7 +27,7 @@ spec:
             name: postgres-secret
       containers:
       - name: master
-        image: ghcr.io/cahoots-org/master:latest
+        image: ghcr.io/cahoots-org/cahoots-master:latest
         envFrom:
         - configMapRef:
             name: redis-config
