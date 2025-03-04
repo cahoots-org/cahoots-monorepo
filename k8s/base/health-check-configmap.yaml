@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cahoots-health-check
-data:
-  check_health.sh: |
-    #!/bin/sh
-    redis-cli -h $REDIS_HOST -p $REDIS_PORT get "health:$AGENT_TYPE" | grep -q "healthy" 

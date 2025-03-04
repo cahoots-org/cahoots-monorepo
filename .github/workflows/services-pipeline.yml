@@ -39,11 +39,9 @@ permissions:
 
 env:
   PYTHON_VERSION: "3.11"
-  AWS_REGION: us-west-2
-  ECR_REPOSITORY: cahoots
-  ECS_CLUSTER: cahoots-cluster
-  TERRAFORM_VERSION: 1.5.0
-  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
+  REGISTRY: ghcr.io
+  IMAGE_NAME: cahoots-org/cahoots-master
+  WEB_CLIENT_IMAGE: cahoots-org/cahoots-web-client
 
 jobs:
   test:
@@ -113,7 +111,7 @@ jobs:
           name: coverage-report
           path: coverage.xml
           retention-days: 7
-          if-no-files-found: warn  # Don't fail if no coverage file is found
+          if-no-files-found: warn
 
   lint:
     name: Code Quality
@@ -137,16 +135,8 @@ jobs:
       - name: Run isort
         run: isort --settings-path pyproject.toml .
 
-      - name: List Python files
-        run: |
-          echo "Listing Python files in libs directory:"
-          find libs -name "*.py" | head -n 10
-          echo "Listing Python files in services directory:"
-          find services -name "*.py" | head -n 10
-
       - name: Run Pylint
         run: |
-          # Temporarily disable docstring warnings
           find libs -name "*.py" | xargs pylint --rcfile=pyproject.toml --disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,empty-docstring || true
           find services -name "*.py" | xargs pylint --rcfile=pyproject.toml --disable=missing-module-docstring,missing-class-docstring,missing-function-docstring,empty-docstring || true
 
@@ -198,79 +188,46 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: List Docker files (diagnostic)
-        run: |
-          echo "Listing Docker files in the repository:"
-          find docker -name "Dockerfile" -o -name "*.Dockerfile" | sort
-          echo "---"
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check GitHub token permissions
-        run: |
-          echo "GitHub Actor: ${{ github.actor }}"
-          echo "GitHub Repository: ${{ github.repository }}"
-          echo "GitHub Repository Owner: ${{ github.repository_owner }}"
-          echo "Token permissions should include 'packages: write'"
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-          echo "Checking if GitHub Container Registry is enabled for this repository..."
-          echo "Note: If this fails, you may need to enable GitHub Container Registry in your organization settings."
-          echo "See: https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry"
-          echo "Alternative: Create a Personal Access Token (PAT) with 'write:packages' scope and add it as a secret named 'CR_PAT'"
-
-      - name: Login to GitHub Container Registry
-        run: |
-          # Try using GITHUB_TOKEN first
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin || \
-          # Fall back to CR_PAT if available
-          (echo "GITHUB_TOKEN failed, trying CR_PAT if available..." && \
-           echo "${{ secrets.CR_PAT }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin)
-          
-          # Verify login was successful (without failing the step)
-          if docker info | grep -q Registry; then
-            echo "Registry information found in docker info"
-          else
-            echo "No registry information in docker info (this is normal)"
-          fi
-
-      - name: Build and push base image
+      - name: Build and push master image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/base/Dockerfile
+          file: docker/master/Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/cahoots-base:latest
-            ghcr.io/${{ github.repository_owner }}/cahoots-base:${{ github.sha }}
-
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Build and push service images
-        run: |
-          # Build and push all services
-          # Map service names to their Dockerfile paths
-          declare -A dockerfile_paths
-          dockerfile_paths["master"]="docker/master/Dockerfile"
-          dockerfile_paths["context_manager"]="docker/services/context-manager.Dockerfile"
-          dockerfile_paths["agent"]="docker/agent/Dockerfile"
-          dockerfile_paths["web-client"]="docker/web-client/Dockerfile"
-          
-          # Add other services if they exist in different locations
-          # Check if the service has a dedicated Dockerfile, otherwise use the agent Dockerfile
-          services=("master" "project_manager" "developer" "ux_designer" "tester" "context_manager" "web-client")
-          for service in "${services[@]}"; do
-            dockerfile_path="${dockerfile_paths[$service]:-docker/agent/Dockerfile}"
-            echo "Building $service using $dockerfile_path"
-            
-            # Build with proper base image reference
-            docker build \
-              --build-arg GITHUB_REPOSITORY_OWNER=${{ github.repository_owner }} \
-              -t ghcr.io/${{ github.repository_owner }}/cahoots-$service:latest \
-              -t ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }} \
-              -f $dockerfile_path .
-            
-            docker push ghcr.io/${{ github.repository_owner }}/cahoots-$service:latest
-            docker push ghcr.io/${{ github.repository_owner }}/cahoots-$service:${{ github.sha }}
-          done
+      - name: Extract metadata for web-client
+        id: web-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.WEB_CLIENT_IMAGE }}
+
+      - name: Build and push web-client image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/web-client/Dockerfile
+          push: true
+          tags: ${{ steps.web-meta.outputs.tags }}
+          labels: ${{ steps.web-meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy-production:
     name: Deploy to Production
@@ -279,7 +236,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      url: https://api.cahoots.cc
+      url: https://cahoots.cc
     steps:
       - uses: actions/checkout@v3
 
@@ -293,18 +250,19 @@ jobs:
 
       - name: Deploy to Kubernetes
         env:
-          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
           GITHUB_SHA: ${{ github.sha }}
         run: |
-          # Apply base infrastructure
-          kubectl apply -f k8s/base/namespace.yaml
-          kubectl apply -f k8s/base/postgres.yaml
-          kubectl apply -f k8s/base/redis-config.yaml
+          # Apply security policies first
+          kubectl apply -f k8s/security.yaml
           
-          # Set up image pull secret
-          kubectl create secret docker-registry ghcr-pull-secret \
+          # Apply database and Redis
+          kubectl apply -f k8s/postgres.yaml
+          kubectl apply -f k8s/redis.yaml
+          
+          # Set up registry secret for GHCR
+          kubectl create secret docker-registry ghcr-auth \
             --namespace=cahoots \
-            --docker-server=ghcr.io \
+            --docker-server=${{ env.REGISTRY }} \
             --docker-username=${{ github.actor }} \
             --docker-password=${{ secrets.GITHUB_TOKEN }} \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -317,23 +275,22 @@ jobs:
             exit 1
           }
 
-          # Deploy each service
-          echo "Deploying master service..."
-          kubectl apply -f k8s/base/master.yaml
-          kubectl set image deployment/master -n cahoots master=ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-master:$GITHUB_SHA
+          # Deploy services
+          echo "Deploying services..."
+          kubectl apply -f k8s/master.yaml
+          kubectl apply -f k8s/web-client.yaml
+          
+          # Update images
+          kubectl set image deployment/master -n cahoots master=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$GITHUB_SHA
+          kubectl set image deployment/web-client -n cahoots web-client=${{ env.REGISTRY }}/${{ env.WEB_CLIENT_IMAGE }}:$GITHUB_SHA
 
-          echo "Deploying project manager..."
-          kubectl apply -f k8s/base/project-manager.yaml
-          kubectl set image deployment/project-manager -n cahoots project-manager=ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-project_manager:$GITHUB_SHA
-
-          # Apply ingress and middleware
-          kubectl apply -f k8s/base/middleware.yaml
-          kubectl apply -f k8s/base/ingress.yaml
+          # Apply ingress
+          kubectl apply -f k8s/ingress.yaml
 
           # Wait for deployments and show status
           echo "Waiting for deployments to be ready..."
           kubectl -n cahoots rollout status deployment/master
-          kubectl -n cahoots rollout status deployment/project-manager
+          kubectl -n cahoots rollout status deployment/web-client
 
           echo "Current pod status:"
           kubectl -n cahoots get pods
@@ -342,8 +299,8 @@ jobs:
     name: Coverage Report
     needs: test
     runs-on: ubuntu-latest
-    continue-on-error: true  # Make this job optional
-    if: always()  # Run even if previous jobs fail
+    continue-on-error: true
+    if: always()
     steps:
       - uses: actions/checkout@v3
       
@@ -354,7 +311,7 @@ jobs:
       
       - name: Try to download coverage reports
         id: download
-        continue-on-error: true  # Don't fail if download fails
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: coverage-report

@@ -51,9 +51,13 @@ RUN echo "deb http://cloudfront.debian.net/debian bookworm main" > /etc/apt/sour
         break) || if [ $i -lt 3 ]; then sleep 5; fi; \
     done
 
-# Copy installed packages from builder
+# Copy installed packages and code from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
+COPY --from=builder /build/services/api /app/services/api
+COPY --from=builder /build/libs/core /app/libs/core
+COPY --from=builder /build/libs/events /app/libs/events
+COPY --from=builder /build/libs/context /app/libs/context
 
 # Create necessary directories
 RUN mkdir -p /app/services /app/libs
@@ -62,5 +66,4 @@ RUN mkdir -p /app/services /app/libs
 COPY docker/master/start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-# Source code will be mounted at runtime
 CMD ["/app/start.sh"] 

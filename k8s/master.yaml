@@ -14,7 +14,7 @@ spec:
         app: master
     spec:
       imagePullSecrets:
-      - name: ghcr-pull-secret
+      - name: ghcr-auth
       initContainers:
       - name: wait-for-postgres
         image: postgres:15
@@ -27,7 +27,7 @@ spec:
             name: postgres-secret
       containers:
       - name: master
-        image: ghcr.io/$GITHUB_REPOSITORY_OWNER/cahoots-master:$GITHUB_SHA
+        image: ghcr.io/cahoots-org/master:latest
         envFrom:
         - configMapRef:
             name: redis-config
@@ -40,6 +40,8 @@ spec:
           value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@db:5432/$(POSTGRES_DB)"
         - name: PYTHONUNBUFFERED
           value: "1"
+        - name: PYTHONPATH
+          value: "/app"
         resources:
           requests:
             cpu: 200m
