@@ -5,7 +5,7 @@ set -e
 wait_for_postgres() {
     echo "Waiting for database to be ready..."
     for i in {1..30}; do
-        if pg_isready -h db -p 5432 -U postgres; then
+        if pg_isready -h db -p 5432 -U cahoots; then
             echo "Database is ready!"
             return 0
         fi
@@ -49,8 +49,8 @@ if ! wait_for_postgres; then
     exit 1
 fi
 
-# Change to the API directory
-cd /app/services/api
+# Change to the working directory
+cd /app
 
 # Run migrations
 if ! run_migrations; then

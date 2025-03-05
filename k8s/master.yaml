@@ -28,7 +28,7 @@ spec:
       containers:
       - name: master
         image: ghcr.io/cahoots-org/cahoots-master:latest
-        command: ["/bin/sh", "-c", "cd /app && sed -i 's|cd /app/services/api|cd /app/cahoots_service|' start.sh && sed -i 's|cd /app/cahoots_service|cd /app|' start.sh && ./start.sh"]
+        command: ["/bin/sh", "-c", "./start.sh"]
         envFrom:
         - configMapRef:
             name: redis-config
