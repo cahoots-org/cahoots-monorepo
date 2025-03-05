@@ -14,7 +14,7 @@ spec:
         app: master
     spec:
       imagePullSecrets:
-      - name: ghcr-auth
+      - name: ghcr-pull-secret
       initContainers:
       - name: wait-for-postgres
         image: postgres:15
@@ -28,6 +28,7 @@ spec:
       containers:
       - name: master
         image: ghcr.io/cahoots-org/cahoots-master:latest
+        command: ["/bin/sh", "-c", "cd /app && sed -i 's|cd /app/services/api|cd /app/cahoots_service|' start.sh && sed -i 's|cd /app/cahoots_service|cd /app|' start.sh && ./start.sh"]
         envFrom:
         - configMapRef:
             name: redis-config
