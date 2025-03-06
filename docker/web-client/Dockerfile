@@ -1,19 +1,11 @@
-FROM node:20-slim
+# Simple Nginx image to serve static files
+FROM nginx:alpine
 
-# Install dependencies in a separate directory
-WORKDIR /deps
-COPY web-client/package*.json ./
+# Copy the static files to nginx
+COPY web-client/dist /usr/share/nginx/html
 
-# Install dependencies
-RUN npm install
+# Expose port 80
+EXPOSE 80
 
-# Switch to app directory for runtime
-WORKDIR /app
-
-# Create symlink to node_modules
-RUN ln -s /deps/node_modules /app/node_modules
-
-EXPOSE 3000
-
-# Use npm to run vite
-CMD ["npm", "run", "dev"] 
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]

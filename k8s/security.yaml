@@ -35,7 +35,14 @@ metadata:
 spec:
   podSelector:
     matchLabels:
+<<<<<<< Updated upstream
       app: postgres
+=======
+      app: db
+  policyTypes:
+    - Ingress
+    - Egress
+>>>>>>> Stashed changes
   ingress:
   - from:
     - podSelector:
@@ -108,7 +115,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: postgres
+      app: db
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -149,4 +156,132 @@ spec:
   ingress:
   - ports:
     - protocol: TCP
+<<<<<<< Updated upstream
       port: 5601 
+=======
+      port: 5601
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-master-postgres
+  namespace: cahoots
+spec:
+  podSelector:
+    matchLabels:
+      app: master
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: db
+    ports:
+    - protocol: TCP
+      port: 5432
+  policyTypes:
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-traffic
+  namespace: cahoots
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: cahoots
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector:
+        matchLabels:
+          app: db
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-master-traffic
+  namespace: cahoots
+spec:
+  podSelector:
+    matchLabels:
+      app: master
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector:
+        matchLabels:
+          app: db
+    ports:
+    - protocol: TCP
+      port: 5432
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-redis-traffic
+  namespace: cahoots
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api
+    - podSelector:
+        matchLabels:
+          app: master
+    ports:
+    - protocol: TCP
+      port: 6379
+>>>>>>> Stashed changes

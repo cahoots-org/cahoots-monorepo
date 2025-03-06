@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   Container,
   Title,
@@ -30,7 +30,6 @@ export function ProjectDetailsPage() {
     isLoading,
     error,
     fetchProjectDetails,
-    fetchProjectResources,
   } = useProjectStore();
 
   useEffect(() => {
@@ -146,4 +145,4 @@ export function ProjectDetailsPage() {
       </Stack>
     </Container>
   );
-} 
+}

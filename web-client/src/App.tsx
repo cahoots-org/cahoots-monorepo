@@ -54,7 +54,7 @@ const theme = createTheme({
       defaultProps: {
         size: 'md',
       },
-      styles: (theme) => ({
+      styles: {
         root: {
           fontWeight: 500,
           backgroundImage: config.ui.theme.gradients.primary,
@@ -68,44 +68,44 @@ const theme = createTheme({
           color: '#FFFFFF',
           textShadow: '-0.5px -0.5px 0 rgba(0,0,0,0.2), 0.5px -0.5px 0 rgba(0,0,0,0.2), -0.5px 0.5px 0 rgba(0,0,0,0.2), 0.5px 0.5px 0 rgba(0,0,0,0.2)',
         },
-      }),
+      },
     },
     Card: {
       defaultProps: {
         radius: 'md',
         withBorder: true,
       },
-      styles: (theme) => ({
+      styles: {
         root: {
           backgroundColor: config.ui.theme.surfaceColor,
           borderColor: config.ui.theme.borderColor,
           boxShadow: config.ui.theme.shadows.card,
         },
-      }),
+      },
     },
     TextInput: {
-      styles: (theme) => ({
+      styles: {
         input: {
-          backgroundColor: theme.colors.dark[7],
+          backgroundColor: '#1A1B1E', // Using dark[7] directly
           borderColor: config.ui.theme.borderColor,
           color: config.ui.theme.textColor,
           '&:focus': {
             borderColor: config.ui.theme.primaryColor,
           },
         },
-      }),
+      },
     },
     PasswordInput: {
-      styles: (theme) => ({
+      styles: {
         input: {
-          backgroundColor: theme.colors.dark[7],
+          backgroundColor: '#1A1B1E', // Using dark[7] directly
           borderColor: config.ui.theme.borderColor,
           color: config.ui.theme.textColor,
           '&:focus': {
             borderColor: config.ui.theme.primaryColor,
           },
         },
-      }),
+      },
     },
   },
 });

@@ -1,0 +1,54 @@
+
+# 2025-03-04 21:18:31.934348
++sdfs
+
+# 2025-03-04 21:18:40.254375
++Y
+
+# 2025-03-04 21:19:02.867375
++N
+
+# 2025-03-04 21:19:09.798713
++/architect
+
+# 2025-03-04 21:23:28.100183
++I need to figure out why my k8s deployment isn't working via my GitHub Action. Everything is configured properly. My PAT is in .env. My GH username is robmillersoftware. The repo we are working in is cahoots-monorepo in the cahoots-org organization. My PAT has access to packages in that org. My cloud provider is CIVO, and kubectl is already pointed at my cluster.
+
+# 2025-03-04 21:24:41.229240
++Y
+
+# 2025-03-04 21:25:31.522062
++/add .github/workflows/services-pipeline.yml
+
+# 2025-03-04 21:25:40.909700
++/add k8s/master.yaml
+
+# 2025-03-04 21:25:54.372422
++/add k8s/web-client.yaml
+
+# 2025-03-04 21:26:05.080329
++/add .env
+
+# 2025-03-04 21:29:06.876667
++my .env file is in my .gitignore, so I don't know how to let you access it
+
+# 2025-03-04 21:29:15.956568
++N
+
+# 2025-03-04 21:30:07.870302
++Y
+
+# 2025-03-04 21:37:30.320574
++Can you help test via kubectl?
+
+# 2025-03-04 21:39:12.197910
++N
+
+# 2025-03-04 21:57:21.008195
++/architect
+
+# 2025-03-04 23:07:27.902408
++exit
+
+# 2025-03-04 23:08:01.936794
++N

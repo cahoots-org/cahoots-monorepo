@@ -83,9 +83,8 @@ export const useProjectStore = create<ProjectState>()(
         );
         set({ currentProject: project, isLoading: false });
 
-        // Subscribe to project updates
-        const unsubscribe = wsClient.subscribeToProject(id, get().handleProjectUpdate);
-        return () => unsubscribe();
+        // Subscribe to project updates but don't return the unsubscribe function
+        wsClient.subscribeToProject(id, get().handleProjectUpdate);
       } catch (error: any) {
         set({
           error: error.message || 'Failed to fetch project details',
@@ -147,4 +146,4 @@ export const useProjectStore = create<ProjectState>()(
       set({ error: null });
     },
   }))
-); 
+);

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "echo \"No tests specified yet\" && exit 0"
   },
   "dependencies": {
     "@emotion/react": "^11.11.3",
@@ -30,6 +31,7 @@
     "zustand": "^4.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "^8.56.0",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
     "@typescript-eslint/eslint-plugin": "^6.19.1",
@@ -39,6 +41,7 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "globals": "^13.24.0",
     "postcss": "^8.4.33",
     "postcss-preset-mantine": "^1.12.3",
     "typescript": "^5.3.3",

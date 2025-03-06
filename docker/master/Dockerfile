@@ -46,6 +46,7 @@ RUN echo "deb http://cloudfront.debian.net/debian bookworm main" > /etc/apt/sour
             curl \
             iputils-ping \
             dnsutils \
+            netcat-openbsd \
             postgresql-client && \
         rm -rf /var/lib/apt/lists/* && \
         break) || if [ $i -lt 3 ]; then sleep 5; fi; \

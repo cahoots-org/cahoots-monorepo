@@ -13,21 +13,35 @@ spec:
       labels:
         app: master
     spec:
+      serviceAccountName: cahoots-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
       imagePullSecrets:
+<<<<<<< Updated upstream
       - name: ghcr-auth
+=======
+      - name: ghcr-pull-secret
+      # Add init container to ensure database is ready before starting the main container
+>>>>>>> Stashed changes
       initContainers:
-      - name: wait-for-postgres
-        image: postgres:15
-        command: ['sh', '-c', 
-          'until pg_isready -h db -p 5432 -U $POSTGRES_USER; do echo waiting for postgres; sleep 2; done;']
-        envFrom:
-        - configMapRef:
-            name: postgres-config
-        - secretRef:
-            name: postgres-secret
+      - name: wait-for-db
+        image: busybox
+        command: ['sh', '-c', 'until nc -z db 5432; do echo waiting for db; sleep 2; done;']
       containers:
       - name: master
         image: ghcr.io/cahoots-org/cahoots-master:latest
+<<<<<<< Updated upstream
+=======
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        command: ["/bin/sh", "-c", "./start.sh"]
+>>>>>>> Stashed changes
         envFrom:
         - configMapRef:
             name: redis-config
@@ -42,6 +56,16 @@ spec:
           value: "1"
         - name: PYTHONPATH
           value: "/app"
+        - name: REDIS_HOST
+          value: redis
+        - name: POSTGRES_HOST
+          value: db
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: SKIP_DB_CHECK
+          value: "false"  # Changed to false since we now have an init container
         resources:
           requests:
             cpu: 200m
@@ -87,4 +111,8 @@ spec:
   ports:
   - port: 80
     targetPort: 8000
+<<<<<<< Updated upstream
   type: ClusterIP 
+=======
+  type: ClusterIP
+>>>>>>> Stashed changes
