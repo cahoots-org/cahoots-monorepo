@@ -19,10 +19,10 @@ spec:
       - name: web-client
         image: ghcr.io/cahoots-org/cahoots-web-client:latest
         env:
+        - name: NODE_ENV
+          value: "production"
         - name: API_URL
-          value: "https://cahoots.cc/api"
-        - name: PYTHONUNBUFFERED
-          value: "1"
+          value: "http://master"
         resources:
           requests:
             cpu: 100m
@@ -31,17 +31,17 @@ spec:
             cpu: 500m
             memory: 512Mi
         ports:
-        - containerPort: 8000
+        - containerPort: 80
         livenessProbe:
           httpGet:
-            path: /health
-            port: 8000
+            path: /
+            port: 80
           initialDelaySeconds: 30
           periodSeconds: 10
         readinessProbe:
           httpGet:
-            path: /health
-            port: 8000
+            path: /
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
 ---
@@ -55,5 +55,10 @@ spec:
     app: web-client
   ports:
   - port: 80
+<<<<<<< Updated upstream
     targetPort: 8000
   type: ClusterIP 
+=======
+    targetPort: 80
+  type: ClusterIP
+>>>>>>> Stashed changes

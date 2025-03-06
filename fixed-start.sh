@@ -3,18 +3,9 @@ set -e
 
 # Function to check if postgres is ready
 wait_for_postgres() {
-    if [ "${SKIP_DB_CHECK}" = "true" ]; then
-        echo "Skipping database check as SKIP_DB_CHECK is set to true"
-        return 0
-    fi
-    
     echo "Waiting for database to be ready..."
     for i in {1..30}; do
-<<<<<<< Updated upstream
-        if pg_isready -h db -p 5432 -U postgres; then
-=======
         if nc -z db 5432; then
->>>>>>> Stashed changes
             echo "Database is ready!"
             return 0
         fi
@@ -58,8 +49,8 @@ if ! wait_for_postgres; then
     exit 1
 fi
 
-# Change to the API directory
-cd /app/services/api
+# Change to the working directory
+cd /app
 
 # Run migrations
 if ! run_migrations; then
@@ -72,8 +63,4 @@ python -m services.api.cli.migrate status
 
 # Start the API server
 echo "Starting API server..."
-<<<<<<< Updated upstream
-exec python -m uvicorn cahoots_service.api.main:app --host 0.0.0.0 --port 8000 --reload 
-=======
 exec python -m uvicorn services.api.api.main:app --host 0.0.0.0 --port 8000 --reload
->>>>>>> Stashed changes

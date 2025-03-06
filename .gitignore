@@ -21,9 +21,7 @@ htmlcov/
 *.log 
 
 # venv
-bin/
-lib/
-include/
+venv/
 
 # Generated files
 workspace/

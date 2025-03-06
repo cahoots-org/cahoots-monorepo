@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { TextInput, PasswordInput, Button, Title, Text, Stack, Container, Card, Divider, Box } from '@mantine/core';
+import { TextInput, PasswordInput, Button, Text, Stack, Container, Card, Divider, Box } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuthStore } from '../../stores/auth';
@@ -141,4 +141,4 @@ export function LoginPage() {
       </Container>
     </Box>
   );
-} 
+}

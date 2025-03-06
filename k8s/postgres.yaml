@@ -24,12 +24,12 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: postgres
+      app: db
   replicas: 1
   template:
     metadata:
       labels:
-        app: postgres
+        app: db
     spec:
       containers:
       - name: postgres
@@ -68,7 +68,7 @@ metadata:
   namespace: cahoots
 spec:
   selector:
-    app: postgres
+    app: db
   ports:
   - port: 5432
     targetPort: 5432

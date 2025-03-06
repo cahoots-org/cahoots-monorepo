@@ -6,7 +6,12 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  tls:
+  - hosts:
+    - cahoots.cc
+    secretName: cahoots-tls
   rules:
   - host: cahoots.cc
     http:
@@ -24,4 +29,4 @@ spec:
           service:
             name: web-client
             port:
-              number: 80 
+              number: 80
