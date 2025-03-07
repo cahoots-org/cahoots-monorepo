@@ -108,8 +108,8 @@ jobs:
           DOCKER_AUTH=$(echo -n "${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}" | base64)
           DOCKER_CONFIG_JSON=$(echo -n "{\"auths\":{\"ghcr.io\":{\"auth\":\"$DOCKER_AUTH\"}}}" | base64 -w 0)
           
-          # Apply the secret using kubectl
-          cat <<EOF | kubectl apply -f -
+          # Apply the secret using kubectl with validation disabled
+          cat <<EOF | kubectl apply --validate=false -f -
           apiVersion: v1
           kind: Secret
           metadata:
