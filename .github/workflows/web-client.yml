@@ -7,7 +7,7 @@ on:
       - 'web-client/**'
       - 'docker/web-client.Dockerfile'
       - 'docker/nginx.conf'
-      - 'k8s/base/web-client.yaml'
+      - 'k8s/web-client.yaml'
       - '.github/workflows/web-client.yml'
   pull_request:
     branches: [ main ]
@@ -19,7 +19,7 @@ on:
 
 env:
   DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
-  IMAGE_NAME: web-client
+  IMAGE_NAME: cahoots-web-client
   KUBE_NAMESPACE: cahoots
 
 permissions:
@@ -72,15 +72,24 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/web-client.Dockerfile
           push: true
-          tags: |
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -88,29 +97,41 @@ jobs:
     needs: docker-build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    env:
-      KUBECONFIG: ${{ github.workspace }}/kubeconfig.yaml
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
+      - name: Install Civo CLI
+        run: curl -sL https://civo.com/get | sh
 
-      - name: Configure kubectl
+      - name: Configure Civo CLI
         run: |
-          echo "${{ secrets.KUBE_CONFIG }}" > $KUBECONFIG
-          chmod 600 $KUBECONFIG
-          kubectl config get-contexts
+          civo apikey add production-key ${{ secrets.CIVO_API_KEY }}
+          civo kubernetes config cahoots-prod --save
 
-      - name: Deploy to Kubernetes
+      - name: Verify kubectl configuration
         run: |
-          export IMAGE_TAG="${{ github.sha }}"
-          export APP_DOMAIN="${{ secrets.APP_DOMAIN }}"
-          
-          # Apply the deployment
+          kubectl config current-context
+          kubectl get nodes
+
+      - name: Verify image pull secret
+        run: |
+          if ! kubectl get secret -n ${{ env.KUBE_NAMESPACE }} ghcr-pull-secret &> /dev/null; then
+            echo "Error: ghcr-pull-secret not found in namespace ${{ env.KUBE_NAMESPACE }}"
+            echo "Please run scripts/update_ghcr_secret.sh to create the secret"
+            exit 1
+          fi
+          echo "Image pull secret verified"
+
+      - name: Update deployment
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          APP_DOMAIN: ${{ secrets.APP_DOMAIN }}
+        run: |
+          # Apply the deployment with envsubst
           envsubst < k8s/web-client.yaml | kubectl apply -f -
+          
+          # Update the image
+          kubectl set image deployment/web-client -n ${{ env.KUBE_NAMESPACE }} web-client=${{ env.DOCKER_REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG
           
           # Wait for rollout to complete
           kubectl rollout status deployment/web-client -n ${{ env.KUBE_NAMESPACE }} --timeout=300s

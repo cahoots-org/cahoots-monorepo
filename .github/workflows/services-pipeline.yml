@@ -7,7 +7,7 @@ on:
     paths:
       - 'libs/**'
       - 'services/**'
-      - 'docker/**'
+      - 'docker/master/**'
       - 'k8s/**'
       - '.github/workflows/services-pipeline.yml'
       - 'requirements.txt'
@@ -41,7 +41,6 @@ env:
   PYTHON_VERSION: "3.11"
   REGISTRY: ghcr.io
   IMAGE_NAME: cahoots-org/cahoots-master
-  WEB_CLIENT_IMAGE: cahoots-org/cahoots-web-client
 
 jobs:
   test:
@@ -212,25 +211,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Extract metadata for web-client
-        id: web-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.WEB_CLIENT_IMAGE }}
-
-      - name: Build and push web-client image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/web-client/Dockerfile
-          push: true
-          tags: |
-            ${{ steps.web-meta.outputs.tags }}
-            ${{ env.REGISTRY }}/${{ env.WEB_CLIENT_IMAGE }}:latest
-          labels: ${{ steps.web-meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   deploy-production:
     name: Deploy to Production
     needs: [build]
@@ -280,11 +260,9 @@ jobs:
           # Deploy services
           echo "Deploying services..."
           kubectl apply -f k8s/master.yaml
-          kubectl apply -f k8s/web-client.yaml
           
           # Update images
           kubectl set image deployment/master -n cahoots master=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$GITHUB_SHA
-          kubectl set image deployment/web-client -n cahoots web-client=${{ env.REGISTRY }}/${{ env.WEB_CLIENT_IMAGE }}:$GITHUB_SHA
 
           # Apply ingress
           kubectl apply -f k8s/ingress.yaml
@@ -292,7 +270,6 @@ jobs:
           # Wait for deployments and show status
           echo "Waiting for deployments to be ready..."
           kubectl -n cahoots rollout status deployment/master
-          kubectl -n cahoots rollout status deployment/web-client
 
           echo "Current pod status:"
           kubectl -n cahoots get pods

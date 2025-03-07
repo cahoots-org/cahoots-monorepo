@@ -17,7 +17,7 @@ spec:
       - name: ghcr-pull-secret
       containers:
       - name: web-client
-        image: ghcr.io/cahoots-org/cahoots-web-client:latest
+        image: ${DOCKER_REGISTRY}/cahoots-web-client:${IMAGE_TAG}
         env:
         - name: NODE_ENV
           value: "production"
