@@ -14,7 +14,7 @@ spec:
         app: web-client
     spec:
       imagePullSecrets:
-      - name: ghcr-auth
+      - name: ghcr-pull-secret
       containers:
       - name: web-client
         image: ghcr.io/cahoots-org/cahoots-web-client:latest
@@ -55,10 +55,5 @@ spec:
     app: web-client
   ports:
   - port: 80
-<<<<<<< Updated upstream
-    targetPort: 8000
-  type: ClusterIP 
-=======
     targetPort: 80
   type: ClusterIP
->>>>>>> Stashed changes
