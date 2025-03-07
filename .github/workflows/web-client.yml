@@ -88,6 +88,8 @@ jobs:
     needs: docker-build
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      KUBECONFIG: ${{ github.workspace }}/kubeconfig.yaml
     steps:
       - uses: actions/checkout@v4
 
@@ -98,9 +100,9 @@ jobs:
 
       - name: Configure kubectl
         run: |
-          echo "${{ secrets.KUBE_CONFIG }}" > kubeconfig.yaml
-          chmod 600 kubeconfig.yaml
-          export KUBECONFIG=kubeconfig.yaml
+          echo "${{ secrets.KUBE_CONFIG }}" > $KUBECONFIG
+          chmod 600 $KUBECONFIG
+          kubectl config get-contexts
 
       - name: Set up image pull secret
         run: |
@@ -108,8 +110,8 @@ jobs:
           DOCKER_AUTH=$(echo -n "${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}" | base64)
           DOCKER_CONFIG_JSON=$(echo -n "{\"auths\":{\"ghcr.io\":{\"auth\":\"$DOCKER_AUTH\"}}}" | base64 -w 0)
           
-          # Apply the secret using kubectl with validation disabled
-          cat <<EOF | kubectl apply --validate=false -f -
+          # Create a temporary file for the secret manifest
+          cat <<EOF > pull-secret.yaml
           apiVersion: v1
           kind: Secret
           metadata:
@@ -119,6 +121,9 @@ jobs:
           data:
             .dockerconfigjson: $DOCKER_CONFIG_JSON
           EOF
+          
+          # Apply the secret using the file
+          kubectl apply -f pull-secret.yaml
 
       - name: Deploy to Kubernetes
         run: |
