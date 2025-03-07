@@ -104,27 +104,6 @@ jobs:
           chmod 600 $KUBECONFIG
           kubectl config get-contexts
 
-      - name: Set up image pull secret
-        run: |
-          # Create base64-encoded Docker config JSON
-          DOCKER_AUTH=$(echo -n "${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}" | base64)
-          DOCKER_CONFIG_JSON=$(echo -n "{\"auths\":{\"ghcr.io\":{\"auth\":\"$DOCKER_AUTH\"}}}" | base64 -w 0)
-          
-          # Create a temporary file for the secret manifest
-          cat <<EOF > pull-secret.yaml
-          apiVersion: v1
-          kind: Secret
-          metadata:
-            name: ghcr-pull-secret
-            namespace: ${{ env.KUBE_NAMESPACE }}
-          type: kubernetes.io/dockerconfigjson
-          data:
-            .dockerconfigjson: $DOCKER_CONFIG_JSON
-          EOF
-          
-          # Apply the secret using the file
-          kubectl apply -f pull-secret.yaml
-
       - name: Deploy to Kubernetes
         run: |
           export IMAGE_TAG="${{ github.sha }}"
