@@ -104,13 +104,21 @@ jobs:
 
       - name: Set up image pull secret
         run: |
-          kubectl create secret docker-registry ghcr-pull-secret \
-            --namespace=${{ env.KUBE_NAMESPACE }} \
-            --docker-server=ghcr.io \
-            --docker-username=${{ github.repository_owner }} \
-            --docker-password=${{ secrets.GH_PAT }} \
-            --docker-email=${{ secrets.GH_EMAIL }} \
-            --dry-run=client -o yaml | kubectl apply -f -
+          # Create base64-encoded Docker config JSON
+          DOCKER_AUTH=$(echo -n "${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }}" | base64)
+          DOCKER_CONFIG_JSON=$(echo -n "{\"auths\":{\"ghcr.io\":{\"auth\":\"$DOCKER_AUTH\"}}}" | base64 -w 0)
+          
+          # Apply the secret using kubectl
+          cat <<EOF | kubectl apply -f -
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ghcr-pull-secret
+            namespace: ${{ env.KUBE_NAMESPACE }}
+          type: kubernetes.io/dockerconfigjson
+          data:
+            .dockerconfigjson: $DOCKER_CONFIG_JSON
+          EOF
 
       - name: Deploy to Kubernetes
         run: |
