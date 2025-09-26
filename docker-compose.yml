@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  # Redis for storage and caching
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Cahoots Monolith API
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-mixtral-8x7b-32768}
+      - LAMBDA_API_KEY=${LAMBDA_API_KEY:-}
+      - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
+      - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-70b}
+      - MAX_DEPTH=${MAX_DEPTH:-5}
+      - COMPLEXITY_THRESHOLD=${COMPLEXITY_THRESHOLD:-0.45}
+      - BATCH_SIZE=${BATCH_SIZE:-3}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+    volumes:
+      - ./app:/app/app:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+      - NODE_ENV=production
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Development API (with hot reload)
+  api-dev:
+    build:
+      context: .
+      target: builder
+    ports:
+      - "8001:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=1
+      - ENV=development
+      - LLM_PROVIDER=mock
+    volumes:
+      - .:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    name: cahoots-network

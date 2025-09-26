@@ -1,0 +1,92 @@
+/* Responsive styles for mobile devices */
+
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  /* Container padding adjustments */
+  .container {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  /* Hide desktop navigation */
+  .desktop-nav {
+    display: none !important;
+  }
+
+  /* Show mobile navigation */
+  .mobile-nav {
+    display: flex !important;
+  }
+
+  /* Compact statistics grid */
+  .compact-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 0.5rem !important;
+    padding: 0.75rem !important;
+  }
+
+  /* Single column task grid */
+  .task-grid {
+    grid-template-columns: 1fr !important;
+    gap: 1rem !important;
+  }
+
+  /* Smaller headers */
+  h1 {
+    font-size: 1.75rem !important;
+  }
+
+  h2 {
+    font-size: 1.5rem !important;
+  }
+
+  /* Responsive buttons */
+  .btn-responsive {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.875rem !important;
+  }
+
+  /* Hide non-essential text */
+  .hide-mobile {
+    display: none !important;
+  }
+
+  /* Full width forms */
+  form {
+    width: 100% !important;
+  }
+
+  /* Responsive cards */
+  .card {
+    padding: 1rem !important;
+  }
+
+  /* Responsive modals */
+  .modal-content {
+    width: 95% !important;
+    margin: 1rem !important;
+  }
+}
+
+/* Tablet breakpoint */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .container {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+  }
+
+  .task-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* Force mobile menu visibility */
+@media (max-width: 768px) {
+  nav[class*="desktop"] {
+    display: none !important;
+  }
+  
+  button[aria-label="Menu"] {
+    display: block !important;
+  }
+}

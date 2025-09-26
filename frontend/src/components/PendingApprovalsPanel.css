@@ -1,0 +1,283 @@
+.pending-approvals-panel {
+  padding: 1rem;
+}
+
+.pending-approvals-loading {
+  padding: 2rem;
+  text-align: center;
+  color: #718096;
+}
+
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #e2e8f0;
+  border-radius: 50%;
+  border-top-color: #3182ce;
+  animation: spin 1s ease-in-out infinite;
+  margin-bottom: 0.5rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.pending-approvals-loading p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.pending-approvals-empty {
+  padding: 1rem;
+}
+
+.empty-state {
+  background: #e6fffa;
+  border: 1px solid #81e6d9;
+  border-radius: 6px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.empty-state p {
+  margin: 0;
+  color: #285e61;
+  font-size: 0.875rem;
+}
+
+.pending-approvals-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.pending-approvals-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1a202c;
+}
+
+.pending-count-badge {
+  background: #fed7cc;
+  color: #c53030;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+}
+
+.refresh-btn {
+  background: none;
+  border: 1px solid #e2e8f0;
+  color: #718096;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-left: auto;
+  transition: all 0.2s;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: #f7fafc;
+  color: #2d3748;
+  border-color: #cbd5e0;
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pending-tasks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.pending-task-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+}
+
+.pending-task-card.processed {
+  opacity: 0.6;
+}
+
+.pending-task-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.task-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1rem 0.5rem 1rem;
+  border-bottom: 1px solid #f7fafc;
+}
+
+.task-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-badge.awaiting {
+  background: #fed7cc;
+  color: #c53030;
+}
+
+.depth-badge {
+  background: #bee3f8;
+  color: #2c5282;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid #90cdf4;
+}
+
+.complexity-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid;
+}
+
+.complexity-badge.low {
+  background: #c6f6d5;
+  color: #22543d;
+  border-color: #68d391;
+}
+
+.complexity-badge.medium {
+  background: #faf089;
+  color: #744210;
+  border-color: #f6e05e;
+}
+
+.complexity-badge.high {
+  background: #fed7d7;
+  color: #c53030;
+  border-color: #fc8181;
+}
+
+.task-timestamp {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #718096;
+}
+
+.time-icon {
+  font-size: 0.75rem;
+}
+
+.task-card-body {
+  padding: 0.5rem 1rem 1rem 1rem;
+}
+
+.task-description-section {
+  margin-bottom: 1rem;
+}
+
+.task-description-section h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+.task-description-section p {
+  margin: 0;
+  color: #4a5568;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+.task-parent-info {
+  margin-bottom: 1rem;
+  font-size: 0.75rem;
+  color: #718096;
+}
+
+.task-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.task-id {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.75rem;
+  color: #718096;
+}
+
+.review-btn {
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border: 1px solid #90cdf4;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.review-btn:hover:not(:disabled) {
+  background: #bee3f8;
+  border-color: #63b3ed;
+}
+
+.review-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .pending-approvals-panel {
+    padding: 0.5rem;
+  }
+  
+  .pending-approvals-header {
+    flex-wrap: wrap;
+  }
+  
+  .task-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .task-badges {
+    order: 2;
+  }
+  
+  .task-timestamp {
+    order: 1;
+    align-self: flex-end;
+  }
+}

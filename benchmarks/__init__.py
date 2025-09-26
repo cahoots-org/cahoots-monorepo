@@ -1,0 +1,1 @@
+"""Performance benchmarking for the Cahoots monolith refactor."""
