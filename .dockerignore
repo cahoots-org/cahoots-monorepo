@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+logs/
+.cursor/
+node_modules/
+docs/
+tests/
+.git/
+.gitignore
+.pytest_cache/
+poetry.lock
+
+# ML model caches (can be large and should be downloaded at runtime)
+.cache/
+models/
+*.model
+*.bin
+*.safetensors
+
+# Jupyter notebooks and experimental files
+*.ipynb
+.ipynb_checkpoints/
+experiments/
+
+# Large data files
+*.csv
+*.json
+*.parquet
+data/
+
+# Coverage and testing
+htmlcov/
+.coverage
+coverage.xml
+.tox/
+
+# Docker
+.docker/
+docker-compose*.yml
+Dockerfile* 
+
+zen-mcp-server/
+
+# Terraform (contains large provider binaries)
+terraform/
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+*.auto.tfvars
+
+# Kubernetes manifests (not needed in Docker images)
+k8s/
+*.yaml

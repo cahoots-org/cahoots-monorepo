@@ -1,0 +1,21 @@
+**/.DS_Store
+**/.env
+**/venv/
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/logs/
+**/__pycache__
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+*.cover
+.hypothesis/
+zen-mcp-server/
+
+output.txt
+.mcp.json
+**/*.tfvars
