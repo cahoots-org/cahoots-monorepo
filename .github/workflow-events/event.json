@@ -1,7 +1,0 @@
-{
-  "inputs": {
-    "debug_enabled": "true",
-    "test_only": "false",
-    "build_only": "false"
-  }
-}

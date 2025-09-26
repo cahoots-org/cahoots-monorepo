@@ -1,3 +1,0 @@
-mistralai==0.0.12
-aioredis>=2.0.0
-prometheus-client>=0.17.0 

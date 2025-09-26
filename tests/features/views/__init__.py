@@ -1,3 +1,0 @@
-"""
-View classes for tests
-"""
