@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "benchmark_time": "2025-09-23T16:12:21.249000+00:00",
+    "total_runs": 3,
+    "benchmark_version": "1.0.0"
+  },
+  "overall_stats": {
+    "total_runs": 3,
+    "successful_runs": 3,
+    "success_rate": 1.0,
+    "avg_time": 0.006136973698933919,
+    "avg_llm_calls": 1.0,
+    "overall_cache_hit_rate": 0.0,
+    "avg_tasks_per_run": 1.0,
+    "llm_efficiency": 0.0
+  },
+  "stats_by_type": {
+    "simple": {
+      "count": 3,
+      "avg_time": 0.006136973698933919,
+      "avg_llm_calls": 1.0,
+      "avg_tasks_created": 1.0,
+      "cache_hit_rate": 0.0,
+      "success_rate": 1.0,
+      "min_time": 0.005680561065673828,
+      "max_time": 0.006744384765625
+    },
+    "medium": {
+      "count": 0
+    },
+    "complex": {
+      "count": 0
+    }
+  },
+  "detailed_results": [
+    {
+      "task_description": "Create a hello world function in Python",
+      "task_type": "simple",
+      "total_time": 0.00598597526550293,
+      "llm_calls": 1,
+      "cache_hits": 0,
+      "cache_misses": 1,
+      "tasks_created": 1,
+      "atomic_tasks": 0,
+      "max_depth": 0,
+      "success": true,
+      "error_message": null,
+      "timestamp": "2025-09-23T16:12:20.308164+00:00"
+    },
+    {
+      "task_description": "Write a function to calculate factorial",
+      "task_type": "simple",
+      "total_time": 0.005680561065673828,
+      "llm_calls": 1,
+      "cache_hits": 0,
+      "cache_misses": 1,
+      "tasks_created": 1,
+      "atomic_tasks": 0,
+      "max_depth": 0,
+      "success": true,
+      "error_message": null,
+      "timestamp": "2025-09-23T16:12:20.414401+00:00"
+    },
+    {
+      "task_description": "Implement a basic calculator function",
+      "task_type": "simple",
+      "total_time": 0.006744384765625,
+      "llm_calls": 1,
+      "cache_hits": 0,
+      "cache_misses": 1,
+      "tasks_created": 1,
+      "atomic_tasks": 0,
+      "max_depth": 0,
+      "success": true,
+      "error_message": null,
+      "timestamp": "2025-09-23T16:12:20.520255+00:00"
+    }
+  ]
+}

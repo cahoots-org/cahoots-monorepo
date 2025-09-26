@@ -1,0 +1,15 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://cahoots.cc/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
+
+# Disallow admin and API paths
+Disallow: /api/
+Disallow: /admin/
+Disallow: /oauth/
+Disallow: /oauth-callback 

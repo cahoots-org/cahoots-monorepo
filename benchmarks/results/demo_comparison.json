@@ -1,0 +1,77 @@
+{
+  "summary": {
+    "targets_met": "3/4",
+    "overall_success": true,
+    "recommendation": "GOOD: Most targets achieved. Minor optimizations recommended before deployment."
+  },
+  "llm_efficiency": {
+    "simple": {
+      "current_avg_calls": 1.0,
+      "baseline_avg_calls": 3.5,
+      "reduction_percentage": 0.7142857142857143,
+      "meets_target": true
+    },
+    "overall": {
+      "current_avg_calls": 1.0,
+      "baseline_avg_calls": 8.833333333333334,
+      "reduction_percentage": 0.8867924528301887,
+      "meets_target": true
+    }
+  },
+  "speed_improvement": {
+    "simple": {
+      "current_avg_time": 0.006061474482218425,
+      "baseline_avg_time": 2.5,
+      "improvement_percentage": 0.9975754102071127,
+      "meets_target": true
+    },
+    "overall": {
+      "current_avg_time": 0.006061474482218425,
+      "baseline_avg_time": 6.833333333333333,
+      "improvement_percentage": 0.9991129549538217,
+      "meets_target": true
+    }
+  },
+  "cache_effectiveness": {
+    "simple": {
+      "current_hit_rate": 0.0,
+      "baseline_hit_rate": 0.1,
+      "improvement": -0.1,
+      "meets_target": false
+    },
+    "overall": {
+      "current_hit_rate": 0.0,
+      "target_hit_rate": 0.35,
+      "meets_target": false
+    }
+  },
+  "quality_metrics": {
+    "success_rate": 1.0,
+    "target_success_rate": 0.95,
+    "meets_target": true,
+    "avg_tasks_per_run": 1.0
+  },
+  "targets": {
+    "llm_call_reduction": 0.55,
+    "speed_improvement": 0.5,
+    "cache_hit_rate": 0.35,
+    "success_rate": 0.95
+  },
+  "baseline": {
+    "simple": {
+      "avg_llm_calls": 3.5,
+      "avg_time": 2.5,
+      "cache_hit_rate": 0.1
+    },
+    "medium": {
+      "avg_llm_calls": 8.0,
+      "avg_time": 6.0,
+      "cache_hit_rate": 0.15
+    },
+    "complex": {
+      "avg_llm_calls": 15.0,
+      "avg_time": 12.0,
+      "cache_hit_rate": 0.2
+    }
+  }
+}
