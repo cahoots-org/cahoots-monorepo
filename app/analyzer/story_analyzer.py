@@ -1,6 +1,6 @@
 """User Story analyzer for generating and managing user stories within epics."""
 
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
 import uuid
 from datetime import datetime, timezone
 
@@ -19,6 +19,37 @@ class StoryAnalyzer:
         """
         self.llm = llm_client
         self.story_counter = 0
+
+    async def generate_all_stories_with_deduplication(
+        self,
+        epics: List[Epic],
+        root_description: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Tuple[Dict[str, StoryGeneration], List[str]]:
+        """Generate stories for all epics, then deduplicate across epics.
+
+        Two-pass approach:
+        1. Generate all stories for all epics
+        2. Remove duplicates and empty epics
+
+        Args:
+            epics: All epics to generate stories for
+            root_description: The root task description
+            context: Optional context
+
+        Returns:
+            Tuple of (stories by epic_id, list of removed epic IDs)
+        """
+        # Pass 1: Generate all stories
+        all_stories = {}
+        for epic in epics:
+            story_gen = await self.generate_initial_stories(epic, root_description, context)
+            all_stories[epic.id] = story_gen
+
+        # Pass 2: Deduplicate and remove empty epics
+        deduped_stories, removed_epics = await self._deduplicate_across_epics(all_stories, epics)
+
+        return deduped_stories, removed_epics
 
     async def generate_initial_stories(
         self,
@@ -51,6 +82,8 @@ Guidelines:
 - Combine related functionality into single stories when appropriate
 - Focus on stories that directly implement the epic's main purpose
 - Ensure each story is independently valuable and testable
+- Avoid creating stories that overlap or duplicate functionality
+- Do not create separate stories for implementation methods
 
 For each story, provide:
 - actor: The user role (be specific to the domain)
@@ -387,7 +420,12 @@ Good user stories are:
 - Small: Can be completed in a sprint
 - Testable: Has clear acceptance criteria
 
-Focus on user-facing functionality and business value."""
+Focus on user-facing functionality and business value.
+
+CRITICAL: User stories describe WHAT the user wants, not HOW it's implemented:
+- Focus on the outcome, not the method
+- Avoid mentioning specific technologies or implementation details
+- Input methods, storage systems, and technical architecture are task-level details"""
 
         if context:
             domain = context.get("domain", "")
@@ -399,3 +437,227 @@ Focus on user-facing functionality and business value."""
                 base_prompt += f"\n\nUser Types: {', '.join(user_types)}"
 
         return base_prompt
+
+    async def _deduplicate_across_epics(
+        self,
+        all_stories: Dict[str, StoryGeneration],
+        epics: List[Epic]
+    ) -> Tuple[Dict[str, StoryGeneration], List[str]]:
+        """Deduplicate stories across all epics and remove empty epics.
+
+        Args:
+            all_stories: Dictionary of epic_id -> StoryGeneration
+            epics: List of all epics
+
+        Returns:
+            Tuple of (deduplicated stories, list of removed epic IDs)
+        """
+        # Build a flat list of all stories with their epic IDs
+        story_map = {}  # story_id -> (epic_id, story)
+        for epic_id, story_gen in all_stories.items():
+            for story in story_gen.stories:
+                story_map[story.id] = (epic_id, story)
+
+        # Find duplicate groups
+        duplicate_groups = self._find_duplicate_groups(
+            [story for _, story in story_map.values()]
+        )
+
+        # Track which stories to keep
+        stories_to_remove = set()
+
+        for dup_group in duplicate_groups:
+            # Keep the best story from each duplicate group
+            best_story_id = self._select_best_story(
+                dup_group,
+                {sid: story for sid, (_, story) in story_map.items()}
+            )
+
+            # Mark others for removal
+            for story_id in dup_group:
+                if story_id != best_story_id:
+                    stories_to_remove.add(story_id)
+
+        # Rebuild story lists without duplicates
+        deduped_stories = {}
+        removed_epics = []
+
+        for epic in epics:
+            epic_stories = []
+
+            if epic.id in all_stories:
+                for story in all_stories[epic.id].stories:
+                    if story.id not in stories_to_remove:
+                        epic_stories.append(story)
+
+            # If epic has no stories after deduplication, mark for removal
+            if not epic_stories:
+                removed_epics.append(epic.id)
+            else:
+                deduped_stories[epic.id] = StoryGeneration(
+                    stories=epic_stories,
+                    generation_context="deduplicated",
+                    reasoning=f"Deduplicated from {len(all_stories[epic.id].stories)} to {len(epic_stories)} stories"
+                )
+
+        return deduped_stories, removed_epics
+
+    def _find_duplicate_groups(self, stories: List[UserStory]) -> List[Set[str]]:
+        """Find groups of duplicate stories.
+
+        Args:
+            stories: List of all stories to check
+
+        Returns:
+            List of sets containing story IDs that are duplicates
+        """
+        duplicate_groups = []
+        processed = set()
+
+        for i, story1 in enumerate(stories):
+            if story1.id in processed:
+                continue
+
+            # Find all stories that are duplicates of story1
+            dup_group = {story1.id}
+
+            for story2 in stories[i+1:]:
+                if story2.id not in processed:
+                    if self._are_stories_duplicate(story1, story2):
+                        dup_group.add(story2.id)
+
+            # Only add groups with actual duplicates
+            if len(dup_group) > 1:
+                duplicate_groups.append(dup_group)
+                processed.update(dup_group)
+
+        return duplicate_groups
+
+    def _are_stories_duplicate(self, story1: UserStory, story2: UserStory) -> bool:
+        """Check if two stories are duplicates.
+
+        Stories are considered duplicates if they have:
+        - Same actor AND
+        - Similar semantic meaning (checking key concepts)
+
+        Args:
+            story1: First story
+            story2: Second story
+
+        Returns:
+            True if stories are duplicates
+        """
+        # Must have same actor
+        if story1.actor.lower() != story2.actor.lower():
+            return False
+
+        # Define semantic equivalents for common actions
+        concept_groups = [
+            {'move', 'control', 'steer', 'navigate', 'position'},
+            {'view', 'see', 'display', 'show', 'visible', 'watch'},
+            {'score', 'points', 'progress'},
+            {'piece', 'pieces', 'block', 'blocks', 'tetromino'},
+            {'start', 'begin', 'new', 'init', 'initialize'},
+            {'left', 'right', 'arrow', 'keys', 'keyboard', 'input'},
+        ]
+
+        # Extract key concepts from actions
+        action1_lower = story1.action.lower()
+        action2_lower = story2.action.lower()
+
+        # Check if actions refer to same concept
+        for concept_group in concept_groups:
+            has_concept1 = any(concept in action1_lower for concept in concept_group)
+            has_concept2 = any(concept in action2_lower for concept in concept_group)
+
+            if has_concept1 and has_concept2:
+                # Both actions refer to same concept group
+                # Check if they're talking about similar functionality
+
+                # Special cases for common duplicates
+                if 'score' in concept_group:
+                    if ('view' in action1_lower or 'see' in action1_lower or 'display' in action1_lower) and \
+                       ('view' in action2_lower or 'see' in action2_lower or 'display' in action2_lower):
+                        return True
+
+                if 'move' in concept_group or 'control' in concept_group:
+                    # Check if both are about piece movement
+                    piece_words = {'piece', 'pieces', 'block', 'blocks', 'tetromino'}
+                    if any(w in action1_lower for w in piece_words) and \
+                       any(w in action2_lower for w in piece_words):
+                        return True
+
+        # More general similarity check
+        # Normalize and tokenize
+        stop_words = {'to', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'for',
+                     'with', 'my', 'using', 'have', 'be', 'as', 'so', 'that', 'can'}
+
+        action1_words = set(action1_lower.split()) - stop_words
+        action2_words = set(action2_lower.split()) - stop_words
+
+        # Check if core functionality overlaps
+        key_overlap = action1_words & action2_words
+        if len(key_overlap) >= 2:  # At least 2 key words in common
+            return True
+
+        # Check acceptance criteria for functional overlap
+        ac1_text = " ".join(story1.acceptance_criteria).lower()
+        ac2_text = " ".join(story2.acceptance_criteria).lower()
+
+        if ac1_text and ac2_text:
+            # Look for same functional requirements
+            ac1_words = set(ac1_text.split()) - stop_words
+            ac2_words = set(ac2_text.split()) - stop_words
+
+            ac_overlap = ac1_words & ac2_words
+            # High overlap in acceptance criteria suggests same functionality
+            if len(ac_overlap) >= 3:
+                return True
+
+        return False
+
+    def _select_best_story(
+        self,
+        duplicate_group: Set[str],
+        stories_map: Dict[str, UserStory]
+    ) -> str:
+        """Select the best story from a group of duplicates.
+
+        Selection criteria (in order):
+        1. More detailed acceptance criteria
+        2. Higher priority (must_have > should_have > could_have)
+        3. More complete description (longer action + benefit)
+
+        Args:
+            duplicate_group: Set of duplicate story IDs
+            stories_map: Map of story_id -> UserStory
+
+        Returns:
+            ID of the best story to keep
+        """
+        stories = [stories_map[sid] for sid in duplicate_group if sid in stories_map]
+
+        if not stories:
+            return next(iter(duplicate_group))
+
+        def score_story(s: UserStory) -> int:
+            score = 0
+
+            # Acceptance criteria count (more is better)
+            score += len(s.acceptance_criteria) * 100
+
+            # Priority score
+            priority_scores = {
+                StoryPriority.MUST_HAVE: 50,
+                StoryPriority.SHOULD_HAVE: 30,
+                StoryPriority.COULD_HAVE: 10
+            }
+            score += priority_scores.get(s.priority, 0)
+
+            # Description completeness
+            score += len(s.action.split()) + len(s.benefit.split())
+
+            return score
+
+        best_story = max(stories, key=score_story)
+        return best_story.id

@@ -3,6 +3,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import uuid
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -15,6 +16,7 @@ from app.api.dependencies import get_task_storage, get_task_processor
 from app.storage import TaskStorage
 from app.processor import TaskProcessor
 from app.websocket.events import task_event_emitter
+from app.services.github_metadata import GitHubMetadataService
 # from app.auth.dependencies import get_current_user  # TODO: Re-enable auth
 
 
@@ -58,8 +60,37 @@ async def create_task(
     try:
         # Build context from request
         context = {}
+
+        # Handle tech preferences and GitHub repo
         if request.tech_preferences:
-            context["tech_stack"] = request.tech_preferences.model_dump()
+            tech_prefs = request.tech_preferences.model_dump()
+            context["tech_stack"] = tech_prefs
+
+            # Check for GitHub repo URL in tech_preferences
+            if github_repo_url := tech_prefs.get("github_repo"):
+                # Quick metadata fetch (fast)
+                github_service = GitHubMetadataService()
+                repo_summary = await github_service.fetch_repository_summary(github_repo_url)
+
+                if not repo_summary.get("error"):
+                    # Add basic metadata immediately
+                    repo_context = github_service.format_summary_for_llm(repo_summary)
+                    context["repository_context"] = repo_context
+                    context["repository_metadata"] = repo_summary
+
+                    # Mark that deeper analysis is pending
+                    repo_info = github_service.extract_repo_info(github_repo_url)
+                    if repo_info:
+                        owner, repo = repo_info
+                        context["repository_analysis_pending"] = {
+                            "owner": owner,
+                            "repo": repo,
+                            "status": "pending"
+                        }
+                        print(f"Repository {owner}/{repo} marked for background analysis")
+                else:
+                    print(f"Failed to fetch GitHub repo: {repo_summary.get('error')}")
+
         if request.repository:
             context["repository"] = request.repository.model_dump()
 

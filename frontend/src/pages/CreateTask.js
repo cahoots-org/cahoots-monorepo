@@ -366,7 +366,7 @@ const CreateTask = () => {
           lineHeight: 1.6,
         }}>
           <strong>How it works:</strong> Our AI will automatically analyze your task and break it down into manageable subtasks. 
-          The system intelligently determines the optimal depth and structure based on the complexity of your project.
+          The system intelligently determines the structure based on the complexity of your project.
         </Text>
       </div>
     </div>

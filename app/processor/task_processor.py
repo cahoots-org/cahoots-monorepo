@@ -172,6 +172,53 @@ class TaskProcessor:
         """
         print(f"[TaskProcessor] Starting async processing for task {root_task.id}")
         try:
+            # Check if repository analysis is pending
+            if context and context.get("repository_analysis_pending"):
+                repo_info = context["repository_analysis_pending"]
+                owner = repo_info["owner"]
+                repo = repo_info["repo"]
+
+                print(f"[TaskProcessor] Starting repository analysis for {owner}/{repo}")
+
+                # Download and analyze repository in background
+                try:
+                    import os
+                    from app.services.github_zip_analyzer import GitHubZipAnalyzer
+
+                    analyzer = GitHubZipAnalyzer(github_token=os.getenv("GITHUB_TOKEN"))
+                    analysis = await analyzer.analyze_repository(owner, repo)
+
+                    if not analysis.get("error"):
+                        # Add analysis to context
+                        architectural_context = analyzer.format_analysis_for_llm(analysis)
+
+                        # Merge with existing context
+                        if context.get("repository_context"):
+                            context["repository_context"] = f"{context['repository_context']}\n\n{architectural_context}"
+                        else:
+                            context["repository_context"] = architectural_context
+
+                        context["repository_architecture"] = architectural_context
+                        context["repository_analysis"] = analysis
+
+                        # Update the pending status
+                        context["repository_analysis_pending"]["status"] = "completed"
+
+                        # Update root task context
+                        root_task.context = context
+                        await self.storage.save_task(root_task)
+
+                        print(f"[TaskProcessor] Repository analysis completed for {owner}/{repo}")
+                    else:
+                        print(f"[TaskProcessor] Repository analysis failed: {analysis.get('error')}")
+                        context["repository_analysis_pending"]["status"] = "failed"
+                        context["repository_analysis_pending"]["error"] = analysis.get('error')
+
+                except Exception as e:
+                    print(f"[TaskProcessor] Repository analysis exception: {e}")
+                    context["repository_analysis_pending"]["status"] = "failed"
+                    context["repository_analysis_pending"]["error"] = str(e)
+
             # Initialize task tree with the existing root task
             tree = TaskTree(root=root_task)
             tree.add_task(root_task)

@@ -378,11 +378,14 @@ Result: is_atomic: true, complexity_score: 0.2
         if context:
             tech_stack = context.get("tech_stack", "")
             best_practices = context.get("best_practices", "")
+            repository_context = context.get("repository_context", "")
 
             if tech_stack:
                 base_prompt += f"\n\nTech Stack: {tech_stack}"
             if best_practices:
                 base_prompt += f"\n\nBest Practices: {best_practices}"
+            if repository_context:
+                base_prompt += f"\n\n{repository_context}"
 
         return base_prompt
 
@@ -473,11 +476,14 @@ Jump straight to implementation tasks."""
         if context:
             tech_stack = context.get("tech_stack", "")
             best_practices = context.get("best_practices", "")
+            repository_context = context.get("repository_context", "")
 
             if tech_stack:
                 base_prompt += f"\n\nTech Stack: {tech_stack}"
             if best_practices:
                 base_prompt += f"\n\nBest Practices: {best_practices}"
+            if repository_context:
+                base_prompt += f"\n\n{repository_context}"
 
         return base_prompt
 

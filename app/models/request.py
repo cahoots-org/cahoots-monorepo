@@ -8,6 +8,7 @@ class TechPreferences(BaseModel):
     """Tech stack preferences for task decomposition."""
     application_type: Optional[str] = Field(None, description="Type of application (e.g., 'web-application', 'mobile-application')")
     tech_stack_id: Optional[str] = Field(None, description="Specific tech stack ID (e.g., 'react-node-postgres')")
+    github_repo: Optional[str] = Field(None, description="GitHub repository URL for context")
     additional_requirements: Optional[str] = Field(None, description="Additional technical requirements")
     preferred_languages: Optional[list[str]] = Field(default_factory=list, description="Preferred programming languages")
     frameworks: Optional[Dict[str, str]] = Field(default_factory=dict, description="Preferred frameworks by category")

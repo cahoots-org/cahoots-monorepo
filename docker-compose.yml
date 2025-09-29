@@ -24,6 +24,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-cahoots-dev-secret-key-please-change-in-production}
       - LLM_PROVIDER=${LLM_PROVIDER:-mock}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
@@ -77,6 +78,7 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=1
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-cahoots-dev-secret-key-please-change-in-production}
       - ENV=development
       - LLM_PROVIDER=mock
     volumes:

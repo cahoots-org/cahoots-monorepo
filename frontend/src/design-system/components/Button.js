@@ -29,22 +29,25 @@ const Button = React.forwardRef(({
     flexDirection: 'row',
   };
 
-  // Size variants
+  // Size variants - Better vertical proportions
   const sizes = {
     sm: {
-      padding: `${tokens.spacing[2]} ${tokens.spacing[3]}`,
-      fontSize: tokens.typography.fontSize.sm[0],
-      lineHeight: tokens.typography.fontSize.sm[1].lineHeight,
+      padding: '8px 14px',
+      fontSize: '13px',
+      lineHeight: '1.3',
+      gap: '6px',
     },
     md: {
-      padding: `${tokens.spacing[3]} ${tokens.spacing[4]}`,
-      fontSize: tokens.typography.fontSize.base[0],
-      lineHeight: tokens.typography.fontSize.base[1].lineHeight,
+      padding: '10px 18px',
+      fontSize: '14px',
+      lineHeight: '1.4',
+      gap: '8px',
     },
     lg: {
-      padding: `${tokens.spacing[4]} ${tokens.spacing[6]}`,
-      fontSize: tokens.typography.fontSize.lg[0],
-      lineHeight: tokens.typography.fontSize.lg[1].lineHeight,
+      padding: '12px 24px',
+      fontSize: '16px',
+      lineHeight: '1.5',
+      gap: '10px',
     },
   };
 
@@ -131,22 +134,30 @@ const Button = React.forwardRef(({
       {loading && (
         <>
           <LoadingSpinner />
-          <span style={{ marginLeft: tokens.spacing[2] }}>{children}</span>
+          <span>{children}</span>
         </>
       )}
       {!loading && Icon && iconPosition === 'left' && (
         <>
-          <Icon size={size === 'sm' ? 16 : size === 'lg' ? 20 : 18} style={{ flexShrink: 0 }} />
-          {children && <span style={{ marginLeft: tokens.spacing[2] }}>{children}</span>}
+          <Icon style={{
+            width: size === 'sm' ? '14px' : size === 'lg' ? '18px' : '16px',
+            height: size === 'sm' ? '14px' : size === 'lg' ? '18px' : '16px',
+            flexShrink: 0,
+            marginRight: children ? (size === 'sm' ? '6px' : size === 'lg' ? '10px' : '8px') : 0
+          }} />
+          {children && <span>{children}</span>}
         </>
       )}
       {!loading && !Icon && children}
       {!loading && Icon && iconPosition === 'right' && (
         <>
-          {children}
-          <span style={{ marginLeft: tokens.spacing[2] }}>
-            <Icon size={size === 'sm' ? 16 : size === 'lg' ? 20 : 18} />
-          </span>
+          {children && <span>{children}</span>}
+          <Icon style={{
+            width: size === 'sm' ? '14px' : size === 'lg' ? '18px' : '16px',
+            height: size === 'sm' ? '14px' : size === 'lg' ? '18px' : '16px',
+            flexShrink: 0,
+            marginLeft: children ? (size === 'sm' ? '6px' : size === 'lg' ? '10px' : '8px') : 0
+          }} />
         </>
       )}
     </button>

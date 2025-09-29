@@ -44,11 +44,11 @@ class EpicAnalyzer:
 Task: "{root_description}"
 
 Guidelines:
-- Propose the minimum number of epics needed to fully cover the user's request
-- Each epic should represent a cohesive, significant area of functionality
-- Group related functionality together into logical epics
-- Focus on what the task explicitly asks for
-- Ensure complete coverage while maintaining simplicity
+- Apply the independence test: Could these be built as separate products?
+- Group features that share data, users, or workflows into the same epic
+- Only split if teams could work completely independently
+- Focus on what was explicitly requested
+- Keep scope appropriate to the complexity of the request
 
 For each epic, provide:
 - title: Short, descriptive title
@@ -322,24 +322,27 @@ Return as JSON."""
         Returns:
             System prompt string
         """
-        base_prompt = """You are a product manager breaking down a software system into epics.
+        base_prompt = """You are a product manager breaking down a request into epics.
 Epics are major functional areas that group related user stories.
 
-Think comprehensively about what a complete system needs:
-- Core business functionality
-- User management and authentication
-- Data management and persistence
-- Integration points
-- Administrative features
-- Monitoring and analytics
-- Security and compliance
-- Performance and scalability features
+CORE PRINCIPLE: Only create multiple epics if they could be built and deployed completely independently.
+If features depend on each other or are part of the same user workflow, they belong in the same epic.
 
-Each epic should:
-- Represent a cohesive functional area
-- Have clear boundaries (no overlap with other epics)
-- Be large enough to contain multiple user stories
-- Be specific enough to guide implementation"""
+Ask yourself: "Could these be separate products that different teams could build without coordination?"
+- If NO → Use one epic
+- If YES → Consider multiple epics
+
+Examples:
+- Simple features/tools → 1 epic (everything works together)
+- Medium apps (blog, chat) → 1-2 epics (core + optional admin)
+- Large platforms (e-commerce, social) → 3-6 epics (truly independent modules)
+- Explicitly separate systems → Multiple epics (customer app AND admin portal)
+
+Never create separate epics for:
+- Technical layers (UI, backend, database)
+- Implementation details (input handling, data storage)
+- Features that share data or users
+- Different views of the same system"""
 
         if context:
             tech_stack = context.get("tech_stack", "")

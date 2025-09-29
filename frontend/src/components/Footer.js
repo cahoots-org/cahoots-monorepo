@@ -165,9 +165,6 @@ const Footer = () => {
           <p className="text-sm mb-4 md:mb-0" style={{ color: 'var(--color-text-muted)' }}>
             © 2025 Cahoots LLC. All rights reserved.
           </p>
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            Built with ❤️ for software development teams
-          </p>
         </div>
       </div>
     </footer>

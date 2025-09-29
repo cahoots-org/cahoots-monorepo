@@ -5,7 +5,7 @@ from typing import Dict, List, Optional
 import httpx
 from pydantic import BaseModel, HttpUrl
 
-from app.api.dependencies import get_current_user
+from app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/api/github", tags=["github"])
 
@@ -31,6 +31,59 @@ class GitHubContextRequest(BaseModel):
     """Request model for getting context for a task."""
     task_id: str
     task_description: str
+
+
+@router.get("/status", response_model=Dict)
+async def get_github_status(current_user: Dict = Depends(get_current_user)):
+    """Check if GitHub is connected and get user info."""
+    import os
+
+    # Check for user-specific token in Redis first
+    token = None
+    user_id = current_user.get("id", "dev-user")
+
+    try:
+        from app.storage import get_redis_client
+        redis = await get_redis_client()
+        token = await redis.get(f"github_token:{user_id}")
+        if token:
+            token = token.decode() if isinstance(token, bytes) else token
+    except Exception:
+        pass
+
+    # Fall back to environment variable (dev mode)
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+
+    if token:
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://api.github.com/user",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Accept": "application/vnd.github+json"
+                    },
+                    timeout=5.0
+                )
+
+                if response.status_code == 200:
+                    user_data = response.json()
+                    return {
+                        "connected": True,
+                        "user": {
+                            "login": user_data.get("login"),
+                            "username": user_data.get("name", user_data.get("login")),
+                            "public_repos": user_data.get("public_repos")
+                        }
+                    }
+        except Exception as e:
+            print(f"Error checking GitHub status: {e}")
+
+    return {
+        "connected": False,
+        "user": None
+    }
 
 
 @router.post("/connect", response_model=Dict)
@@ -91,45 +144,26 @@ async def connect_github_account(
             github_user = github_response.json()
             print(f"GitHub API validated successfully. User: {github_user.get('login')}")
             
-        # Store the token in our service (use a separate client)
+        # Store the token per user in Redis (in production, use proper database)
+        import os
         try:
-            async with httpx.AsyncClient() as service_client:
-                print(f"Attempting to store token in GitHub integration service...")
-                print(f"User ID: {current_user['id']}, GitHub user: {github_user['login']}")
-                
-                service_response = await service_client.post(
-                    "http://github-integration:8095/connect",
-                    json={
-                        "user_id": current_user.id,
-                        "access_token": request.access_token,
-                        "github_username": github_user["login"]
-                    },
-                    timeout=30.0
-                )
-                
-                print(f"GitHub integration service response: {service_response.status_code}")
-                
-                if service_response.status_code != 200:
-                    error_detail = service_response.json().get("detail", "Failed to store token")
-                    print(f"GitHub integration service error: {error_detail}")
-                    raise HTTPException(
-                        status_code=service_response.status_code,
-                        detail=error_detail
-                    )
-        except httpx.RequestError as e:
-            print(f"Failed to connect to GitHub integration service: {e}")
-            # If the service is unavailable, we can still return success
-            # since the token is valid - we just won't store it
-            print("WARNING: GitHub integration service unavailable, token not stored")
+            from app.storage import get_redis_client
+            redis = await get_redis_client()
+            # Store with user-specific key
+            user_id = current_user.get("id", "dev-user")
+            await redis.set(f"github_token:{user_id}", request.access_token, ex=86400)  # 24 hour expiry
+
+            # For backwards compatibility, also set environment variable (dev only)
+            if os.environ.get("ENVIRONMENT", "development") == "development":
+                os.environ["GITHUB_TOKEN"] = request.access_token
         except Exception as e:
-            print(f"Unexpected error storing token: {type(e).__name__}: {e}")
-            import traceback
-            traceback.print_exc()
-            # Still try to return success if the token is valid
-            print("WARNING: Could not store token due to unexpected error")
-        
+            print(f"Could not store token: {e}")
+            # Fall back to environment variable
+            os.environ["GITHUB_TOKEN"] = request.access_token
+
         return {
-            "username": github_user["login"],
+            "success": True,
+            "username": github_user.get("login"),
             "user": github_user,
             "message": "GitHub account connected successfully"
         }
@@ -303,16 +337,23 @@ async def disconnect_github_account(
     current_user: Dict = Depends(get_current_user)
 ):
     """Disconnect the user's GitHub account."""
+    import os
+
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(
-                f"http://github-integration:8095/disconnect/{current_user.id}",
-                timeout=10.0
-            )
-            
-            return {"message": "GitHub account disconnected successfully"}
-            
-    except httpx.RequestError as e:
+        # Remove user-specific token from Redis
+        from app.storage import get_redis_client
+        redis = await get_redis_client()
+        user_id = current_user.get("id", "dev-user")
+        await redis.delete(f"github_token:{user_id}")
+
+        # In dev mode, also clear environment variable
+        if os.environ.get("ENVIRONMENT", "development") == "development":
+            if "GITHUB_TOKEN" in os.environ:
+                del os.environ["GITHUB_TOKEN"]
+
+        return {"message": "GitHub account disconnected successfully"}
+
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"GitHub integration service unavailable: {str(e)}"

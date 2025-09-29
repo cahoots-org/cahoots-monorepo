@@ -313,6 +313,10 @@ Complexity scoring guidelines:
             if tech_stack:
                 base_prompt += f"\n\nUser's Tech Stack: {tech_stack}"
 
+            # Add repository context if available
+            if repository_context := context.get("repository_context"):
+                base_prompt += f"\n\n{repository_context}"
+
         return base_prompt
 
     def _build_decomposition_prompt_with_context(
@@ -364,5 +368,9 @@ IMPORTANT: Base your decomposition on the research results, not on generic patte
                 base_prompt += "\n- How similar projects are structured"
             if "technical_docs" in gathered_context:
                 base_prompt += "\n- Technical documentation and best practices"
+
+        # Add repository context if available
+        if context and (repository_context := context.get("repository_context")):
+            base_prompt += f"\n\n{repository_context}"
 
         return base_prompt
