@@ -58,14 +58,14 @@ class OAuthConfig:
     @staticmethod
     def get_frontend_url() -> str:
         if OAuthConfig.get_environment() == "production":
-            return "https://cahoots-frontend.fly.dev"
+            return "https://cahoots.cc"
         return "http://localhost:3000"
 
     @staticmethod
     def get_redirect_uri() -> str:
         """Get the OAuth callback URL that Google will redirect to"""
         if OAuthConfig.get_environment() == "production":
-            return "https://cahoots-frontend.fly.dev/oauth/google/callback"
+            return "https://cahoots.cc/oauth/google/callback"
         return "http://localhost:3000/oauth/google/callback"
 
     @staticmethod

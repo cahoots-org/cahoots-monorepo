@@ -47,11 +47,7 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')" || exit 1
-
-# Expose port
+# Expose port (Railway will use $PORT env var)
 EXPOSE 8000
 
 # Command to run the application

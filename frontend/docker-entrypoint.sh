@@ -2,7 +2,7 @@
 
 # Set defaults for environment variables
 PORT="${PORT:-80}"
-BACKEND_URL="${BACKEND_URL:-http://localhost:8000}"
+BACKEND_URL="${BACKEND_URL:-https://api.cahoots.cc}"
 API_URL="${API_URL:-/api}"
 WS_URL="${WS_URL:-/ws}"
 ENVIRONMENT="${ENVIRONMENT:-development}"
