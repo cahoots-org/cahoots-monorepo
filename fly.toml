@@ -1,5 +1,5 @@
 # Fly.io deployment configuration for API + Redis
-app = "cahoots-api"
+app = "cahoots"
 primary_region = "iad"
 kill_signal = "SIGINT"
 kill_timeout = 5
@@ -9,7 +9,6 @@ kill_timeout = 5
 
 [env]
   PORT = "8000"
-  REDIS_URL = "redis://default:${FLY_REDIS_PASSWORD}@cahoots-redis.internal:6379"
   ENVIRONMENT = "production"
 
 [experimental]

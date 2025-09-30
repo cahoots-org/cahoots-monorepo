@@ -3,8 +3,10 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.api.routes import task_router, health_router, websocket_router, epics_router, auth_router
 from app.api.dependencies import cleanup_dependencies
@@ -47,6 +49,49 @@ def create_app() -> FastAPI:
             "http://localhost:8000"
         ]
 
+    # Custom middleware to ensure CORS headers on ALL responses including 500 errors
+    class CORSErrorMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            try:
+                response = await call_next(request)
+            except Exception as e:
+                # Handle any unhandled exception
+                import traceback
+                origin = request.headers.get("origin")
+                headers = {}
+                if origin in allowed_origins:
+                    headers = {
+                        "Access-Control-Allow-Origin": origin,
+                        "Access-Control-Allow-Credentials": "true",
+                        "Access-Control-Allow-Methods": "*",
+                        "Access-Control-Allow-Headers": "*",
+                    }
+                # Log the actual error
+                print(f"[MIDDLEWARE] Unhandled exception: {type(e).__name__}: {str(e)}")
+                print(f"[MIDDLEWARE] Traceback: {traceback.format_exc()}")
+
+                # Return a 500 error with CORS headers AND the actual error for debugging
+                return JSONResponse(
+                    status_code=500,
+                    content={"detail": f"{type(e).__name__}: {str(e)}"},
+                    headers=headers
+                )
+
+            # For successful responses, ensure CORS headers are present
+            origin = request.headers.get("origin")
+            if origin in allowed_origins and response.status_code >= 400:
+                # Add CORS headers if not already present on error responses
+                response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Access-Control-Allow-Credentials"] = "true"
+                response.headers["Access-Control-Allow-Methods"] = "*"
+                response.headers["Access-Control-Allow-Headers"] = "*"
+
+            return response
+
+    # Add custom middleware first
+    app.add_middleware(CORSErrorMiddleware)
+
+    # Then add standard CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -54,6 +99,28 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Add custom exception handler to include CORS headers in error responses
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        """Custom exception handler that includes CORS headers."""
+        origin = request.headers.get("origin")
+        headers = {}
+
+        # Add CORS headers if origin is allowed
+        if origin in allowed_origins:
+            headers = {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+                "Access-Control-Allow-Methods": "*",
+                "Access-Control-Allow-Headers": "*",
+            }
+
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=headers
+        )
 
     # Include routers
     app.include_router(health_router)

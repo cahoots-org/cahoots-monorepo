@@ -30,12 +30,26 @@ async def get_redis_client() -> RedisClient:
     """Get Redis client instance."""
     global _redis_client
     if _redis_client is None:
-        _redis_client = RedisClient(
-            host=os.getenv("REDIS_HOST", "localhost"),
-            port=int(os.getenv("REDIS_PORT", 6379)),
-            db=int(os.getenv("REDIS_DB", 0)),
-            password=os.getenv("REDIS_PASSWORD")
-        )
+        # Try to use REDIS_URL first (for Fly.io)
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            # Parse the Redis URL
+            from urllib.parse import urlparse
+            parsed = urlparse(redis_url)
+            _redis_client = RedisClient(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 6379,
+                db=int(parsed.path.lstrip('/') or 0) if parsed.path and parsed.path != '/' else 0,
+                password=parsed.password
+            )
+        else:
+            # Fall back to individual settings
+            _redis_client = RedisClient(
+                host=os.getenv("REDIS_HOST", "localhost"),
+                port=int(os.getenv("REDIS_PORT", 6379)),
+                db=int(os.getenv("REDIS_DB", 0)),
+                password=os.getenv("REDIS_PASSWORD")
+            )
         await _redis_client.connect()
     return _redis_client
 
