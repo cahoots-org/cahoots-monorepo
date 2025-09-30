@@ -130,32 +130,24 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       setLoading(true);
 
-      // Create form data for OAuth2 token endpoint
-      const formData = new FormData();
-      formData.append('username', email);
-      formData.append('password', password);
-
-      // Pass config to set proper Content-Type for FormData
-      const tokenResponse = await apiClient.post('/auth/token', formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+      // Call login endpoint with JSON
+      const tokenResponse = await apiClient.post('/auth/login', {
+        email,
+        password
       });
-      const { access_token, refresh_token } = tokenResponse;
+      const { access_token, token_type, user } = tokenResponse;
 
-      // Store both tokens
+      // Store token
       apiClient.setAuthToken(access_token);
-      localStorage.setItem('refresh_token', refresh_token);
-      
+
       // Clear logout flag on successful login
       localStorage.removeItem('has_logged_out');
 
-      // Fetch user data
-      const userData = await apiClient.get('/auth/me');
-      setUser(userData);
-      localStorage.setItem('user', JSON.stringify(userData));
+      // User data is already included in response
+      setUser(user);
+      localStorage.setItem('user', JSON.stringify(user));
 
-      return userData;
+      return user;
     } catch (err) {
       const message = err.userMessage || 'Login failed. Please check your credentials.';
       setError(message);
