@@ -12,12 +12,11 @@ from app.models import (
     Task, TaskStatus, TaskRequest, TaskResponse,
     TaskTreeNode, TaskTreeResponse, TaskListResponse, TaskStats
 )
-from app.api.dependencies import get_task_storage, get_task_processor
+from app.api.dependencies import get_task_storage, get_task_processor, get_current_user
 from app.storage import TaskStorage
 from app.processor import TaskProcessor
 from app.websocket.events import task_event_emitter
 from app.services.github_metadata import GitHubMetadataService
-# from app.auth.dependencies import get_current_user  # TODO: Re-enable auth
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -47,7 +46,8 @@ async def create_task(
     request: TaskRequest,
     background_tasks: BackgroundTasks,
     processor: TaskProcessor = Depends(get_task_processor),
-    storage: TaskStorage = Depends(get_task_storage)
+    storage: TaskStorage = Depends(get_task_storage),
+    current_user: dict = Depends(get_current_user)
 ) -> dict:
     """Create a task and start processing it asynchronously.
 
@@ -98,13 +98,14 @@ async def create_task(
         if request.requires_approval:
             context["require_human_review"] = True
 
-        # Create the root task immediately
+        # Create the root task immediately with current user
+        user_id = current_user["id"]
         root_task = Task(
             id=str(uuid.uuid4()),
             description=request.description,
             status=TaskStatus.PROCESSING,
             depth=0,
-            user_id=request.user_id,
+            user_id=user_id,
             context=context
         )
 
@@ -112,7 +113,7 @@ async def create_task(
         await storage.save_task(root_task)
 
         # Emit task created event immediately
-        await task_event_emitter.emit_task_created(root_task, request.user_id)
+        await task_event_emitter.emit_task_created(root_task, user_id)
 
         # Process the task decomposition in the background
         background_tasks.add_task(
@@ -199,26 +200,26 @@ async def list_tasks(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     status: Optional[TaskStatus] = None,
-    user_id: Optional[str] = None,
     top_level_only: bool = Query(False),
-    storage: TaskStorage = Depends(get_task_storage)
+    storage: TaskStorage = Depends(get_task_storage),
+    current_user: dict = Depends(get_current_user)
 ) -> TaskListResponse:
     """List tasks with optional filtering."""
+    # Always filter by current user
+    user_id = current_user["id"]
+
     # Get tasks based on filters
     if status:
-        tasks = await storage.get_tasks_by_status(status)
-    elif user_id:
+        # Get all tasks by status, then filter by user
+        all_status_tasks = await storage.get_tasks_by_status(status)
+        tasks = [t for t in all_status_tasks if t.user_id == user_id]
+    else:
+        # Get user's tasks
         tasks = await storage.get_user_tasks(
             user_id,
-            limit=page_size,
-            offset=(page - 1) * page_size
+            limit=page_size * 10,  # Get more for filtering
+            offset=0
         )
-    else:
-        # Get all tasks (simplified for now, should paginate)
-        all_keys = await storage.redis.keys(f"{storage.task_prefix}*")
-        task_ids = [key.replace(storage.task_prefix, "") for key in all_keys]
-        all_tasks = await storage.get_tasks(task_ids)
-        tasks = [t for t in all_tasks if t is not None]
 
     # Filter for root-level tasks only if requested
     if top_level_only:
