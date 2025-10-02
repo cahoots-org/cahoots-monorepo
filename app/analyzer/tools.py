@@ -15,7 +15,8 @@ class AnalyzerTools:
 
     def __init__(self):
         """Initialize tools."""
-        self.ddgs = DDGS() if DDGS else None
+        # Temporarily disable web search due to DuckDuckGo library issues
+        self.ddgs = None  # DDGS() if DDGS else None
 
     async def web_search(self, query: str, max_results: int = 5) -> List[Dict[str, str]]:
         """Search the web for context about a task.
@@ -28,19 +29,26 @@ class AnalyzerTools:
             List of search results with title, body, and href
         """
         if not self.ddgs:
+            print("DuckDuckGo search not available - skipping web search")
             return []
 
         try:
+            # Create a new DDGS instance for each search to avoid state issues
+            def search_wrapper():
+                try:
+                    with DDGS() as ddgs_instance:
+                        return list(ddgs_instance.text(query, max_results=max_results))
+                except Exception as inner_e:
+                    print(f"Inner search error: {inner_e}")
+                    return []
+
             # Run synchronous search in thread pool
             loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                None,
-                lambda: list(self.ddgs.text(query, max_results=max_results))
-            )
+            results = await loop.run_in_executor(None, search_wrapper)
 
             # Format results
             formatted = []
-            for r in results:
+            for r in results or []:
                 formatted.append({
                     "title": r.get("title", ""),
                     "snippet": r.get("body", ""),
@@ -51,6 +59,8 @@ class AnalyzerTools:
 
         except Exception as e:
             print(f"Web search error: {e}")
+            # Disable web search for this instance if it keeps failing
+            self.ddgs = None
             return []
 
     async def search_technical_docs(self, technology: str) -> List[Dict[str, str]]:
