@@ -12,11 +12,14 @@ from app.models import (
     Task, TaskStatus, TaskRequest, TaskResponse,
     TaskTreeNode, TaskTreeResponse, TaskListResponse, TaskStats
 )
-from app.api.dependencies import get_task_storage, get_task_processor, get_current_user
+from app.api.dependencies import get_task_storage, get_task_processor, get_current_user, get_llm_client
 from app.storage import TaskStorage
 from app.processor import TaskProcessor
 from app.websocket.events import task_event_emitter
-from app.services.github_metadata import GitHubMetadataService
+from app.services.tech_stack_enrichment import TechStackEnrichmentService
+from app.analyzer.llm_client import LLMClient
+# TEMP: Commented out due to import issue
+# from app.services.github_metadata import GitHubMetadataService
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -73,7 +76,8 @@ async def create_task(
     background_tasks: BackgroundTasks,
     processor: TaskProcessor = Depends(get_task_processor),
     storage: TaskStorage = Depends(get_task_storage),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(get_current_user),
+    llm_client: LLMClient = Depends(get_llm_client)
 ) -> dict:
     """Create a task and start processing it asynchronously.
 
@@ -86,20 +90,24 @@ async def create_task(
     try:
         # Build context from request
         context = {}
+        github_metadata = None
 
         # Handle tech preferences and GitHub repo
+        user_tech_prefs = None
         if request.tech_preferences:
-            tech_prefs = request.tech_preferences.model_dump()
-            context["tech_stack"] = tech_prefs
+            user_tech_prefs = request.tech_preferences.model_dump()
 
             # Check for GitHub repo URL in tech_preferences
-            if github_repo_url := tech_prefs.get("github_repo"):
+            if github_repo_url := user_tech_prefs.get("github_repo"):
                 # Quick metadata fetch (fast)
-                github_service = GitHubMetadataService()
-                repo_summary = await github_service.fetch_repository_summary(github_repo_url)
+                # TEMP: Commented out due to import issue
+                # github_service = GitHubMetadataService()
+                # repo_summary = await github_service.fetch_repository_summary(github_repo_url)
+                repo_summary = None
 
-                if not repo_summary.get("error"):
+                if repo_summary and not repo_summary.get("error"):
                     # Add basic metadata immediately
+                    github_metadata = repo_summary
                     repo_context = github_service.format_summary_for_llm(repo_summary)
                     context["repository_context"] = repo_context
                     context["repository_metadata"] = repo_summary
@@ -114,11 +122,20 @@ async def create_task(
                             "status": "pending"
                         }
                         print(f"Repository {owner}/{repo} marked for background analysis")
-                else:
+                elif repo_summary:
                     print(f"Failed to fetch GitHub repo: {repo_summary.get('error')}")
 
         if request.repository:
             context["repository"] = request.repository.model_dump()
+
+        # Enrich tech stack (from GitHub, LLM inference, or user preferences)
+        tech_enrichment = TechStackEnrichmentService(llm_client)
+        enriched_tech_stack = await tech_enrichment.enrich_tech_stack(
+            task_description=request.description,
+            user_preferences=user_tech_prefs,
+            github_metadata=github_metadata
+        )
+        context["tech_stack"] = enriched_tech_stack
 
         # Add human review flag if requested
         if request.requires_approval:
@@ -241,23 +258,10 @@ async def list_tasks(
     if status:
         # Get all tasks by status
         all_status_tasks = await storage.get_tasks_by_status(status)
-        # Filter by user unless it's dev_user (for backwards compatibility)
-        if is_dev_user:
-            tasks = all_status_tasks
-        else:
-            tasks = [t for t in all_status_tasks if t.user_id == user_id]
+        tasks = [t for t in all_status_tasks if t.user_id == user_id]
     else:
-        if is_dev_user:
-            # For dev user, get all tasks by searching with empty query
-            # This is a workaround since dev user should see all tasks
-            tasks = await storage.search_tasks("", limit=1000)
-        else:
-            # Get user's tasks
-            tasks = await storage.get_user_tasks(
-                user_id,
-                limit=page_size * 10,  # Get more for filtering
-                offset=0
-            )
+        # Get ALL user's tasks (no limit when filtering)
+        tasks = await storage.get_user_tasks(user_id)
 
     # Filter for root-level tasks only if requested
     if top_level_only:
@@ -483,3 +487,51 @@ async def delete_subtask(
         await storage.delete_task(task_id)
 
     return {"message": f"Deleted subtask {task_id}"}
+
+
+@router.post("/{task_id}/generate-project")
+async def generate_project(
+    task_id: str,
+    storage: TaskStorage = Depends(get_task_storage)
+):
+    """Generate project boilerplate and return as ZIP file."""
+    import io
+    import zipfile
+    from fastapi.responses import StreamingResponse
+
+    # Import the generation function
+    from app.api.routes.generate import generate_project_structure, _sanitize_name
+
+    # Get task from storage
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Get tech stack from context
+    tech_stack = task.context.get("tech_stack", {})
+    if not tech_stack:
+        raise HTTPException(
+            status_code=400,
+            detail="No tech stack information available for this task"
+        )
+
+    # Generate project structure
+    files = generate_project_structure(tech_stack, task.description)
+
+    # Create ZIP file in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for file_path, content in files.items():
+            zip_file.writestr(file_path, content)
+
+    # Prepare response
+    zip_buffer.seek(0)
+    filename = f"{_sanitize_name(task.description)}-project.zip"
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )

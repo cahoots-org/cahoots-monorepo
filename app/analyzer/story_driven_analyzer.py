@@ -110,7 +110,7 @@ Important:
             system_prompt,
             user_prompt,
             temperature=0.3,
-            max_tokens=20000  # Batch processing all stories needs more tokens
+            max_tokens=128000  # Cerebras supports very high token limits
         )
 
         result = {}
@@ -122,13 +122,24 @@ Important:
             if not tasks_data:
                 raise ValueError(f"No tasks generated for story {story.id}")
 
-            # Add story and epic IDs to each task
-            for task_data in tasks_data:
-                task_data["story_id"] = story.id
-                task_data["epic_id"] = epic.id
+            # Add story and epic IDs to each task, converting strings to dicts if needed
+            normalized_tasks = []
+            for i, task_data in enumerate(tasks_data):
+                # Handle case where LLM returned string instead of dict
+                if isinstance(task_data, str):
+                    task_dict = {"description": task_data, "is_atomic": True}
+                elif isinstance(task_data, dict):
+                    task_dict = task_data
+                else:
+                    # Skip invalid entries
+                    continue
+
+                task_dict["story_id"] = story.id
+                task_dict["epic_id"] = epic.id
+                normalized_tasks.append(task_dict)
 
             result[story.id] = TaskDecomposition(
-                subtasks=tasks_data,
+                subtasks=normalized_tasks,
                 decomposition_reasoning=f"Batch processed with {len(stories)} stories",
                 story_id=story.id,
                 epic_id=epic.id

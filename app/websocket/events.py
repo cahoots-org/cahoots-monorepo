@@ -20,6 +20,9 @@ class TaskEventType(str, Enum):
     DECOMPOSITION_COMPLETED = "decomposition.completed"
     DECOMPOSITION_ERROR = "decomposition.error"
     PROCESSING_UPDATE = "task.processing_update"
+    EVENT_MODELING_STARTED = "event_modeling.started"
+    EVENT_MODELING_PROGRESS = "event_modeling.progress"
+    EVENT_MODELING_COMPLETED = "event_modeling.completed"
 
 
 class TaskEventEmitter:
@@ -260,6 +263,68 @@ class TaskEventEmitter:
 
         # Execute all emissions concurrently
         await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def emit_event_modeling_started(
+        self,
+        task: Task,
+        user_id: Optional[str] = None
+    ):
+        """Emit event modeling started event."""
+        await self._emit_task_event(
+            TaskEventType.EVENT_MODELING_STARTED,
+            task,
+            user_id,
+            {"message": "Starting event modeling analysis..."}
+        )
+
+    async def emit_event_modeling_progress(
+        self,
+        task: Task,
+        user_id: Optional[str] = None,
+        events_count: int = 0,
+        commands_count: int = 0,
+        read_models_count: int = 0,
+        interactions_count: int = 0,
+        automations_count: int = 0
+    ):
+        """Emit event modeling progress event."""
+        await self._emit_task_event(
+            TaskEventType.EVENT_MODELING_PROGRESS,
+            task,
+            user_id,
+            {
+                "events": events_count,
+                "commands": commands_count,
+                "read_models": read_models_count,
+                "user_interactions": interactions_count,
+                "automations": automations_count
+            }
+        )
+
+    async def emit_event_modeling_completed(
+        self,
+        task: Task,
+        user_id: Optional[str] = None,
+        events_count: int = 0,
+        commands_count: int = 0,
+        read_models_count: int = 0,
+        interactions_count: int = 0,
+        automations_count: int = 0
+    ):
+        """Emit event modeling completed event."""
+        await self._emit_task_event(
+            TaskEventType.EVENT_MODELING_COMPLETED,
+            task,
+            user_id,
+            {
+                "events": events_count,
+                "commands": commands_count,
+                "read_models": read_models_count,
+                "user_interactions": interactions_count,
+                "automations": automations_count,
+                "message": f"Event modeling complete: {events_count} events, {commands_count} commands, {read_models_count} read models"
+            }
+        )
 
 
 # Global task event emitter instance
