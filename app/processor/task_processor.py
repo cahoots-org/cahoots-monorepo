@@ -9,6 +9,10 @@ from app.models import Task, TaskStatus, TaskAnalysis, TaskDecomposition, TaskTr
 from app.storage import TaskStorage
 from app.analyzer import UnifiedAnalyzer, EpicAnalyzer, StoryAnalyzer, CoverageValidator
 from app.analyzer.agentic_analyzer import AgenticAnalyzer
+from app.analyzer.unified_domain_analyzer import UnifiedDomainAnalyzer
+from app.analyzer.state_machine_detector import StateMachineDetector
+from app.analyzer.cqrs_detector import CQRSDetector
+from app.analyzer.schema_generator import SchemaGenerator
 from app.websocket.events import task_event_emitter
 from .processing_rules import ProcessingRules, ProcessingConfig
 from .epic_story_processor import EpicStoryProcessor
@@ -147,6 +151,69 @@ class TaskProcessor:
             epic_stats = self.epic_story_processor.get_processing_statistics()
             self.stats.update(epic_stats)
 
+        # Event modeling analysis - Single LLM call
+        print(f"[TaskProcessor] Performing event modeling analysis")
+        try:
+            # Emit event modeling started
+            await task_event_emitter.emit_event_modeling_started(root_task, user_id)
+
+            unified_analyzer = UnifiedDomainAnalyzer(self.analyzer.llm)
+            analysis = await unified_analyzer.analyze_domain(list(tree.tasks.values()))
+
+            # Ensure metadata is a dict
+            if not isinstance(root_task.metadata, dict):
+                root_task.metadata = {}
+
+            # Store events
+            if analysis["events"]:
+                root_task.metadata["extracted_events"] = [
+                    {
+                        "name": e.name,
+                        "event_type": e.event_type.value,
+                        "description": e.description,
+                        "actor": e.actor,
+                        "affected_entity": e.affected_entity,
+                        "triggers": e.triggers,
+                        "source_task_id": e.source_task_id,
+                        "metadata": e.metadata
+                    }
+                    for e in analysis["events"]
+                ]
+                print(f"[TaskProcessor] Extracted {len(analysis['events'])} events")
+
+            # Store commands, read models, user interactions, automations
+            if analysis["commands"]:
+                root_task.metadata["commands"] = analysis["commands"]
+                print(f"[TaskProcessor] Identified {len(analysis['commands'])} commands")
+
+            if analysis["read_models"]:
+                root_task.metadata["read_models"] = analysis["read_models"]
+                print(f"[TaskProcessor] Identified {len(analysis['read_models'])} read models")
+
+            if analysis["user_interactions"]:
+                root_task.metadata["user_interactions"] = analysis["user_interactions"]
+                print(f"[TaskProcessor] Identified {len(analysis['user_interactions'])} user interactions")
+
+            if analysis["automations"]:
+                root_task.metadata["automations"] = analysis["automations"]
+                print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
+
+            await self.storage.save_task(root_task)
+
+            # Emit event modeling completed with counts
+            await task_event_emitter.emit_event_modeling_completed(
+                root_task,
+                user_id,
+                events_count=len(analysis.get("events", [])),
+                commands_count=len(analysis.get("commands", [])),
+                read_models_count=len(analysis.get("read_models", [])),
+                interactions_count=len(analysis.get("user_interactions", [])),
+                automations_count=len(analysis.get("automations", []))
+            )
+        except Exception as e:
+            print(f"[TaskProcessor] Error in event modeling analysis: {e}")
+            # Don't fail the entire processing if event extraction fails
+
         # Save complete tree
         await self.storage.save_task_tree(tree)
 
@@ -262,6 +329,57 @@ class TaskProcessor:
                 epic_stats = self.epic_story_processor.get_processing_statistics()
                 self.stats.update(epic_stats)
 
+            # Event modeling analysis - Single LLM call
+            print(f"[TaskProcessor] Performing event modeling analysis")
+            try:
+                unified_analyzer = UnifiedDomainAnalyzer(self.analyzer.llm)
+                analysis = await unified_analyzer.analyze_domain(list(tree.tasks.values()))
+
+                # Ensure metadata is a dict
+                if not isinstance(root_task.metadata, dict):
+                    root_task.metadata = {}
+
+                # Store events
+                if analysis["events"]:
+                    root_task.metadata["extracted_events"] = [
+                        {
+                            "name": e.name,
+                            "event_type": e.event_type.value,
+                            "description": e.description,
+                            "actor": e.actor,
+                            "affected_entity": e.affected_entity,
+                            "triggers": e.triggers,
+                            "source_task_id": e.source_task_id,
+                            "metadata": e.metadata
+                        }
+                        for e in analysis["events"]
+                    ]
+                    print(f"[TaskProcessor] Extracted {len(analysis['events'])} events")
+
+                # Store commands, read models, user interactions, automations
+                if analysis["commands"]:
+                    root_task.metadata["commands"] = analysis["commands"]
+                    print(f"[TaskProcessor] Identified {len(analysis['commands'])} commands")
+
+                if analysis["read_models"]:
+                    root_task.metadata["read_models"] = analysis["read_models"]
+                    print(f"[TaskProcessor] Identified {len(analysis['read_models'])} read models")
+
+                if analysis["user_interactions"]:
+                    root_task.metadata["user_interactions"] = analysis["user_interactions"]
+                    print(f"[TaskProcessor] Identified {len(analysis['user_interactions'])} user interactions")
+
+                if analysis["automations"]:
+                    root_task.metadata["automations"] = analysis["automations"]
+                    print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
+
+                await self.storage.save_task(root_task)
+            except Exception as e:
+                print(f"[TaskProcessor] Error in event modeling analysis: {e}")
+                import traceback
+                traceback.print_exc()
+                # Don't fail the entire processing if event extraction fails
+
             # Save complete tree
             await self.storage.save_task_tree(tree)
 
@@ -271,7 +389,10 @@ class TaskProcessor:
             self.stats["tasks_processed"] += len(tree.tasks)
 
         except Exception as e:
+            import traceback
             print(f"Error in async task processing: {e}")
+            print(f"Full traceback:")
+            traceback.print_exc()
             # Update task status to error
             root_task.status = TaskStatus.ERROR
             await self.storage.save_task(root_task)

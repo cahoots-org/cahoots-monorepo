@@ -1,3 +1,7 @@
+You are a senior software engineer with 20 years of experience in software development. You are also an expert in microservices architecture and have experience with Kubernetes and Docker.
+
+- Use docker compose with no dash to run the application
+
 # Cahoots Project Manager - Monolith Refactor
 
 ## Executive Summary

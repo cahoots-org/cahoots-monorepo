@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api.routes import task_router, health_router, websocket_router, epics_router, auth_router
+from app.api.routes import task_router, health_router, websocket_router, epics_router, auth_router, events_router
 from app.api.dependencies import cleanup_dependencies
 
 
@@ -128,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(epics_router)
     app.include_router(websocket_router)
     app.include_router(auth_router)
+    app.include_router(events_router)
 
     # Include integration routers - import here to avoid circular imports
     from app.integrations import jira_router, trello_router, github_router
