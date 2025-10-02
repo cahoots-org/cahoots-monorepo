@@ -329,10 +329,13 @@ class TaskStorage:
         status_key = self._status_index_key(task.status)
         await self.redis.sadd(status_key, task.id)
 
-        # User index
+        # User index - only add if not already present to avoid duplicates
         if task.user_id:
             user_key = self._user_tasks_key(task.user_id)
-            await self.redis.lpush(user_key, task.id)
+            # Check if task is already in the user's list
+            existing_tasks = await self.redis.lrange(user_key, 0, -1)
+            if task.id not in existing_tasks:
+                await self.redis.lpush(user_key, task.id)
 
         # Parent-child relationship
         if task.parent_id:
