@@ -25,19 +25,45 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 @router.get("/stats")
 async def get_task_stats(
     top_level_only: bool = Query(True),
-    storage: TaskStorage = Depends(get_task_storage)
+    storage: TaskStorage = Depends(get_task_storage),
+    current_user: dict = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    """Get task statistics."""
-    # Get task counts by status
-    task_counts = await storage.count_tasks_by_status()
+    """Get task statistics for the current user."""
+    user_id = current_user["id"]
+    is_dev_user = user_id == "dev_user"
+
+    # Get all tasks for the user
+    if is_dev_user:
+        # For dev user, get all tasks
+        all_tasks = await storage.search_tasks("", limit=10000)
+    else:
+        # Get user's tasks
+        all_tasks = await storage.get_user_tasks(user_id, limit=10000, offset=0)
+
+    # Filter for root-level tasks only if requested
+    if top_level_only:
+        all_tasks = [t for t in all_tasks if t.parent_id is None]
+
+    # Count by status
+    counts = {
+        TaskStatus.COMPLETED: 0,
+        TaskStatus.IN_PROGRESS: 0,
+        TaskStatus.SUBMITTED: 0,
+        TaskStatus.REJECTED: 0,
+        TaskStatus.AWAITING_APPROVAL: 0
+    }
+
+    for task in all_tasks:
+        if task.status in counts:
+            counts[task.status] += 1
 
     return {
-        "total": sum(task_counts.values()),
-        "completed": task_counts.get(TaskStatus.COMPLETED, 0),
-        "in_progress": task_counts.get(TaskStatus.IN_PROGRESS, 0),
-        "pending": task_counts.get(TaskStatus.SUBMITTED, 0),
-        "rejected": task_counts.get(TaskStatus.REJECTED, 0),
-        "awaiting_approval": task_counts.get(TaskStatus.AWAITING_APPROVAL, 0)
+        "total": len(all_tasks),
+        "completed": counts[TaskStatus.COMPLETED],
+        "in_progress": counts[TaskStatus.IN_PROGRESS],
+        "pending": counts[TaskStatus.SUBMITTED],
+        "rejected": counts[TaskStatus.REJECTED],
+        "awaiting_approval": counts[TaskStatus.AWAITING_APPROVAL]
     }
 
 
@@ -205,21 +231,33 @@ async def list_tasks(
     current_user: dict = Depends(get_current_user)
 ) -> TaskListResponse:
     """List tasks with optional filtering."""
-    # Always filter by current user
+    # Get current user
     user_id = current_user["id"]
+
+    # In development mode with dev_user, show all tasks (for backwards compatibility)
+    is_dev_user = user_id == "dev_user"
 
     # Get tasks based on filters
     if status:
-        # Get all tasks by status, then filter by user
+        # Get all tasks by status
         all_status_tasks = await storage.get_tasks_by_status(status)
-        tasks = [t for t in all_status_tasks if t.user_id == user_id]
+        # Filter by user unless it's dev_user (for backwards compatibility)
+        if is_dev_user:
+            tasks = all_status_tasks
+        else:
+            tasks = [t for t in all_status_tasks if t.user_id == user_id]
     else:
-        # Get user's tasks
-        tasks = await storage.get_user_tasks(
-            user_id,
-            limit=page_size * 10,  # Get more for filtering
-            offset=0
-        )
+        if is_dev_user:
+            # For dev user, get all tasks by searching with empty query
+            # This is a workaround since dev user should see all tasks
+            tasks = await storage.search_tasks("", limit=1000)
+        else:
+            # Get user's tasks
+            tasks = await storage.get_user_tasks(
+                user_id,
+                limit=page_size * 10,  # Get more for filtering
+                offset=0
+            )
 
     # Filter for root-level tasks only if requested
     if top_level_only:

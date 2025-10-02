@@ -15,7 +15,7 @@ from app.processor import TaskProcessor
 from app.processor.processing_rules import ProcessingConfig
 
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # Global instances (initialized once)
@@ -198,9 +198,9 @@ async def get_current_user(
 
     try:
         # Import here to avoid circular dependency
-        from app.api.routes.auth import get_jwt_secret_key
+        from app.api.routes.auth import OAuthConfig
 
-        payload = jwt.decode(token, get_jwt_secret_key(), algorithms=["HS256"])
+        payload = jwt.decode(token, OAuthConfig.get_jwt_secret(), algorithms=["HS256"])
         user_id = payload.get("sub")
 
         if not user_id:

@@ -25,6 +25,8 @@ services:
       - REDIS_PORT=6379
       - REDIS_DB=0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-cahoots-dev-secret-key-please-change-in-production}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - LLM_PROVIDER=${LLM_PROVIDER:-mock}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - GROQ_API_KEY=${GROQ_API_KEY:-}
@@ -53,7 +55,7 @@ services:
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.frontend
     ports:
       - "3000:80"
     environment:
@@ -73,7 +75,7 @@ services:
   api-dev:
     build:
       context: .
-      target: builder
+      target: builderhttps://cahoots-api-production.up.railway.app
     ports:
       - "8001:8000"
     environment:
@@ -95,7 +97,3 @@ services:
 
 volumes:
   redis_data:
-
-networks:
-  default:
-    name: cahoots-network
