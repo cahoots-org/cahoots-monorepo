@@ -26,6 +26,7 @@ class TaskResponse(BaseModel):
     is_rejected: bool = Field(False, description="Whether the task has been rejected")
     rejected_at: Optional[datetime] = Field(None, description="Timestamp when the task was rejected")
     error_message: Optional[str] = Field(None, description="Error message if task processing failed")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Task metadata including extracted events")
 
     @classmethod
     def from_task(cls, task: Task) -> "TaskResponse":
@@ -49,6 +50,7 @@ class TaskResponse(BaseModel):
             is_rejected=task.is_rejected,
             rejected_at=task.rejected_at,
             error_message=task.error_message,
+            metadata=task.metadata or {},
         )
 
 

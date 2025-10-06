@@ -181,16 +181,20 @@ async def get_current_user(
     redis_client: RedisClient = Depends(get_redis_client)
 ) -> dict:
     """Get current authenticated user from JWT token."""
+    print(f"[AUTH DEBUG] Credentials: {credentials}")
     if not credentials:
+        print("[AUTH DEBUG] No credentials provided")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization required"
         )
 
     token = credentials.credentials
+    print(f"[AUTH DEBUG] Token: {token[:20]}...")
 
     # Check for development bypass token
     if token == "dev-bypass-token" and os.getenv("ENVIRONMENT", "development") == "development":
+        print("[AUTH DEBUG] Using dev bypass token")
         return {
             "id": "dev_user",
             "email": "dev@localhost"

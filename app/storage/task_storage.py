@@ -170,7 +170,7 @@ class TaskStorage:
     async def get_user_tasks(
         self,
         user_id: str,
-        limit: int = 100,
+        limit: Optional[int] = None,
         offset: int = 0
     ) -> List[Task]:
         """Get tasks for a specific user.
@@ -184,7 +184,12 @@ class TaskStorage:
             List of tasks
         """
         key = self._user_tasks_key(user_id)
-        task_ids = await self.redis.lrange(key, offset, offset + limit - 1)
+
+        # If no limit, get all tasks
+        if limit is None:
+            task_ids = await self.redis.lrange(key, 0, -1)
+        else:
+            task_ids = await self.redis.lrange(key, offset, offset + limit - 1)
 
         if not task_ids:
             return []
@@ -332,9 +337,9 @@ class TaskStorage:
         # User index - only add if not already present to avoid duplicates
         if task.user_id:
             user_key = self._user_tasks_key(task.user_id)
-            # Check if task is already in the user's list
-            existing_tasks = await self.redis.lrange(user_key, 0, -1)
-            if task.id not in existing_tasks:
+            # Only add if not already in the list (prevent duplicates)
+            existing_ids = await self.redis.lrange(user_key, 0, -1)
+            if task.id not in existing_ids:
                 await self.redis.lpush(user_key, task.id)
 
         # Parent-child relationship

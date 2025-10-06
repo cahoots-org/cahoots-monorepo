@@ -34,6 +34,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import ExportModal from '../components/ExportModal';
+import GenerateProjectModal from '../components/GenerateProjectModal';
 import TreeVisualization from '../components/TreeVisualization';
 import DecompositionStatus from '../components/DecompositionStatus';
 import { formatDetailedDate } from '../utils/dateUtils';
@@ -193,6 +194,32 @@ const TaskBoard = () => {
 
   const completionRate = taskStats.total > 0 ? Math.round((taskStats.completed / taskStats.total) * 100) : 0;
 
+  // Build tabs with counts
+  const hasEventModel = task?.metadata?.extracted_events?.length > 0 ||
+                        task?.metadata?.commands?.length > 0 ||
+                        task?.metadata?.read_models?.length > 0;
+
+  const tabsWithCounts = task ? [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'subtasks', label: `Subtasks${task.children_count ? ` (${task.children_count})` : ''}`, icon: '🎯' },
+    { id: 'stories', label: `User Stories${task.context?.user_stories?.length ? ` (${task.context.user_stories.length})` : ''}`, icon: '📝' },
+    ...(hasEventModel ? [{ id: 'event-model', label: 'Event Model', icon: '🔄' }] : []),
+    { id: 'events', label: `Events${task.metadata?.extracted_events?.length ? ` (${task.metadata.extracted_events.length})` : ''}`, icon: '⚡' },
+    { id: 'commands', label: `Commands${task.metadata?.commands?.length ? ` (${task.metadata.commands.length})` : ''}`, icon: '⚙️' },
+    { id: 'read-models', label: `Read Models${task.metadata?.read_models?.length ? ` (${task.metadata.read_models.length})` : ''}`, icon: '📖' },
+    { id: 'interactions', label: `User Interactions${task.metadata?.user_interactions?.length ? ` (${task.metadata.user_interactions.length})` : ''}`, icon: '👆' },
+    { id: 'automations', label: `Automations${task.metadata?.automations?.length ? ` (${task.metadata.automations.length})` : ''}`, icon: '🤖' },
+  ] : [
+    { id: 'overview', label: 'Overview', icon: '📊' },
+    { id: 'subtasks', label: 'Subtasks', icon: '🎯' },
+    { id: 'stories', label: 'User Stories', icon: '📝' },
+    { id: 'events', label: 'Events', icon: '⚡' },
+    { id: 'commands', label: 'Commands', icon: '⚙️' },
+    { id: 'read-models', label: 'Read Models', icon: '📖' },
+    { id: 'interactions', label: 'User Interactions', icon: '👆' },
+    { id: 'automations', label: 'Automations', icon: '🤖' },
+  ];
+
   // Event handlers
   const handleStatusChange = (taskId, newStatus) => {
     updateTaskMutation.mutate({ taskId, updates: { status: newStatus } });
@@ -285,6 +312,15 @@ const TaskBoard = () => {
           </div>
 
           <div style={styles.taskActions}>
+            <GenerateProjectModal
+              task={task}
+              onShowToast={(message, type) => {
+                if (type === 'success') showSuccess(message);
+                else if (type === 'error') showError(message);
+                else showSuccess(message); // info type
+              }}
+            />
+
             <ExportModal
               task={task}
               localTaskTree={taskTree}
@@ -331,7 +367,12 @@ const TaskBoard = () => {
           <CardContent style={styles.progressSection}>
             <div style={styles.progressHeader}>
               <Heading3>Progress Overview</Heading3>
-              <Text style={styles.progressPercentage}>{completionRate}% Complete</Text>
+              <div style={styles.progressStats}>
+                <Text style={styles.progressPercentage}>{completionRate}% Complete</Text>
+                <Text style={styles.progressDetail}>
+                  {taskStats.completed} of {taskStats.total} subtasks completed
+                </Text>
+              </div>
             </div>
 
             <Progress
@@ -342,24 +383,22 @@ const TaskBoard = () => {
 
             <div style={styles.statsGrid}>
               <StatCard
-                label="Total"
-                value={taskStats.total}
-                color={tokens.colors.neutral[600]}
-              />
-              <StatCard
                 label="Completed"
                 value={taskStats.completed}
                 color={tokens.colors.success[500]}
+                icon="✅"
               />
               <StatCard
                 label="In Progress"
                 value={taskStats.inProgress}
                 color={tokens.colors.info[500]}
+                icon="🔄"
               />
               <StatCard
                 label="Pending"
                 value={taskStats.pending}
                 color={tokens.colors.warning[500]}
+                icon="⏳"
               />
             </div>
           </CardContent>
@@ -377,13 +416,25 @@ const TaskBoard = () => {
       <div style={styles.mainContent}>
         {/* Navigation Tabs */}
         <nav style={styles.tabNav}>
-          {tabs.map(tab => (
+          {tabsWithCounts.map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
                 ...styles.tab,
                 ...(activeTab === tab.id ? styles.activeTab : {}),
+              }}
+              onMouseEnter={(e) => {
+                if (activeTab !== tab.id) {
+                  e.currentTarget.style.backgroundColor = 'var(--color-surface)';
+                  e.currentTarget.style.color = 'var(--color-text)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (activeTab !== tab.id) {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                  e.currentTarget.style.color = 'var(--color-text-muted)';
+                }
               }}
             >
               <span style={styles.tabIcon}>{tab.icon}</span>
@@ -412,6 +463,30 @@ const TaskBoard = () => {
 
           {activeTab === 'stories' && (
             <StoriesTab task={task} />
+          )}
+
+          {activeTab === 'event-model' && (
+            <EventModelTab task={task} />
+          )}
+
+          {activeTab === 'events' && (
+            <EventsTab task={task} />
+          )}
+
+          {activeTab === 'commands' && (
+            <CommandsTab task={task} />
+          )}
+
+          {activeTab === 'read-models' && (
+            <ReadModelsTab task={task} />
+          )}
+
+          {activeTab === 'interactions' && (
+            <UserInteractionsTab task={task} />
+          )}
+
+          {activeTab === 'automations' && (
+            <AutomationsTab task={task} />
           )}
         </div>
       </div>
@@ -465,54 +540,168 @@ const ConnectionIndicator = ({ connected }) => (
   </div>
 );
 
-const StatCard = ({ label, value, color }) => (
+const StatCard = ({ label, value, color, icon }) => (
   <div style={styles.statCard}>
+    {icon && <span style={styles.statIcon}>{icon}</span>}
     <Text style={{ ...styles.statValue, color }}>{value}</Text>
     <Text style={styles.statLabel}>{label}</Text>
   </div>
 );
 
-const OverviewTab = ({ task, taskTree }) => (
-  <div style={styles.overviewGrid}>
-    <Card>
-      <CardHeader>
-        <Heading3>Task Information</Heading3>
-      </CardHeader>
-      <CardContent style={styles.infoGrid}>
-        <InfoItem label="Status" value={
-          <Badge variant={getStatusVariant(task.status)}>
-            {task.status}
-          </Badge>
-        } />
-        <InfoItem label="Created" value={formatDetailedDate(task.created_at)} />
-        <InfoItem label="Updated" value={formatDetailedDate(task.updated_at)} />
-        <InfoItem label="Subtasks" value={`${task.children_count || 0} tasks`} />
-      </CardContent>
-    </Card>
+const OverviewTab = ({ task, taskTree }) => {
+  // Calculate statistics
+  const epics = task.context?.epics || [];
+  const userStories = task.context?.user_stories || [];
+  const events = task.metadata?.extracted_events || [];
+  const commands = task.metadata?.commands || [];
+  const readModels = task.metadata?.read_models || [];
+  const interactions = task.metadata?.user_interactions || [];
+  const automations = task.metadata?.automations || [];
 
-    {task.context?.tech_stack && (
+  const techStack = task.context?.tech_stack || {};
+  const hasEventModeling = events.length > 0 || commands.length > 0 || readModels.length > 0;
+
+  return (
+    <div style={styles.overviewGrid}>
+      {/* Task Status Card */}
       <Card>
         <CardHeader>
-          <Heading3>Technology Stack</Heading3>
+          <Heading3>📊 Task Status</Heading3>
         </CardHeader>
-        <CardContent>
-          <div style={styles.techStackGrid}>
-            {Object.entries(task.context.tech_stack).map(([key, value]) => (
-              <div key={key} style={styles.techStackItem}>
-                <Text style={styles.techStackLabel}>
-                  {key.charAt(0).toUpperCase() + key.slice(1)}
-                </Text>
-                <Text style={styles.techStackValue}>
-                  {typeof value === 'object' ? JSON.stringify(value, null, 2) : value}
-                </Text>
-              </div>
-            ))}
+        <CardContent style={styles.infoGrid}>
+          <InfoItem
+            label="Status"
+            value={
+              <Badge variant={getStatusVariant(task.status)}>
+                {task.status.replace('_', ' ')}
+              </Badge>
+            }
+          />
+          <InfoItem label="Created" value={formatDetailedDate(task.created_at)} />
+          <InfoItem label="Last Updated" value={formatDetailedDate(task.updated_at)} />
+          <InfoItem label="Depth" value={`Level ${task.depth}`} />
+        </CardContent>
+      </Card>
+
+      {/* Decomposition Statistics */}
+      <Card>
+        <CardHeader>
+          <Heading3>🎯 Task Breakdown</Heading3>
+        </CardHeader>
+        <CardContent style={styles.statsGrid}>
+          <div style={styles.statItem}>
+            <div style={styles.statValue}>{task.children_count || 0}</div>
+            <div style={styles.statLabel}>Total Subtasks</div>
+          </div>
+          <div style={styles.statItem}>
+            <div style={styles.statValue}>{epics.length}</div>
+            <div style={styles.statLabel}>Epics</div>
+          </div>
+          <div style={styles.statItem}>
+            <div style={styles.statValue}>{userStories.length}</div>
+            <div style={styles.statLabel}>User Stories</div>
+          </div>
+          <div style={styles.statItem}>
+            <div style={styles.statValue}>
+              {userStories.reduce((sum, s) => sum + (s.story_points || 0), 0)}
+            </div>
+            <div style={styles.statLabel}>Story Points</div>
           </div>
         </CardContent>
       </Card>
-    )}
-  </div>
-);
+
+      {/* Event Modeling Statistics */}
+      {hasEventModeling && (
+        <Card>
+          <CardHeader>
+            <Heading3>⚡ Event Modeling</Heading3>
+          </CardHeader>
+          <CardContent style={styles.statsGrid}>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{events.length}</div>
+              <div style={styles.statLabel}>Domain Events</div>
+            </div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{commands.length}</div>
+              <div style={styles.statLabel}>Commands</div>
+            </div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{readModels.length}</div>
+              <div style={styles.statLabel}>Read Models</div>
+            </div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{interactions.length}</div>
+              <div style={styles.statLabel}>User Interactions</div>
+            </div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{automations.length}</div>
+              <div style={styles.statLabel}>Automations</div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Technology Stack */}
+      {techStack.application_type && (
+        <Card>
+          <CardHeader>
+            <Heading3>💻 Technology Stack</Heading3>
+          </CardHeader>
+          <CardContent>
+            <div style={styles.techStackGrid}>
+              <InfoItem
+                label="Application Type"
+                value={techStack.application_type || 'Not specified'}
+              />
+
+              {techStack.preferred_languages && techStack.preferred_languages.length > 0 && (
+                <InfoItem
+                  label="Languages"
+                  value={techStack.preferred_languages.join(', ')}
+                />
+              )}
+
+              {techStack.deployment_target && (
+                <InfoItem
+                  label="Deployment"
+                  value={techStack.deployment_target}
+                />
+              )}
+
+              {techStack.frameworks && Object.keys(techStack.frameworks).length > 0 && (
+                <div style={styles.frameworksSection}>
+                  <Text style={styles.techStackLabel}>Frameworks</Text>
+                  {Object.entries(techStack.frameworks).map(([category, frameworks]) => (
+                    frameworks && frameworks.length > 0 && (
+                      <div key={category} style={styles.frameworkCategory}>
+                        <Text style={styles.frameworkCategoryLabel}>
+                          {category.charAt(0).toUpperCase() + category.slice(1)}:
+                        </Text>
+                        <Text style={styles.techStackValue}>
+                          {frameworks.join(', ')}
+                        </Text>
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Task Description */}
+      <Card style={{ gridColumn: '1 / -1' }}>
+        <CardHeader>
+          <Heading3>📝 Description</Heading3>
+        </CardHeader>
+        <CardContent>
+          <Text>{task.description}</Text>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
 
 const SubtasksTab = ({
   taskTree,
@@ -775,6 +964,154 @@ const StoriesTab = ({ task }) => {
   );
 };
 
+const EventsTab = ({ task }) => {
+  const [selectedEvent, setSelectedEvent] = useState(null);
+
+  const eventTypeColors = {
+    user_action: { bg: tokens.colors.primary[50], border: tokens.colors.primary[500], text: tokens.colors.primary[700] },
+    system_event: { bg: tokens.colors.info[50], border: tokens.colors.info[500], text: tokens.colors.info[700] },
+    integration: { bg: tokens.colors.warning[50], border: tokens.colors.warning[500], text: tokens.colors.warning[700] },
+    state_change: { bg: tokens.colors.success[50], border: tokens.colors.success[500], text: tokens.colors.success[700] },
+  };
+
+  const getEventTypeIcon = (type) => {
+    switch (type) {
+      case 'user_action': return '👤';
+      case 'system_event': return '⚙️';
+      case 'integration': return '🔌';
+      case 'state_change': return '🔄';
+      default: return '⚡';
+    }
+  };
+
+  // Get events from task metadata
+  const events = task.metadata?.extracted_events || [];
+  const totalEvents = events.length;
+
+  // Count events by type
+  const eventsByType = {};
+  events.forEach(event => {
+    const type = event.event_type;
+    eventsByType[type] = (eventsByType[type] || 0) + 1;
+  });
+
+  if (totalEvents === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>⚡</span>
+        <h3 style={styles.emptyStateTitle}>No Events Yet</h3>
+        <p style={styles.emptyStateDescription}>
+          Domain events will be automatically extracted when the task decomposition completes.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.eventsContainer}>
+      {/* Header Controls */}
+      <div style={styles.eventsHeader}>
+        <div style={styles.eventsSummary}>
+          <Badge variant="primary">{totalEvents} Total Events</Badge>
+          {Object.entries(eventsByType).map(([type, count]) => (
+            <Badge
+              key={type}
+              variant="secondary"
+              style={{
+                backgroundColor: eventTypeColors[type]?.bg,
+                color: eventTypeColors[type]?.text,
+                borderColor: eventTypeColors[type]?.border,
+              }}
+            >
+              {getEventTypeIcon(type)} {count} {type.replace('_', ' ')}
+            </Badge>
+          ))}
+        </div>
+      </div>
+
+      {/* Events List */}
+      <div style={styles.eventsListContainer}>
+        {events.map((event, idx) => {
+          const isSelected = selectedEvent === idx;
+          const colors = eventTypeColors[event.event_type] || {};
+
+          return (
+            <Card
+              key={idx}
+              style={{
+                ...styles.eventCard,
+                ...(isSelected ? styles.selectedEventCard : {}),
+                borderLeft: `4px solid ${colors.border}`,
+              }}
+              onClick={() => setSelectedEvent(isSelected ? null : idx)}
+            >
+              <CardContent style={styles.eventCardContent}>
+                <div style={styles.eventCardHeader}>
+                  <div style={styles.eventCardLeft}>
+                    <span style={styles.eventIcon}>{getEventTypeIcon(event.event_type)}</span>
+                    <div>
+                      <Heading3 style={{ margin: 0, fontSize: '16px' }}>{event.name}</Heading3>
+                      <Text style={{ fontSize: '14px', color: tokens.colors.neutral[600], marginTop: '4px' }}>
+                        {event.description}
+                      </Text>
+                    </div>
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    size="sm"
+                    style={{
+                      backgroundColor: colors.bg,
+                      color: colors.text,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    {event.event_type.replace('_', ' ')}
+                  </Badge>
+                </div>
+
+                {isSelected && (
+                  <div style={styles.eventDetails}>
+                    {event.actor && (
+                      <div style={styles.eventDetailRow}>
+                        <Text style={styles.eventDetailLabel}>Actor:</Text>
+                        <Badge variant="info" size="sm">{event.actor}</Badge>
+                      </div>
+                    )}
+                    {event.affected_entity && (
+                      <div style={styles.eventDetailRow}>
+                        <Text style={styles.eventDetailLabel}>Affected Entity:</Text>
+                        <Badge variant="success" size="sm">{event.affected_entity}</Badge>
+                      </div>
+                    )}
+                    {event.triggers && event.triggers.length > 0 && (
+                      <div style={styles.eventDetailRow}>
+                        <Text style={styles.eventDetailLabel}>Triggers:</Text>
+                        <div style={styles.triggersContainer}>
+                          {event.triggers.map((trigger, tidx) => (
+                            <Badge key={tidx} variant="secondary" size="sm">→ {trigger}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {event.source_task_id && (
+                      <div style={styles.eventDetailRow}>
+                        <Text style={styles.eventDetailLabel}>Source:</Text>
+                        <Text style={{ fontSize: '12px', fontFamily: 'monospace', color: tokens.colors.neutral[500] }}>
+                          {event.source_task_id}
+                        </Text>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const InfoItem = ({ label, value }) => (
   <div style={styles.infoItem}>
     <Text style={styles.infoLabel}>{label}</Text>
@@ -828,6 +1165,470 @@ const UserStoryCard = ({ story }) => (
   </Card>
 );
 
+// Commands Tab
+const CommandsTab = ({ task }) => {
+  const commands = task.metadata?.commands || [];
+
+  if (commands.length === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>⚙️</span>
+        <h3 style={styles.emptyStateTitle}>No Commands</h3>
+        <p style={styles.emptyStateDescription}>
+          Commands will be automatically extracted from event modeling analysis.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+      <div style={styles.eventsHeader}>
+        <Badge variant="primary">{commands.length} Commands</Badge>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
+        {commands.map((cmd, idx) => (
+          <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.primary[500]}` }}>
+            <CardContent style={{ padding: tokens.spacing[4] }}>
+              <div style={{ marginBottom: tokens.spacing[3] }}>
+                <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[2] }}>{cmd.name}</Heading3>
+                <Text style={{ color: tokens.colors.neutral[600] }}>{cmd.description}</Text>
+              </div>
+
+              {cmd.input_data?.length > 0 && (
+                <div style={{ marginTop: tokens.spacing[3] }}>
+                  <Text style={{ fontSize: '0.9em', fontWeight: 600, marginBottom: tokens.spacing[2] }}>Input Data:</Text>
+                  <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap' }}>
+                    {cmd.input_data.map(input => (
+                      <Badge key={input} variant="secondary" size="sm">{input}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {cmd.triggers_events?.length > 0 && (
+                <div style={{ marginTop: tokens.spacing[3] }}>
+                  <Text style={{ fontSize: '0.9em', fontWeight: 600, marginBottom: tokens.spacing[2] }}>Triggers Events:</Text>
+                  <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap' }}>
+                    {cmd.triggers_events.map(event => (
+                      <Badge key={event} variant="info" size="sm">→ {event}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Read Models Tab
+const ReadModelsTab = ({ task }) => {
+  const readModels = task.metadata?.read_models || [];
+
+  if (readModels.length === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>📖</span>
+        <h3 style={styles.emptyStateTitle}>No Read Models</h3>
+        <p style={styles.emptyStateDescription}>
+          Read models will be automatically extracted from event modeling analysis.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+      <div style={styles.eventsHeader}>
+        <Badge variant="primary">{readModels.length} Read Models</Badge>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
+        {readModels.map((model, idx) => (
+          <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.success[500]}` }}>
+            <CardContent style={{ padding: tokens.spacing[4] }}>
+              <div style={{ marginBottom: tokens.spacing[3] }}>
+                <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[2] }}>{model.name}</Heading3>
+                <Text style={{ color: tokens.colors.neutral[600] }}>{model.description}</Text>
+              </div>
+
+              {model.data_fields?.length > 0 && (
+                <div style={{ marginTop: tokens.spacing[3] }}>
+                  <Text style={{ fontSize: '0.9em', fontWeight: 600, marginBottom: tokens.spacing[2] }}>Data Fields:</Text>
+                  <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap' }}>
+                    {model.data_fields.map(field => (
+                      <Badge key={field} variant="secondary" size="sm">{field}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// User Interactions Tab
+const UserInteractionsTab = ({ task }) => {
+  const interactions = task.metadata?.user_interactions || [];
+
+  if (interactions.length === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>👆</span>
+        <h3 style={styles.emptyStateTitle}>No User Interactions</h3>
+        <p style={styles.emptyStateDescription}>
+          User interactions will be automatically extracted from event modeling analysis.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+      <div style={styles.eventsHeader}>
+        <Badge variant="primary">{interactions.length} User Interactions</Badge>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
+        {interactions.map((interaction, idx) => (
+          <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.info[500]}` }}>
+            <CardContent style={{ padding: tokens.spacing[4] }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ flex: 1 }}>
+                  <Text style={{ fontSize: '1.1em', fontWeight: 600, marginBottom: tokens.spacing[2] }}>
+                    {interaction.action}
+                  </Text>
+                  {interaction.triggers_command && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2] }}>
+                      <Text style={{ fontSize: '0.9em', color: tokens.colors.neutral[600] }}>Triggers:</Text>
+                      <Badge variant="primary" size="sm">{interaction.triggers_command}</Badge>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Automations Tab
+const AutomationsTab = ({ task }) => {
+  const automations = task.metadata?.automations || [];
+
+  if (automations.length === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>🤖</span>
+        <h3 style={styles.emptyStateTitle}>No Automations</h3>
+        <p style={styles.emptyStateDescription}>
+          Automations will be automatically extracted from event modeling analysis.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+      <div style={styles.eventsHeader}>
+        <Badge variant="primary">{automations.length} Automations</Badge>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
+        {automations.map((automation, idx) => (
+          <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.warning[500]}` }}>
+            <CardContent style={{ padding: tokens.spacing[4] }}>
+              <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[3] }}>{automation.name}</Heading3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                {automation.trigger_event && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2] }}>
+                    <Text style={{ fontSize: '0.9em', fontWeight: 600, minWidth: '100px' }}>Triggered by:</Text>
+                    <Badge variant="info" size="sm">{automation.trigger_event}</Badge>
+                  </div>
+                )}
+
+                {automation.result_events?.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2] }}>
+                    <Text style={{ fontSize: '0.9em', fontWeight: 600, minWidth: '100px' }}>Produces:</Text>
+                    <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap' }}>
+                      {automation.result_events.map(event => (
+                        <Badge key={event} variant="success" size="sm">→ {event}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const EventModelTab = ({ task }) => {
+  const events = task.metadata?.extracted_events || [];
+  const commands = task.metadata?.commands || [];
+  const readModels = task.metadata?.read_models || [];
+  const interactions = task.metadata?.user_interactions || [];
+  const automations = task.metadata?.automations || [];
+
+  if (events.length === 0 && commands.length === 0 && readModels.length === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>🔄</span>
+        <h3 style={styles.emptyStateTitle}>No Event Model</h3>
+        <p style={styles.emptyStateDescription}>
+          Event model will be generated after task processing completes.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[6] }}>
+      {/* Header Summary */}
+      <Card>
+        <CardHeader>
+          <Heading3>Event Model Overview</Heading3>
+          <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+            Pattern: Read Model → User Interaction → Command → Events → (Update State & Project to Read Models)
+          </Text>
+        </CardHeader>
+        <CardContent>
+          <div style={styles.statsGrid}>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{readModels.length}</div>
+              <div style={styles.statLabel}>Read Models</div>
+            </div>
+            <div style={styles.statValue}>→</div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{interactions.length}</div>
+              <div style={styles.statLabel}>User Interactions</div>
+            </div>
+            <div style={styles.statValue}>→</div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{commands.length}</div>
+              <div style={styles.statLabel}>Commands</div>
+            </div>
+            <div style={styles.statValue}>→</div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{events.length}</div>
+              <div style={styles.statLabel}>Events</div>
+            </div>
+          </div>
+          {automations.length > 0 && (
+            <div style={{ marginTop: tokens.spacing[4], textAlign: 'center' }}>
+              <Badge variant="warning">{automations.length} Automations listen for events and trigger new commands</Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Event Modeling Slices - organized by command */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+        <div>
+          <Heading3>Event Modeling Slices</Heading3>
+          <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+            Each slice shows: What users see → What they do → What command fires → What events occur
+          </Text>
+        </div>
+
+        {commands.map((command, idx) => {
+          // Find interactions that trigger this command
+          const triggeringInteractions = interactions.filter(i =>
+            i.triggers_command === command.name
+          );
+
+          // Get the read models being viewed for this command
+          const viewedReadModels = [...new Set(
+            triggeringInteractions
+              .map(i => i.viewed_read_model)
+              .filter(Boolean)
+          )];
+
+          // Get events triggered by this command
+          const triggeredEvents = command.triggers_events || [];
+          const triggeredEventDetails = triggeredEvents.map(eventName =>
+            events.find(e => e.name === eventName)
+          ).filter(Boolean);
+
+          return (
+            <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.primary[500]}` }}>
+              <CardContent style={{ padding: tokens.spacing[4] }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: tokens.spacing[4],
+                  alignItems: 'start'
+                }}>
+
+                  {/* Column 1: Read Model (what user sees) */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      📖 Read Model
+                    </Text>
+                    {viewedReadModels.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                        {viewedReadModels.map((rm, i) => (
+                          <Badge key={i} variant="info" size="sm">{rm}</Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>-</Text>
+                    )}
+                  </div>
+
+                  {/* Column 2: User Interaction */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      👤 User Action
+                    </Text>
+                    {triggeringInteractions.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                        {triggeringInteractions.map((interaction, i) => (
+                          <Badge key={i} variant="neutral" size="sm">{interaction.action}</Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>-</Text>
+                    )}
+                  </div>
+
+                  {/* Column 3: Command */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      ⚙️ Command
+                    </Text>
+                    <Heading3 style={{ margin: 0, fontSize: '1em' }}>{command.name}</Heading3>
+                    {command.description && (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[1] }}>
+                        {command.description}
+                      </Text>
+                    )}
+                  </div>
+
+                  {/* Column 4: Events */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      ⚡ Events
+                    </Text>
+                    {triggeredEvents.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                        {triggeredEventDetails.map((event, i) => (
+                          <div key={i}>
+                            <Badge variant="success" size="sm">{event.name}</Badge>
+                            {event.description && (
+                              <Text style={{ fontSize: '0.8em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[1] }}>
+                                {event.description}
+                              </Text>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>-</Text>
+                    )}
+                  </div>
+
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Read Models Section - separate listing */}
+      {readModels.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+          <div>
+            <Heading3>Read Models (UI Projections)</Heading3>
+            <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+              Data views that are populated from events for display in the UI
+            </Text>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: tokens.spacing[3] }}>
+            {readModels.map((rm, idx) => (
+              <Card key={idx}>
+                <CardContent style={{ padding: tokens.spacing[3] }}>
+                  <Heading3 style={{ margin: 0, fontSize: '0.95em' }}>{rm.name}</Heading3>
+                  {rm.description && (
+                    <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+                      {rm.description}
+                    </Text>
+                  )}
+                  {rm.data_fields && rm.data_fields.length > 0 && (
+                    <div style={{ marginTop: tokens.spacing[2] }}>
+                      <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: '600' }}>
+                        Fields:
+                      </Text>
+                      <div style={{ display: 'flex', gap: tokens.spacing[1], flexWrap: 'wrap', marginTop: tokens.spacing[1] }}>
+                        {rm.data_fields.map((field, i) => (
+                          <Badge key={i} variant="neutral" size="sm">{field}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Automations Section */}
+      {automations.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+          <div>
+            <Heading3>Automations (System Reactions)</Heading3>
+            <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+              System processes that listen for events and trigger new commands
+            </Text>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
+            {automations.map((automation, idx) => (
+              <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.warning[500]}` }}>
+                <CardContent style={{ padding: tokens.spacing[4] }}>
+                  <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[3] }}>{automation.name}</Heading3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[3], flexWrap: 'wrap' }}>
+                    <div>
+                      <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)' }}>Listens for:</Text>
+                      {automation.trigger_event && (
+                        <Badge variant="info" size="sm" style={{ marginTop: tokens.spacing[1] }}>{automation.trigger_event}</Badge>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '1.5em' }}>→</span>
+                    <div>
+                      <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)' }}>Produces:</Text>
+                      {automation.result_events?.length > 0 && (
+                        <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap', marginTop: tokens.spacing[1] }}>
+                          {automation.result_events.map((event, i) => (
+                            <Badge key={i} variant="success" size="sm">{event}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Helper functions
 const getStatusVariant = (status) => {
   switch (status) {
@@ -839,12 +1640,6 @@ const getStatusVariant = (status) => {
 };
 
 // Tab configuration
-const tabs = [
-  { id: 'overview', label: 'Overview', icon: '📊' },
-  { id: 'subtasks', label: 'Subtasks', icon: '🎯' },
-  { id: 'stories', label: 'User Stories', icon: '📝' },
-];
-
 // Styles
 const styles = {
   container: {
@@ -978,10 +1773,22 @@ const styles = {
     marginBottom: tokens.spacing[4],
   },
 
+  progressStats: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: tokens.spacing[1],
+  },
+
   progressPercentage: {
     fontSize: tokens.typography.fontSize.lg[0],
     fontWeight: tokens.typography.fontWeight.semibold,
     color: tokens.colors.primary[500],
+  },
+
+  progressDetail: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text-muted)',
   },
 
   progressBar: {
@@ -997,6 +1804,14 @@ const styles = {
 
   statCard: {
     textAlign: 'center',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: tokens.spacing[1],
+  },
+
+  statIcon: {
+    fontSize: tokens.typography.fontSize['2xl'][0],
   },
 
   statValue: {
@@ -1020,8 +1835,12 @@ const styles = {
 
   tabNav: {
     display: 'flex',
-    borderBottom: `1px solid var(--color-border)`,
-    gap: tokens.spacing[1],
+    borderBottom: `2px solid var(--color-border)`,
+    gap: tokens.spacing[2],
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    WebkitOverflowScrolling: 'touch',
+    scrollbarWidth: 'thin',
   },
 
   tab: {
@@ -1030,22 +1849,30 @@ const styles = {
     gap: tokens.spacing[2],
     padding: `${tokens.spacing[3]} ${tokens.spacing[4]}`,
     border: 'none',
-    background: 'none',
+    background: 'transparent',
     cursor: 'pointer',
-    fontSize: tokens.typography.fontSize.base[0],
+    fontSize: tokens.typography.fontSize.sm[0],
+    fontWeight: tokens.typography.fontWeight.medium,
     color: 'var(--color-text-muted)',
-    borderBottom: '2px solid transparent',
-    transition: tokens.transitions.colors,
+    borderBottom: '3px solid transparent',
+    borderTopLeftRadius: tokens.borderRadius.md,
+    borderTopRightRadius: tokens.borderRadius.md,
+    transition: 'all 200ms ease',
+    whiteSpace: 'nowrap',
+    position: 'relative',
+    marginBottom: '-2px', // Overlap with border
   },
 
   activeTab: {
     color: tokens.colors.primary[500],
     borderBottomColor: tokens.colors.primary[500],
-    fontWeight: tokens.typography.fontWeight.medium,
+    fontWeight: tokens.typography.fontWeight.semibold,
+    backgroundColor: 'var(--color-surface)',
   },
 
   tabIcon: {
-    fontSize: tokens.typography.fontSize.base[0],
+    fontSize: tokens.typography.fontSize.lg[0],
+    lineHeight: 1,
   },
 
   tabContent: {
@@ -1099,12 +1926,36 @@ const styles = {
 
   techStackValue: {
     fontSize: tokens.typography.fontSize.sm[0],
-    fontFamily: tokens.typography.fontFamily.mono.join(', '),
+    color: 'var(--color-text)',
+  },
+
+  frameworksSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[2],
+  },
+
+  frameworkCategory: {
+    display: 'flex',
+    gap: tokens.spacing[2],
+    alignItems: 'baseline',
+  },
+
+  frameworkCategoryLabel: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    fontWeight: tokens.typography.fontWeight.medium,
+    color: 'var(--color-text-muted)',
+    minWidth: '80px',
+  },
+
+  statItem: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+    padding: tokens.spacing[3],
     backgroundColor: 'var(--color-surface)',
-    padding: tokens.spacing[2],
-    borderRadius: tokens.borderRadius.base,
-    border: `1px solid var(--color-border)`,
-    whiteSpace: 'pre-wrap',
+    borderRadius: tokens.borderRadius.md,
   },
 
 
@@ -1367,6 +2218,99 @@ const styles = {
     fontSize: tokens.typography.fontSize.sm[0],
     color: 'var(--color-text-muted)',
     maxWidth: '400px',
+  },
+
+  // Events tab styles
+  eventsContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[4],
+  },
+
+  eventsHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-bg-subtle)',
+    borderRadius: tokens.borderRadius.md,
+  },
+
+  eventsSummary: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+    flexWrap: 'wrap',
+  },
+
+  eventsListContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[3],
+  },
+
+  eventCard: {
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+  },
+
+  selectedEventCard: {
+    boxShadow: tokens.boxShadow.lg,
+    transform: 'scale(1.01)',
+  },
+
+  eventCardContent: {
+    padding: tokens.spacing[4],
+  },
+
+  eventCardHeader: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: tokens.spacing[3],
+  },
+
+  eventCardLeft: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: tokens.spacing[3],
+    flex: 1,
+  },
+
+  eventIcon: {
+    fontSize: '24px',
+    flexShrink: 0,
+    marginTop: '2px',
+  },
+
+  eventDetails: {
+    marginTop: tokens.spacing[4],
+    paddingTop: tokens.spacing[4],
+    borderTop: `1px solid var(--color-border)`,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[3],
+  },
+
+  eventDetailRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+    flexWrap: 'wrap',
+  },
+
+  eventDetailLabel: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    color: tokens.colors.neutral[600],
+    minWidth: '120px',
+  },
+
+  triggersContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+    flexWrap: 'wrap',
   },
 };
 
