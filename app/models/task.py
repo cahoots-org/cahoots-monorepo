@@ -85,6 +85,9 @@ class Task(BaseModel):
     @field_validator("story_points")
     def validate_story_points(cls, v):
         """Ensure story points are within valid range."""
+        # Convert 0 to None (unestimated)
+        if v == 0:
+            return None
         if v is not None and not 1 <= v <= 21:
             raise ValueError("Story points must be between 1 and 21")
         return v

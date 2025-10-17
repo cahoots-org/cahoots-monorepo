@@ -198,6 +198,52 @@ class TaskProcessor:
                 root_task.metadata["automations"] = analysis["automations"]
                 print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
 
+            # Store swimlanes and chapters
+            if analysis.get("swimlanes"):
+                root_task.metadata["swimlanes"] = analysis["swimlanes"]
+                print(f"[TaskProcessor] Identified {len(analysis['swimlanes'])} swimlanes")
+
+            if analysis.get("chapters"):
+                root_task.metadata["chapters"] = analysis["chapters"]
+                print(f"[TaskProcessor] Identified {len(analysis['chapters'])} chapters")
+
+            # Validate event model
+            from app.analyzer.event_model_validator import EventModelValidator
+            validator = EventModelValidator()
+            is_valid, validation_issues = validator.validate(analysis)
+            validation_summary = validator.get_validation_summary()
+
+            print(f"[TaskProcessor] Event model validation: {'PASSED' if is_valid else 'FAILED'}")
+            print(f"  - Errors: {validation_summary['errors']}")
+            print(f"  - Warnings: {validation_summary['warnings']}")
+
+            # Store validation results
+            root_task.metadata["event_model_validation"] = {
+                "valid": is_valid,
+                "summary": validation_summary,
+                "issues": [
+                    {
+                        "severity": issue.severity,
+                        "category": issue.category,
+                        "message": issue.message,
+                        "details": issue.details
+                    }
+                    for issue in validation_issues
+                ]
+            }
+
+            # Generate event model markdown
+            from app.analyzer.event_model_markdown_generator import EventModelMarkdownGenerator
+            markdown_generator = EventModelMarkdownGenerator()
+            event_model_markdown = markdown_generator.generate(analysis, root_task.description)
+
+            # Append validation results to markdown
+            if not is_valid or validation_summary['warnings'] > 0:
+                event_model_markdown += self._generate_validation_section(validation_summary, validation_issues)
+
+            root_task.metadata["event_model_markdown"] = event_model_markdown
+            print(f"[TaskProcessor] Generated event model markdown ({len(event_model_markdown)} chars)")
+
             await self.storage.save_task(root_task)
 
             # Emit event modeling completed with counts
@@ -332,6 +378,9 @@ class TaskProcessor:
             # Event modeling analysis - Single LLM call
             print(f"[TaskProcessor] Performing event modeling analysis")
             try:
+                # Emit event modeling started
+                await task_event_emitter.emit_event_modeling_started(root_task, user_id)
+
                 unified_analyzer = UnifiedDomainAnalyzer(self.analyzer.llm)
                 analysis = await unified_analyzer.analyze_domain(list(tree.tasks.values()))
 
@@ -373,12 +422,73 @@ class TaskProcessor:
                     root_task.metadata["automations"] = analysis["automations"]
                     print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
 
+                # Store swimlanes and chapters
+                if analysis.get("swimlanes"):
+                    root_task.metadata["swimlanes"] = analysis["swimlanes"]
+                    print(f"[TaskProcessor] Identified {len(analysis['swimlanes'])} swimlanes")
+
+                if analysis.get("chapters"):
+                    root_task.metadata["chapters"] = analysis["chapters"]
+                    print(f"[TaskProcessor] Identified {len(analysis['chapters'])} chapters")
+
+                # Validate event model
+                from app.analyzer.event_model_validator import EventModelValidator
+                validator = EventModelValidator()
+                is_valid, validation_issues = validator.validate(analysis)
+                validation_summary = validator.get_validation_summary()
+
+                print(f"[TaskProcessor] Event model validation: {'PASSED' if is_valid else 'FAILED'}")
+                print(f"  - Errors: {validation_summary['errors']}")
+                print(f"  - Warnings: {validation_summary['warnings']}")
+
+                # Store validation results
+                root_task.metadata["event_model_validation"] = {
+                    "valid": is_valid,
+                    "summary": validation_summary,
+                    "issues": [
+                        {
+                            "severity": issue.severity,
+                            "category": issue.category,
+                            "message": issue.message,
+                            "details": issue.details
+                        }
+                        for issue in validation_issues
+                    ]
+                }
+
+                # Generate event model markdown
+                from app.analyzer.event_model_markdown_generator import EventModelMarkdownGenerator
+                markdown_generator = EventModelMarkdownGenerator()
+                event_model_markdown = markdown_generator.generate(analysis, root_task.description)
+
+                # Append validation results to markdown
+                if not is_valid or validation_summary['warnings'] > 0:
+                    event_model_markdown += self._generate_validation_section(validation_summary, validation_issues)
+
+                root_task.metadata["event_model_markdown"] = event_model_markdown
+                print(f"[TaskProcessor] Generated event model markdown ({len(event_model_markdown)} chars)")
+
                 await self.storage.save_task(root_task)
+
+                # Emit event modeling completed with counts
+                await task_event_emitter.emit_event_modeling_completed(
+                    root_task,
+                    user_id,
+                    len(analysis["events"]),
+                    len(analysis["commands"]),
+                    len(analysis["read_models"])
+                )
             except Exception as e:
                 print(f"[TaskProcessor] Error in event modeling analysis: {e}")
                 import traceback
                 traceback.print_exc()
                 # Don't fail the entire processing if event extraction fails
+
+            # Mark root task as complete (after all processing including event modeling)
+            if root_task.status != TaskStatus.COMPLETED:
+                print(f"[TaskProcessor] All processing complete (including event modeling), marking root task as complete")
+                root_task.status = TaskStatus.COMPLETED
+                await self.storage.save_task(root_task)
 
             # Save complete tree
             await self.storage.save_task_tree(tree)
@@ -393,11 +503,42 @@ class TaskProcessor:
             print(f"Error in async task processing: {e}")
             print(f"Full traceback:")
             traceback.print_exc()
-            # Update task status to error
-            root_task.status = TaskStatus.ERROR
-            await self.storage.save_task(root_task)
-            # Emit error event
-            await task_event_emitter.emit_task_error(root_task, str(e), user_id)
+
+            # Check if this is a retryable error
+            retry_count = root_task.metadata.get("retry_count", 0)
+            max_retries = 3
+
+            # Errors that should be retried
+            is_retryable = (
+                "validation error" in str(e).lower() or
+                "timeout" in str(e).lower() or
+                "connection" in str(e).lower() or
+                "rate limit" in str(e).lower()
+            )
+
+            if is_retryable and retry_count < max_retries:
+                retry_count += 1
+                root_task.metadata["retry_count"] = retry_count
+                root_task.metadata["last_error"] = str(e)
+                root_task.status = TaskStatus.PENDING
+                await self.storage.save_task(root_task)
+
+                print(f"[TaskProcessor] Retrying task (attempt {retry_count}/{max_retries})...")
+
+                # Wait before retry (exponential backoff)
+                import asyncio
+                await asyncio.sleep(2 ** retry_count)
+
+                # Retry the processing
+                await self.process_task_async(root_task, context, user_id, max_depth)
+            else:
+                # Update task status to error
+                root_task.status = TaskStatus.ERROR
+                root_task.metadata["error"] = str(e)
+                root_task.metadata["retry_count"] = retry_count
+                await self.storage.save_task(root_task)
+                # Emit error event
+                await task_event_emitter.emit_task_error(root_task, str(e), user_id)
 
     async def _process_task_recursive(
         self,
@@ -763,11 +904,8 @@ class TaskProcessor:
         # Update root task status and check for completion
         await self._check_task_completion(root_task, tree)
 
-        # If still not complete but all processing is done, mark as complete
-        if root_task.status != TaskStatus.COMPLETED:
-            print(f"[TaskProcessor] All stories processed, marking root task as complete")
-            root_task.status = TaskStatus.COMPLETED
-            await self.storage.save_task(root_task)
+        # NOTE: Do NOT mark as complete here - event modeling happens after this method returns
+        # Completion is handled in process_task_async after event modeling completes
 
     async def _check_task_completion(self, task: Task, tree: TaskTree) -> None:
         """Check if a task is complete based on its children.
@@ -823,3 +961,53 @@ class TaskProcessor:
             "llm_calls_saved": 0,
             "processing_time": 0.0
         }
+
+    def _generate_validation_section(self, summary: Dict[str, Any], issues: List) -> str:
+        """Generate markdown section for validation results"""
+
+        md = "\n\n---\n\n## ⚠️ Event Model Validation\n\n"
+
+        # Summary
+        if summary['valid']:
+            md += "**Status**: ✅ PASSED (with warnings)\n\n"
+        else:
+            md += "**Status**: ❌ FAILED\n\n"
+
+        md += f"- **Errors**: {summary['errors']}\n"
+        md += f"- **Warnings**: {summary['warnings']}\n"
+        md += f"- **Total Issues**: {summary['total_issues']}\n\n"
+
+        # Critical issues
+        if summary.get('critical_issues'):
+            md += "### Critical Issues\n\n"
+            for issue in summary['critical_issues']:
+                md += f"- **{issue['message']}**\n"
+                if issue.get('details'):
+                    for key, value in issue['details'].items():
+                        md += f"  - {key}: {value}\n"
+                md += "\n"
+
+        # Issues by category
+        if summary.get('issues_by_category'):
+            md += "### Issues by Category\n\n"
+            md += "| Category | Count |\n"
+            md += "|----------|-------|\n"
+            for category, count in sorted(summary['issues_by_category'].items()):
+                md += f"| {category} | {count} |\n"
+            md += "\n"
+
+        # All issues
+        errors = [i for i in issues if i.severity == 'error']
+        warnings = [i for i in issues if i.severity == 'warning']
+
+        if errors:
+            md += "### Errors\n\n"
+            for issue in errors:
+                md += f"**{issue.category}**: {issue.message}\n\n"
+
+        if warnings:
+            md += "### Warnings\n\n"
+            for issue in warnings:
+                md += f"**{issue.category}**: {issue.message}\n\n"
+
+        return md

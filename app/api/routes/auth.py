@@ -432,6 +432,21 @@ async def get_current_user(
 
     token = authorization.replace("Bearer ", "")
 
+    # Development bypass
+    if token == "dev-bypass-token" and OAuthConfig.get_environment() == "development":
+        return {
+            "id": "dev-user-123",
+            "email": "admin@cahoots.cc",
+            "username": "admin",
+            "full_name": "Admin User",
+            "role": "admin",
+            "subscription_tier": "enterprise",
+            "subscription_status": "active",
+            "monthly_task_limit": 1000,
+            "tasks_created_this_month": 0,
+            "provider": "dev"
+        }
+
     try:
         # Decode and validate JWT
         payload = jwt.decode(
