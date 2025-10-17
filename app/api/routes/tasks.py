@@ -356,6 +356,71 @@ async def update_task(
     return TaskResponse.from_task(task)
 
 
+@router.patch("/{task_id}/event-model")
+async def update_event_model(
+    task_id: str,
+    updates: Dict[str, Any],
+    storage: TaskStorage = Depends(get_task_storage)
+) -> dict:
+    """Update event model markdown for a task and re-validate."""
+    from app.analyzer.event_model_validator import EventModelValidator
+
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Extract the event_model_markdown from the request
+    event_model_markdown = updates.get("event_model_markdown")
+    if event_model_markdown is None:
+        raise HTTPException(status_code=400, detail="event_model_markdown is required")
+
+    # Update the task's metadata
+    if task.metadata is None:
+        task.metadata = {}
+
+    task.metadata["event_model_markdown"] = event_model_markdown
+
+    # Re-validate the existing event model structure if it exists
+    # Note: We validate the structured data (events, commands, etc.), not the markdown
+    # The markdown is just a representation - the structured data is the source of truth
+    if all(key in task.metadata for key in ['extracted_events', 'commands', 'read_models']):
+        validator = EventModelValidator()
+        analysis = {
+            'events': task.metadata.get('extracted_events', []),
+            'commands': task.metadata.get('commands', []),
+            'read_models': task.metadata.get('read_models', []),
+            'user_interactions': task.metadata.get('user_interactions', []),
+            'automations': task.metadata.get('automations', [])
+        }
+
+        is_valid, issues = validator.validate(analysis)
+        validation_summary = validator.get_validation_summary()
+
+        # Store validation results
+        task.metadata["event_model_validation"] = {
+            "is_valid": is_valid,
+            "issues": [
+                {
+                    "severity": issue.severity,
+                    "category": issue.category,
+                    "message": issue.message,
+                    "details": issue.details
+                }
+                for issue in issues
+            ],
+            "summary": validation_summary
+        }
+
+    # Save the updated task
+    success = await storage.update_task(task_id, {"metadata": task.metadata})
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to update event model")
+
+    # Get updated task
+    task = await storage.get_task(task_id)
+    return {"data": TaskResponse.from_task(task).dict()}
+
+
 @router.post("/{task_id}/complete")
 async def complete_task(
     task_id: str,
@@ -489,49 +554,3 @@ async def delete_subtask(
     return {"message": f"Deleted subtask {task_id}"}
 
 
-@router.post("/{task_id}/generate-project")
-async def generate_project(
-    task_id: str,
-    storage: TaskStorage = Depends(get_task_storage)
-):
-    """Generate project boilerplate and return as ZIP file."""
-    import io
-    import zipfile
-    from fastapi.responses import StreamingResponse
-
-    # Import the generation function
-    from app.api.routes.generate import generate_project_structure, _sanitize_name
-
-    # Get task from storage
-    task = await storage.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-
-    # Get tech stack from context
-    tech_stack = task.context.get("tech_stack", {})
-    if not tech_stack:
-        raise HTTPException(
-            status_code=400,
-            detail="No tech stack information available for this task"
-        )
-
-    # Generate project structure
-    files = generate_project_structure(tech_stack, task.description)
-
-    # Create ZIP file in memory
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for file_path, content in files.items():
-            zip_file.writestr(file_path, content)
-
-    # Prepare response
-    zip_buffer.seek(0)
-    filename = f"{_sanitize_name(task.description)}-project.zip"
-
-    return StreamingResponse(
-        zip_buffer,
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}"
-        }
-    )

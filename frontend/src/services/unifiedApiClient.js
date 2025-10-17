@@ -111,12 +111,14 @@ class UnifiedApiClient {
     if (hasLoggedOut) {
       return null;
     }
-    
+
     // Development bypass for when no real token is available
     if (process.env.NODE_ENV === 'development' || window.location.hostname === 'localhost') {
+      // Store dev-bypass-token so it persists across page refreshes
+      localStorage.setItem('token', 'dev-bypass-token');
       return 'dev-bypass-token';
     }
-    
+
     return null;
   }
 

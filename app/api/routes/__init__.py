@@ -6,6 +6,7 @@ from .websocket import router as websocket_router
 from .epics import router as epics_router
 from .auth import router as auth_router
 from .events import router as events_router
+from .regenerate import router as regenerate_router
 
 __all__ = [
     "task_router",
@@ -14,4 +15,5 @@ __all__ = [
     "epics_router",
     "auth_router",
     "events_router",
+    "regenerate_router",
 ]

@@ -93,6 +93,29 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
       case 'task.decomposed':
         if (event.task_id === taskId) {
           setCurrentStep('Task decomposed into subtasks successfully!');
+          setProgress(85);
+        }
+        break;
+
+      // Handle event modeling started
+      case 'event_modeling.started':
+        if (event.task_id === taskId) {
+          addStep('Event Model Generation', 'in_progress', 'Analyzing events, commands, and read models...');
+          setCurrentStep('Generating event model...');
+          setProgress(85);
+        }
+        break;
+
+      // Handle event modeling completed
+      case 'event_modeling.completed':
+        if (event.task_id === taskId) {
+          const { events, commands, read_models } = event.data || {};
+          updateStep(
+            'Event Model Generation',
+            'completed',
+            `Generated ${events || 0} events, ${commands || 0} commands, ${read_models || 0} read models`
+          );
+          setCurrentStep('Task processing completed successfully!');
           setProgress(100);
           setTimeout(() => {
             if (onDecompositionComplete) {
@@ -101,7 +124,7 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
           }, 2000);
         }
         break;
-        
+
       default:
         break;
     }

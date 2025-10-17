@@ -344,37 +344,45 @@ const TaskBoard = () => {
           </div>
         </CardHeader>
 
-        {/* Compact Progress Section */}
+        {/* Progress Section */}
         {taskTree && taskStats.total > 1 && (
-          <CardContent style={styles.compactProgressSection}>
-            <div style={styles.compactProgressRow}>
-              <div style={styles.compactProgressInfo}>
-                <Text style={styles.compactProgressLabel}>Progress:</Text>
-                <Text style={styles.compactProgressPercentage}>{completionRate}%</Text>
-                <Text style={styles.compactProgressDetail}>
-                  ({taskStats.completed}/{taskStats.total})
+          <CardContent style={styles.progressSection}>
+            <div style={styles.progressHeader}>
+              <Heading3>Progress Overview</Heading3>
+              <div style={styles.progressStats}>
+                <Text style={styles.progressPercentage}>{completionRate}% Complete</Text>
+                <Text style={styles.progressDetail}>
+                  {taskStats.completed} of {taskStats.total} subtasks completed
                 </Text>
               </div>
-              <div style={styles.compactStatsRow}>
-                <div style={styles.compactStatItem}>
-                  <Text style={styles.compactStatValue}>{taskStats.completed}</Text>
-                  <Text style={styles.compactStatLabel}>✅ Done</Text>
-                </div>
-                <div style={styles.compactStatItem}>
-                  <Text style={styles.compactStatValue}>{taskStats.inProgress}</Text>
-                  <Text style={styles.compactStatLabel}>🔄 Active</Text>
-                </div>
-                <div style={styles.compactStatItem}>
-                  <Text style={styles.compactStatValue}>{taskStats.pending}</Text>
-                  <Text style={styles.compactStatLabel}>⏳ Todo</Text>
-                </div>
-              </div>
             </div>
+
             <Progress
               value={completionRate}
               variant={completionRate === 100 ? 'success' : 'primary'}
-              style={styles.compactProgressBar}
+              style={styles.progressBar}
             />
+
+            <div style={styles.statsGrid}>
+              <StatCard
+                label="Completed"
+                value={taskStats.completed}
+                color={tokens.colors.success[500]}
+                icon="✅"
+              />
+              <StatCard
+                label="In Progress"
+                value={taskStats.inProgress}
+                color={tokens.colors.info[500]}
+                icon="🔄"
+              />
+              <StatCard
+                label="Pending"
+                value={taskStats.pending}
+                color={tokens.colors.warning[500]}
+                icon="⏳"
+              />
+            </div>
           </CardContent>
         )}
       </Card>
@@ -678,7 +686,7 @@ const SubtasksTab = ({
   const subtasksLayoutStyle = {
     display: 'grid',
     gridTemplateColumns: selectedSubtask ? '2fr 1fr' : '1fr',
-    gap: tokens.spacing[4],
+    gap: tokens.spacing[6],
   };
 
   return (
@@ -1331,54 +1339,16 @@ const AutomationsTab = ({ task }) => {
 };
 
 const EventModelTab = ({ task }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedMarkdown, setEditedMarkdown] = useState('');
-  const queryClient = useQueryClient();
-  const { showError, showSuccess } = useApp();
-
   const eventModelMarkdown = task.metadata?.event_model_markdown;
+  const events = task.metadata?.extracted_events || [];
+  const commands = task.metadata?.commands || [];
+  const readModels = task.metadata?.read_models || [];
+  const interactions = task.metadata?.user_interactions || [];
+  const automations = task.metadata?.automations || [];
   const isProcessing = task.status === 'processing' || task.status === 'pending';
 
-  // Initialize edited markdown when entering edit mode
-  useEffect(() => {
-    if (isEditing && eventModelMarkdown) {
-      setEditedMarkdown(eventModelMarkdown);
-    }
-  }, [isEditing, eventModelMarkdown]);
-
-  // Save changes mutation
-  const saveMarkdownMutation = useMutation({
-    mutationFn: async ({ taskId, markdown }) => {
-      const response = await apiClient.patch(`/tasks/${taskId}/event-model`, {
-        event_model_markdown: markdown
-      });
-      return response.data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries(['tasks', 'detail', task.task_id]);
-      showSuccess('Event model updated successfully');
-      setIsEditing(false);
-    },
-    onError: (error) => {
-      showError('Failed to update event model');
-      console.error('Update event model error:', error);
-    },
-  });
-
-  const handleSave = () => {
-    saveMarkdownMutation.mutate({
-      taskId: task.task_id,
-      markdown: editedMarkdown
-    });
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setEditedMarkdown(eventModelMarkdown);
-  };
-
   // If task is still processing, show loading state
-  if (isProcessing) {
+  if (isProcessing && !eventModelMarkdown && events.length === 0) {
     return (
       <div style={styles.emptyStateContainer}>
         <LoadingSpinner size="large" />
@@ -1390,237 +1360,70 @@ const EventModelTab = ({ task }) => {
     );
   }
 
-  // Extract swimlanes and chapters from metadata
-  const swimlanes = task.metadata?.swimlanes || [];
-  const chapters = task.metadata?.chapters || [];
+  // If processing is complete but no event model, show empty state
+  if (!eventModelMarkdown && events.length === 0 && commands.length === 0 && readModels.length === 0) {
+    return (
+      <div style={styles.emptyStateContainer}>
+        <span style={styles.emptyStateIcon}>🔄</span>
+        <h3 style={styles.emptyStateTitle}>No Event Model</h3>
+        <p style={styles.emptyStateDescription}>
+          No event model was generated for this task.
+        </p>
+      </div>
+    );
+  }
 
   // If we have markdown, display it
   if (eventModelMarkdown) {
     return (
       <div style={{ padding: tokens.spacing[4] }}>
-        {/* Swimlanes Section */}
-        {swimlanes.length > 0 && (
-          <Card style={{ marginBottom: tokens.spacing[4] }}>
-            <CardHeader>
-              <Heading2>🏊 Swimlanes (Business Capabilities)</Heading2>
-            </CardHeader>
-            <CardContent>
-              <Text style={{ marginBottom: tokens.spacing[4], color: 'var(--color-text-muted)' }}>
-                Swimlanes organize the system by business capabilities. Each swimlane represents a domain boundary with events that tell a coherent story.
-              </Text>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: tokens.spacing[3] }}>
-                {swimlanes.map((swimlane, idx) => (
-                  <Card key={idx} style={{ border: `2px solid ${tokens.colors.primary[200]}`, backgroundColor: tokens.colors.primary[50] }}>
-                    <CardContent style={{ padding: tokens.spacing[3] }}>
-                      <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[2], color: tokens.colors.primary[700] }}>
-                        {swimlane.name}
-                      </Heading3>
-                      <Text style={{ fontSize: tokens.typography.fontSize.sm[0], marginBottom: tokens.spacing[3], color: tokens.colors.neutral[700] }}>
-                        {swimlane.description}
-                      </Text>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
-                        {swimlane.events?.length > 0 && (
-                          <div>
-                            <Text style={{ fontSize: tokens.typography.fontSize.xs[0], fontWeight: 600, marginBottom: tokens.spacing[1], color: tokens.colors.neutral[600] }}>
-                              Events ({swimlane.events.length}):
-                            </Text>
-                            <div style={{ display: 'flex', gap: tokens.spacing[1], flexWrap: 'wrap' }}>
-                              {swimlane.events.slice(0, 3).map((event, eidx) => (
-                                <Badge key={eidx} variant="secondary" size="sm">{event}</Badge>
-                              ))}
-                              {swimlane.events.length > 3 && (
-                                <Badge variant="secondary" size="sm">+{swimlane.events.length - 3} more</Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        {swimlane.commands?.length > 0 && (
-                          <div>
-                            <Text style={{ fontSize: tokens.typography.fontSize.xs[0], fontWeight: 600, marginBottom: tokens.spacing[1], color: tokens.colors.neutral[600] }}>
-                              Commands ({swimlane.commands.length}):
-                            </Text>
-                            <div style={{ display: 'flex', gap: tokens.spacing[1], flexWrap: 'wrap' }}>
-                              {swimlane.commands.slice(0, 3).map((cmd, cidx) => (
-                                <Badge key={cidx} variant="info" size="sm">{cmd}</Badge>
-                              ))}
-                              {swimlane.commands.length > 3 && (
-                                <Badge variant="info" size="sm">+{swimlane.commands.length - 3} more</Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                        {swimlane.read_models?.length > 0 && (
-                          <div>
-                            <Text style={{ fontSize: tokens.typography.fontSize.xs[0], fontWeight: 600, marginBottom: tokens.spacing[1], color: tokens.colors.neutral[600] }}>
-                              Read Models ({swimlane.read_models.length}):
-                            </Text>
-                            <div style={{ display: 'flex', gap: tokens.spacing[1], flexWrap: 'wrap' }}>
-                              {swimlane.read_models.slice(0, 3).map((rm, ridx) => (
-                                <Badge key={ridx} variant="success" size="sm">{rm}</Badge>
-                              ))}
-                              {swimlane.read_models.length > 3 && (
-                                <Badge variant="success" size="sm">+{swimlane.read_models.length - 3} more</Badge>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Chapters Section */}
-        {chapters.length > 0 && (
-          <Card style={{ marginBottom: tokens.spacing[4] }}>
-            <CardHeader>
-              <Heading2>📖 Chapters (Workflows)</Heading2>
-            </CardHeader>
-            <CardContent>
-              <Text style={{ marginBottom: tokens.spacing[4], color: 'var(--color-text-muted)' }}>
-                Chapters group slices into logical workflows representing major business processes.
-              </Text>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
-                {chapters.map((chapter, idx) => (
-                  <Card key={idx} style={{ border: `1px solid ${tokens.colors.info[300]}`, backgroundColor: tokens.colors.info[50] }}>
-                    <CardContent style={{ padding: tokens.spacing[3] }}>
-                      <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[1], color: tokens.colors.info[700] }}>
-                        {chapter.name}
-                      </Heading3>
-                      <Text style={{ fontSize: tokens.typography.fontSize.sm[0], marginBottom: tokens.spacing[3], color: tokens.colors.neutral[700] }}>
-                        {chapter.description}
-                      </Text>
-                      {chapter.sub_chapters && chapter.sub_chapters.length > 0 && (
-                        <div style={{ marginTop: tokens.spacing[2] }}>
-                          <Text style={{ fontSize: tokens.typography.fontSize.xs[0], fontWeight: 600, marginBottom: tokens.spacing[2], color: tokens.colors.neutral[600] }}>
-                            Sub-Chapters:
-                          </Text>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
-                            {chapter.sub_chapters.map((sub, sidx) => (
-                              <div key={sidx} style={{ paddingLeft: tokens.spacing[3], borderLeft: `2px solid ${tokens.colors.info[300]}` }}>
-                                <Text style={{ fontSize: tokens.typography.fontSize.sm[0], fontWeight: 600, color: tokens.colors.neutral[700] }}>
-                                  {sub.name}
-                                </Text>
-                                {sub.slices && (
-                                  <Text style={{ fontSize: tokens.typography.fontSize.xs[0], color: tokens.colors.neutral[600] }}>
-                                    {sub.slices.length} slices
-                                  </Text>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Edit/Save Controls */}
-        <div style={styles.eventModelControls}>
-          {!isEditing ? (
-            <Button
-              variant="outline"
-              size="sm"
-              icon={EditIcon}
-              onClick={() => setIsEditing(true)}
-            >
-              Edit Event Model
-            </Button>
-          ) : (
-            <div style={styles.editControls}>
-              <Button
-                variant="primary"
-                size="sm"
-                icon={CheckIcon}
-                onClick={handleSave}
-                loading={saveMarkdownMutation.isPending}
-              >
-                Save Changes
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleCancel}
-                disabled={saveMarkdownMutation.isPending}
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {isEditing ? (
-          /* Edit Mode: Show textarea */
-          <div style={styles.markdownEditor}>
-            <textarea
-              value={editedMarkdown}
-              onChange={(e) => setEditedMarkdown(e.target.value)}
-              style={styles.markdownTextarea}
-              placeholder="Edit your event model markdown..."
-            />
-            <Text style={styles.editorHelp}>
-              💡 Tip: You can add additional GWT scenarios, business rules, validations, and error cases to the tables above.
-            </Text>
-          </div>
-        ) : (
-          /* View Mode: Show rendered markdown */
-          <>
-            <style>{`
+        <style>{`
           .event-model-markdown h1 {
-            font-size: 1.5em;
+            font-size: 2em;
             font-weight: 700;
-            margin: 1em 0 0.5em 0;
-            padding-bottom: 0.4em;
+            margin: 1.5em 0 0.75em 0;
+            padding-bottom: 0.5em;
             border-bottom: 2px solid #e5e7eb;
           }
           .event-model-markdown h2 {
-            font-size: 1.25em;
+            font-size: 1.5em;
             font-weight: 600;
-            margin: 1em 0 0.5em 0;
-            padding-bottom: 0.25em;
+            margin: 1.5em 0 0.75em 0;
+            padding-bottom: 0.3em;
             border-bottom: 1px solid #e5e7eb;
           }
           .event-model-markdown h3 {
-            font-size: 1.1em;
+            font-size: 1.25em;
             font-weight: 600;
-            margin: 0.75em 0 0.4em 0;
+            margin: 1.25em 0 0.5em 0;
           }
           .event-model-markdown h4 {
-            font-size: 1em;
+            font-size: 1.1em;
             font-weight: 600;
-            margin: 0.75em 0 0.4em 0;
+            margin: 1em 0 0.5em 0;
           }
           .event-model-markdown p {
-            margin: 0 0 0.75em 0;
-            line-height: 1.5;
+            margin: 0 0 1em 0;
+            line-height: 1.6;
           }
           .event-model-markdown table {
             border-collapse: collapse;
             width: 100%;
-            margin: 1em 0;
+            margin: 1.5em 0;
             border: 1px solid #e5e7eb;
             border-radius: 6px;
             overflow: hidden;
           }
           .event-model-markdown th {
             background: #f3f4f6;
-            padding: 8px 12px;
+            padding: 12px 16px;
             text-align: left;
             font-weight: 600;
             border-bottom: 2px solid #e5e7eb;
-            font-size: 0.9em;
           }
           .event-model-markdown td {
-            padding: 6px 12px;
+            padding: 10px 16px;
             border-bottom: 1px solid #e5e7eb;
-            font-size: 0.9em;
           }
           .event-model-markdown tr:last-child td {
             border-bottom: none;
@@ -1673,20 +1476,240 @@ const EventModelTab = ({ task }) => {
             {eventModelMarkdown}
           </ReactMarkdown>
         </div>
-      </>
-    )}
       </div>
     );
   }
 
-  // No markdown yet - show empty state
   return (
-    <div style={styles.emptyStateContainer}>
-      <span style={styles.emptyStateIcon}>🔄</span>
-      <h3 style={styles.emptyStateTitle}>No Event Model</h3>
-      <p style={styles.emptyStateDescription}>
-        Event model markdown has not been generated yet for this task.
-      </p>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[6] }}>
+      {/* Header Summary */}
+      <Card>
+        <CardHeader>
+          <Heading3>Event Model Overview</Heading3>
+          <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+            Pattern: Read Model → User Interaction → Command → Events → (Update State & Project to Read Models)
+          </Text>
+        </CardHeader>
+        <CardContent>
+          <div style={styles.statsGrid}>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{readModels.length}</div>
+              <div style={styles.statLabel}>Read Models</div>
+            </div>
+            <div style={styles.statValue}>→</div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{interactions.length}</div>
+              <div style={styles.statLabel}>User Interactions</div>
+            </div>
+            <div style={styles.statValue}>→</div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{commands.length}</div>
+              <div style={styles.statLabel}>Commands</div>
+            </div>
+            <div style={styles.statValue}>→</div>
+            <div style={styles.statItem}>
+              <div style={styles.statValue}>{events.length}</div>
+              <div style={styles.statLabel}>Events</div>
+            </div>
+          </div>
+          {automations.length > 0 && (
+            <div style={{ marginTop: tokens.spacing[4], textAlign: 'center' }}>
+              <Badge variant="warning">{automations.length} Automations listen for events and trigger new commands</Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Event Modeling Slices - organized by command */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+        <div>
+          <Heading3>Event Modeling Slices</Heading3>
+          <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+            Each slice shows: What users see → What they do → What command fires → What events occur
+          </Text>
+        </div>
+
+        {commands.map((command, idx) => {
+          // Find interactions that trigger this command
+          const triggeringInteractions = interactions.filter(i =>
+            i.triggers_command === command.name
+          );
+
+          // Get the read models being viewed for this command
+          const viewedReadModels = [...new Set(
+            triggeringInteractions
+              .map(i => i.viewed_read_model)
+              .filter(Boolean)
+          )];
+
+          // Get events triggered by this command
+          const triggeredEvents = command.triggers_events || [];
+          const triggeredEventDetails = triggeredEvents.map(eventName =>
+            events.find(e => e.name === eventName)
+          ).filter(Boolean);
+
+          return (
+            <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.primary[500]}` }}>
+              <CardContent style={{ padding: tokens.spacing[4] }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: tokens.spacing[4],
+                  alignItems: 'start'
+                }}>
+
+                  {/* Column 1: Read Model (what user sees) */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      📖 Read Model
+                    </Text>
+                    {viewedReadModels.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                        {viewedReadModels.map((rm, i) => (
+                          <Badge key={i} variant="info" size="sm">{rm}</Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>-</Text>
+                    )}
+                  </div>
+
+                  {/* Column 2: User Interaction */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      👤 User Action
+                    </Text>
+                    {triggeringInteractions.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                        {triggeringInteractions.map((interaction, i) => (
+                          <Badge key={i} variant="neutral" size="sm">{interaction.action}</Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>-</Text>
+                    )}
+                  </div>
+
+                  {/* Column 3: Command */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      ⚙️ Command
+                    </Text>
+                    <Heading3 style={{ margin: 0, fontSize: '1em' }}>{command.name}</Heading3>
+                    {command.description && (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[1] }}>
+                        {command.description}
+                      </Text>
+                    )}
+                  </div>
+
+                  {/* Column 4: Events */}
+                  <div>
+                    <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', marginBottom: tokens.spacing[2], textTransform: 'uppercase', fontWeight: '600' }}>
+                      ⚡ Events
+                    </Text>
+                    {triggeredEvents.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[2] }}>
+                        {triggeredEventDetails.map((event, i) => (
+                          <div key={i}>
+                            <Badge variant="success" size="sm">{event.name}</Badge>
+                            {event.description && (
+                              <Text style={{ fontSize: '0.8em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[1] }}>
+                                {event.description}
+                              </Text>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)' }}>-</Text>
+                    )}
+                  </div>
+
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Read Models Section - separate listing */}
+      {readModels.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+          <div>
+            <Heading3>Read Models (UI Projections)</Heading3>
+            <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+              Data views that are populated from events for display in the UI
+            </Text>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: tokens.spacing[3] }}>
+            {readModels.map((rm, idx) => (
+              <Card key={idx}>
+                <CardContent style={{ padding: tokens.spacing[3] }}>
+                  <Heading3 style={{ margin: 0, fontSize: '0.95em' }}>{rm.name}</Heading3>
+                  {rm.description && (
+                    <Text style={{ fontSize: '0.85em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+                      {rm.description}
+                    </Text>
+                  )}
+                  {rm.data_fields && rm.data_fields.length > 0 && (
+                    <div style={{ marginTop: tokens.spacing[2] }}>
+                      <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: '600' }}>
+                        Fields:
+                      </Text>
+                      <div style={{ display: 'flex', gap: tokens.spacing[1], flexWrap: 'wrap', marginTop: tokens.spacing[1] }}>
+                        {rm.data_fields.map((field, i) => (
+                          <Badge key={i} variant="neutral" size="sm">{field}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Automations Section */}
+      {automations.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[4] }}>
+          <div>
+            <Heading3>Automations (System Reactions)</Heading3>
+            <Text style={{ fontSize: '0.9em', color: 'var(--color-text-muted)', marginTop: tokens.spacing[2] }}>
+              System processes that listen for events and trigger new commands
+            </Text>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[3] }}>
+            {automations.map((automation, idx) => (
+              <Card key={idx} style={{ borderLeft: `4px solid ${tokens.colors.warning[500]}` }}>
+                <CardContent style={{ padding: tokens.spacing[4] }}>
+                  <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[3] }}>{automation.name}</Heading3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[3], flexWrap: 'wrap' }}>
+                    <div>
+                      <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)' }}>Listens for:</Text>
+                      {automation.trigger_event && (
+                        <Badge variant="info" size="sm" style={{ marginTop: tokens.spacing[1] }}>{automation.trigger_event}</Badge>
+                      )}
+                    </div>
+                    <span style={{ fontSize: '1.5em' }}>→</span>
+                    <div>
+                      <Text style={{ fontSize: '0.75em', color: 'var(--color-text-muted)' }}>Produces:</Text>
+                      {automation.result_events?.length > 0 && (
+                        <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap', marginTop: tokens.spacing[1] }}>
+                          {automation.result_events.map((event, i) => (
+                            <Badge key={i} variant="success" size="sm">{event}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1707,10 +1730,10 @@ const styles = {
   container: {
     maxWidth: '1400px',
     margin: '0 auto',
-    padding: tokens.spacing[4],
+    padding: tokens.spacing[6],
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[4],
+    gap: tokens.spacing[6],
   },
 
   loadingContainer: {
@@ -1788,8 +1811,8 @@ const styles = {
     display: 'flex',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: tokens.spacing[4],
-    padding: tokens.spacing[4],
+    gap: tokens.spacing[6],
+    padding: tokens.spacing[6],
     borderBottom: `1px solid var(--color-border)`,
   },
 
@@ -1824,69 +1847,38 @@ const styles = {
   },
 
 
-  // Compact Progress Section
-  compactProgressSection: {
-    padding: tokens.spacing[4],
-    borderTop: `1px solid var(--color-border)`,
+  progressSection: {
+    padding: tokens.spacing[6],
   },
 
-  compactProgressRow: {
+  progressHeader: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: tokens.spacing[3],
-    gap: tokens.spacing[4],
+    marginBottom: tokens.spacing[4],
   },
 
-  compactProgressInfo: {
+  progressStats: {
     display: 'flex',
-    alignItems: 'center',
-    gap: tokens.spacing[2],
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: tokens.spacing[1],
   },
 
-  compactProgressLabel: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    fontWeight: tokens.typography.fontWeight.medium,
-    color: 'var(--color-text-muted)',
-  },
-
-  compactProgressPercentage: {
+  progressPercentage: {
     fontSize: tokens.typography.fontSize.lg[0],
     fontWeight: tokens.typography.fontWeight.semibold,
     color: tokens.colors.primary[500],
   },
 
-  compactProgressDetail: {
+  progressDetail: {
     fontSize: tokens.typography.fontSize.sm[0],
     color: 'var(--color-text-muted)',
   },
 
-  compactStatsRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: tokens.spacing[4],
-  },
-
-  compactStatItem: {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: tokens.spacing[1],
-  },
-
-  compactStatValue: {
-    fontSize: tokens.typography.fontSize.lg[0],
-    fontWeight: tokens.typography.fontWeight.semibold,
-    lineHeight: 1,
-  },
-
-  compactStatLabel: {
-    fontSize: tokens.typography.fontSize.xs[0],
-    color: 'var(--color-text-muted)',
-  },
-
-  compactProgressBar: {
-    height: '6px',
+  progressBar: {
+    height: '8px',
+    marginBottom: tokens.spacing[4],
   },
 
   statsGrid: {
@@ -1975,7 +1967,7 @@ const styles = {
   overviewGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: tokens.spacing[4],
+    gap: tokens.spacing[6],
   },
 
   infoGrid: {
@@ -2404,46 +2396,6 @@ const styles = {
     alignItems: 'center',
     gap: tokens.spacing[2],
     flexWrap: 'wrap',
-  },
-
-  // Event Model Editor styles
-  eventModelControls: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    marginBottom: tokens.spacing[4],
-    paddingBottom: tokens.spacing[4],
-    borderBottom: `1px solid var(--color-border)`,
-  },
-
-  editControls: {
-    display: 'flex',
-    gap: tokens.spacing[2],
-  },
-
-  markdownEditor: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: tokens.spacing[3],
-  },
-
-  markdownTextarea: {
-    width: '100%',
-    minHeight: '500px',
-    padding: tokens.spacing[4],
-    fontSize: tokens.typography.fontSize.sm[0],
-    fontFamily: tokens.typography.fontFamily.mono.join(', '),
-    lineHeight: tokens.typography.lineHeight.relaxed,
-    border: `1px solid var(--color-border)`,
-    borderRadius: tokens.borderRadius.md,
-    resize: 'vertical',
-    backgroundColor: 'var(--color-surface)',
-    color: 'var(--color-text)',
-  },
-
-  editorHelp: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    color: 'var(--color-text-muted)',
-    fontStyle: 'italic',
   },
 };
 
