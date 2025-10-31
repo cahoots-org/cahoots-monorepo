@@ -368,3 +368,192 @@ class CerebrasLLMClient(LLMClient):
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
+
+
+class LocalLLMClient(LLMClient):
+    """Local LLM via vLLM OpenAI-compatible API."""
+
+    def __init__(self, base_url: str, model: str = "Qwen/Qwen2.5-Coder-32B-Instruct"):
+        """Initialize Local LLM client.
+
+        Args:
+            base_url: Base URL for vLLM server (e.g., http://vllm:8000/v1)
+            model: Model name (default: Qwen/Qwen3-32B-Instruct)
+        """
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=600.0  # 10 minutes for local inference
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10)
+    )
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        response_format: Optional[Dict[str, str]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """Call Ollama native API for chat completion."""
+        # Ollama's native API uses different format than OpenAI
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": False,
+            "options": {
+                "num_predict": max_tokens
+            }
+        }
+
+        # Add tools if provided (for tool calling support)
+        if tools:
+            payload["tools"] = tools
+
+        # Note: We don't use Ollama's "format": "json" parameter
+        # Some models (e.g., DeepSeek-R1) return empty responses with this constraint
+        # Instead, we rely on prompt engineering to request JSON output
+        # The _parse_json() method handles extraction from various response formats
+
+        # Use Ollama's native /api/chat endpoint
+        response = await self.client.post("/api/chat", json=payload)
+        response.raise_for_status()
+        result = response.json()
+
+        # Get message and check for tool calls
+        message = result["message"]
+        content = message.get("content", "")
+        tool_calls = message.get("tool_calls")
+
+        if response_format and response_format.get("type") == "json_object":
+            # Remove <think>...</think> tags that Qwen3 adds
+            import re
+            original_content = content
+            content = re.sub(r'<think>.*?</think>\s*', '', content, flags=re.DOTALL)
+            content = content.strip()
+
+            # If stripping think tags left us with nothing, log the issue
+            if not content or not content.strip():
+                print(f"[LocalLLM] WARNING: Model returned ONLY thinking tags, no JSON content")
+                print(f"[LocalLLM] Original response (first 1000 chars): {original_content[:1000]}")
+                # Raise error so caller knows the LLM failed to produce JSON
+                raise ValueError(f"LLM returned only thinking tags with no JSON content")
+
+            # Log what we're about to parse
+            print(f"[LocalLLM] Content after stripping think tags (first 200 chars): {content[:200]}")
+
+        # Convert Ollama response format to OpenAI format for compatibility
+        response_msg = {
+            "content": content,
+            "role": "assistant"
+        }
+
+        # Include tool calls if present
+        if tool_calls:
+            response_msg["tool_calls"] = tool_calls
+
+        return {
+            "choices": [{
+                "message": response_msg
+            }],
+            "tool_calls": tool_calls  # Also at top level for easy access
+        }
+
+    async def chat_completion_with_tools(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        tool_executor: Any,  # Function to execute tools: tool_executor(tool_name, args) -> dict
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        max_rounds: int = 5,
+        response_format: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Call LLM with tool support, implementing agentic loop.
+
+        This method:
+        1. Calls LLM with tools available
+        2. If LLM makes tool calls, executes them
+        3. Feeds tool results back to LLM
+        4. Repeats until LLM returns final answer (no more tool calls)
+
+        Args:
+            messages: Initial conversation messages
+            tools: List of tool definitions in Ollama format
+            tool_executor: Callable that executes tool calls
+            temperature: LLM temperature
+            max_tokens: Max tokens in response
+            max_rounds: Maximum number of LLM calls (prevents infinite loops)
+            response_format: Optional response format specification
+
+        Returns:
+            Final LLM response with all tool interactions complete
+        """
+        import json
+
+        conversation = list(messages)  # Copy messages
+
+        for round_num in range(max_rounds):
+            print(f"[LocalLLM Tool Loop] Round {round_num + 1}/{max_rounds}")
+
+            # Call LLM with tools
+            response = await self.chat_completion(
+                messages=conversation,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                tools=tools
+            )
+
+            # Extract message and tool calls
+            message = response["choices"][0]["message"]
+            content = message.get("content", "")
+            tool_calls = response.get("tool_calls") or message.get("tool_calls")
+
+            # Add assistant message to conversation
+            conversation.append({
+                "role": "assistant",
+                "content": content
+            })
+
+            # If no tool calls, we're done
+            if not tool_calls:
+                print(f"[LocalLLM Tool Loop] Complete - no tool calls")
+                return response
+
+            # Execute tool calls
+            print(f"[LocalLLM Tool Loop] Executing {len(tool_calls)} tool call(s)")
+            for i, tool_call in enumerate(tool_calls):
+                func_name = tool_call["function"]["name"]
+                func_args = tool_call["function"]["arguments"]
+
+                print(f"[LocalLLM Tool Loop]   Tool {i+1}: {func_name}({list(func_args.keys())})")
+
+                # Execute the tool
+                try:
+                    tool_result = tool_executor(func_name, func_args)
+                    result_str = json.dumps(tool_result)
+                except Exception as e:
+                    tool_result = {"error": f"Tool execution failed: {str(e)}"}
+                    result_str = json.dumps(tool_result)
+                    print(f"[LocalLLM Tool Loop]   Error: {e}")
+
+                # Add tool result to conversation
+                conversation.append({
+                    "role": "tool",
+                    "content": result_str
+                })
+
+        print(f"[LocalLLM Tool Loop] Max rounds ({max_rounds}) reached")
+        # Return last response even if max rounds reached
+        return response
+
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()

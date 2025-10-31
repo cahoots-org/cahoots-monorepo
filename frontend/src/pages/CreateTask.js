@@ -1,26 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, SparklesIcon, CodeBracketIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, SparklesIcon, CodeBracketIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 import Button from '../design-system/components/Button';
 import { Heading1, Text } from '../design-system/components/Typography';
 import Card from '../design-system/components/Card';
 import { tokens } from '../design-system/tokens';
 import { useCreateTask } from '../hooks/api/useTasks';
 import { useApp } from '../contexts/AppContext';
-import { getApplicationTypes, getTechStacksForType } from '../config/techStacks';
+import apiClient from '../services/unifiedApiClient';
 
 const CreateTask = () => {
   const navigate = useNavigate();
   const { showSuccess, showError } = useApp();
   const { mutate: createTask, isPending: isCreating } = useCreateTask();
-  
-  const [description, setDescription] = useState('');
-  const [applicationType, setApplicationType] = useState('');
-  const [techStackId, setTechStackId] = useState('');
-  const [githubRepo, setGithubRepo] = useState('');
 
-  const applicationTypes = getApplicationTypes();
-  const availableTechStacks = applicationType ? getTechStacksForType(applicationType) : [];
+  const [description, setDescription] = useState('');
+  const [githubRepo, setGithubRepo] = useState('');
+  const [isGitHubConnected, setIsGitHubConnected] = useState(false);
+  const [checkingGitHub, setCheckingGitHub] = useState(true);
+
+  // Check GitHub connection status on mount
+  useEffect(() => {
+    const checkGitHubStatus = async () => {
+      try {
+        const data = await apiClient.get('/github/status');
+        setIsGitHubConnected(data?.connected || false);
+      } catch (error) {
+        console.error('Failed to check GitHub status:', error);
+        setIsGitHubConnected(false);
+      } finally {
+        setCheckingGitHub(false);
+      }
+    };
+
+    checkGitHubStatus();
+  }, []);
 
   const handleSubmit = () => {
     console.log('handleSubmit called');
@@ -40,12 +54,10 @@ const CreateTask = () => {
       complexity_threshold: 0.7,
       use_context: true,
       requires_approval: false,
-      tech_preferences: {
-        application_type: applicationType,
-        tech_stack_id: techStackId,
-        github_repo: githubRepo.trim(),
-        additional_requirements: ''
-      }
+      // Include GitHub repo URL if provided (backend expects github_repo_url at top level)
+      ...(githubRepo.trim() && {
+        github_repo_url: githubRepo.trim()
+      })
     };
 
     console.log('Calling createTask with data:', taskData);
@@ -174,109 +186,6 @@ const CreateTask = () => {
           />
         </div>
 
-        {/* Tech Stack and GitHub Repo Row */}
-        <div style={{ 
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap: tokens.spacing[4],
-          marginBottom: tokens.spacing[5]
-        }}>
-          {/* Application Type */}
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: '500',
-              color: tokens.colors.neutral[700],
-              marginBottom: tokens.spacing[2],
-            }}>
-              Application Type (Optional)
-            </label>
-            <select
-              value={applicationType}
-              onChange={(e) => {
-                setApplicationType(e.target.value);
-                setTechStackId(''); // Reset tech stack when type changes
-              }}
-              style={{
-                width: '100%',
-                padding: tokens.spacing[2],
-                borderRadius: tokens.borderRadius.md,
-                border: `1px solid ${tokens.colors.neutral[300]}`,
-                backgroundColor: tokens.colors.neutral[0],
-                color: tokens.colors.neutral[900],
-                fontSize: '14px',
-                fontFamily: tokens.typography.fontFamily.sans.join(', '),
-                outline: 'none',
-                cursor: 'pointer',
-                transition: 'border-color 0.2s',
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = tokens.colors.primary[500];
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = tokens.colors.neutral[300];
-              }}
-            >
-              <option value="">Select application type...</option>
-              {applicationTypes.map(type => (
-                <option key={type.id} value={type.id}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Tech Stack */}
-          <div>
-            <label style={{
-              display: 'block',
-              fontSize: '14px',
-              fontWeight: '500',
-              color: tokens.colors.neutral[700],
-              marginBottom: tokens.spacing[2],
-            }}>
-              Tech Stack (Optional)
-            </label>
-            <select
-              value={techStackId}
-              onChange={(e) => setTechStackId(e.target.value)}
-              disabled={!applicationType}
-              style={{
-                width: '100%',
-                padding: tokens.spacing[2],
-                borderRadius: tokens.borderRadius.md,
-                border: `1px solid ${tokens.colors.neutral[300]}`,
-                backgroundColor: applicationType ? tokens.colors.neutral[0] : tokens.colors.neutral[100],
-                color: tokens.colors.neutral[900],
-                fontSize: '14px',
-                fontFamily: tokens.typography.fontFamily.sans.join(', '),
-                outline: 'none',
-                cursor: applicationType ? 'pointer' : 'not-allowed',
-                opacity: applicationType ? 1 : 0.6,
-                transition: 'border-color 0.2s',
-              }}
-              onFocus={(e) => {
-                if (applicationType) {
-                  e.target.style.borderColor = tokens.colors.primary[500];
-                }
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = tokens.colors.neutral[300];
-              }}
-            >
-              <option value="">
-                {applicationType ? 'Select tech stack...' : 'Select application type first'}
-              </option>
-              {availableTechStacks.map(stack => (
-                <option key={stack.id} value={stack.id}>
-                  {stack.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
         {/* GitHub Repository */}
         <div style={{ marginBottom: tokens.spacing[5] }}>
           <label style={{
@@ -295,26 +204,74 @@ const CreateTask = () => {
             type="text"
             value={githubRepo}
             onChange={(e) => setGithubRepo(e.target.value)}
-            placeholder="e.g., https://github.com/username/repository"
+            placeholder={
+              !isGitHubConnected
+                ? "Connect GitHub in Settings to enable this feature"
+                : "e.g., https://github.com/username/repository"
+            }
+            disabled={!isGitHubConnected}
             style={{
               width: '100%',
               padding: tokens.spacing[2],
               borderRadius: tokens.borderRadius.md,
               border: `1px solid ${tokens.colors.neutral[300]}`,
-              backgroundColor: tokens.colors.neutral[0],
-              color: tokens.colors.neutral[900],
+              backgroundColor: !isGitHubConnected ? tokens.colors.neutral[100] : tokens.colors.neutral[0],
+              color: !isGitHubConnected ? tokens.colors.neutral[400] : tokens.colors.neutral[900],
               fontSize: '14px',
               fontFamily: tokens.typography.fontFamily.sans.join(', '),
               outline: 'none',
-              transition: 'border-color 0.2s',
+              transition: 'border-color 0.2s, background-color 0.2s',
+              cursor: !isGitHubConnected ? 'not-allowed' : 'text',
             }}
             onFocus={(e) => {
-              e.target.style.borderColor = tokens.colors.primary[500];
+              if (isGitHubConnected) {
+                e.target.style.borderColor = tokens.colors.primary[500];
+              }
             }}
             onBlur={(e) => {
               e.target.style.borderColor = tokens.colors.neutral[300];
             }}
           />
+          {!isGitHubConnected && !checkingGitHub && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: tokens.spacing[2],
+              marginTop: tokens.spacing[2],
+              padding: tokens.spacing[2],
+              backgroundColor: tokens.colors.warning[50],
+              border: `1px solid ${tokens.colors.warning[200]}`,
+              borderRadius: tokens.borderRadius.md,
+            }}>
+              <InformationCircleIcon style={{
+                width: '16px',
+                height: '16px',
+                color: tokens.colors.warning[600],
+                flexShrink: 0,
+              }} />
+              <Text style={{
+                fontSize: '12px',
+                color: tokens.colors.warning[800],
+              }}>
+                To use GitHub repository context, please{' '}
+                <button
+                  onClick={() => navigate('/settings')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: tokens.colors.primary[600],
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    padding: 0,
+                    font: 'inherit',
+                  }}
+                >
+                  connect your GitHub account in Settings
+                </button>
+                .
+              </Text>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}
@@ -365,8 +322,9 @@ const CreateTask = () => {
           color: tokens.colors.primary[700],
           lineHeight: 1.6,
         }}>
-          <strong>How it works:</strong> Our AI will automatically analyze your task and break it down into manageable subtasks. 
-          The system intelligently determines the structure based on the complexity of your project.
+          <strong>How it works:</strong> Our AI will automatically analyze your task, select the best technology stack,
+          and break it down into manageable subtasks. The system intelligently determines the structure and technologies
+          based on your project requirements.
         </Text>
       </div>
     </div>

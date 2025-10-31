@@ -77,9 +77,10 @@ Analyze the event model and identify:
 2. **Chapters**: Group related slices into workflows
    - Identify major business processes (e.g., "User Registration", "Shopping", "Checkout")
    - Each chapter should tell a coherent story
-   - Chapters can have sub-chapters for detailed organization
+   - IMPORTANT: Each slice should appear in ONLY ONE chapter (no duplicates across chapters)
+   - State view slices MUST include the source events that populate the read model
 
-Return JSON in this exact format:
+Return JSON in this exact format (NOTE: This is a FORMAT EXAMPLE ONLY - derive actual business rules from the project requirements, NOT from these placeholder examples):
 {{
   "swimlanes": [
     {{
@@ -101,26 +102,53 @@ Return JSON in this exact format:
   ],
   "chapters": [
     {{
-      "name": "Shopping",
-      "description": "Customer shopping flow",
-      "sub_chapters": [
+      "name": "Example Chapter Name",
+      "description": "Description of the business process",
+      "slices": [
         {{
-          "name": "Cart Management",
-          "slices": [
-            {{"type": "state_change", "command": "AddItem", "events": ["ItemAdded"]}},
-            {{"type": "state_view", "read_model": "CartItems"}}
+          "type": "state_change",
+          "command": "ExampleCommand",
+          "events": ["ExampleEvent"],
+          "gwt_scenarios": [
+            {{"given": "Valid preconditions are met", "when": "ExampleCommand is executed", "then": "ExampleEvent is triggered"}},
+            {{"given": "Validation fails", "when": "ExampleCommand is executed", "then": "Error: Validation error message"}}
           ]
         }},
         {{
-          "name": "Checkout",
-          "slices": [
-            {{"type": "state_change", "command": "SubmitCart", "events": ["CartSubmitted"]}}
+          "type": "state_view",
+          "read_model": "ExampleReadModel",
+          "source_events": ["ExampleEvent"],
+          "gwt_scenarios": [
+            {{"given": "ExampleEvent occurred with data", "then": "ExampleReadModel shows the data"}}
+          ]
+        }},
+        {{
+          "type": "automation",
+          "automation_name": "ExampleAutomation",
+          "trigger_event": "ExampleEvent",
+          "result_events": ["ResultEvent"],
+          "gwt_scenarios": [
+            {{"given": "ExampleEvent occurred", "then": "ResultEvent is triggered"}}
           ]
         }}
       ]
     }}
   ]
 }}
+
+CRITICAL RULES:
+1. Each slice (command or read_model) should appear in EXACTLY ONE chapter
+2. If a command appears in multiple workflows, choose the chapter where it's most central
+3. State view slices MUST include "source_events" array listing all events that populate the read model
+4. Automation slices should use {{"type": "automation", "name": "AutomationName", "trigger_events": [...], "result_events": [...]}}
+5. EVERY slice MUST include "gwt_scenarios" array with Given/When/Then scenarios:
+   - State change slices: Use "given", "when", "then" (all three fields)
+   - State view slices: Use "given", "then" (no "when" field)
+   - Include at least 2 scenarios per slice (happy path + error/edge case)
+   - Use concrete examples with real data values
+   - IMPORTANT: Derive GWT scenarios from the actual PROJECT REQUIREMENTS and domain logic - DO NOT copy the placeholder examples above
+   - Only include validation rules that are explicitly stated or clearly implied by the project description
+   - Do NOT invent arbitrary constraints (like item limits, quantity restrictions, etc.) that aren't in the requirements
 
 Guidelines:
 - Swimlane names should be singular nouns (Cart, not Carts)

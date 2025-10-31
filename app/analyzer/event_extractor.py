@@ -20,6 +20,18 @@ class EventType(str, Enum):
     STATE_CHANGE = "state_change"      # Entity state transition
 
 
+# Mapping for LLM-generated event types to canonical values
+EVENT_TYPE_MAPPING = {
+    "user_event": "user_action",
+    "domain_action": "user_action",
+    "user": "user_action",
+    "action": "user_action",
+    "system": "system_event",
+    "external": "integration",
+    "state": "state_change",
+}
+
+
 @dataclass
 class DomainEvent:
     """Represents a domain event extracted from tasks"""

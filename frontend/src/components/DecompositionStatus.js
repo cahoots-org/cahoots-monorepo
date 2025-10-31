@@ -5,7 +5,6 @@ import {
   Card,
   Text,
   Badge,
-  Progress,
   LoadingSpinner,
   CheckIcon,
   ClockIcon,
@@ -18,7 +17,6 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
   const { connected, subscribe } = useWebSocket();
   const [decompositionSteps, setDecompositionSteps] = useState([]);
   const [currentStep, setCurrentStep] = useState('');
-  const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
 
   const stageLabels = {
@@ -30,18 +28,6 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
     composer: 'Final Composition'
   };
 
-  const getProgressForStage = (stage) => {
-    const stageProgress = {
-      source: 10,
-      context_fetch: 25,
-      complexity_scorer: 40,
-      root_processor: 55,
-      decomposer: 75,
-      composer: 90
-    };
-    return stageProgress[stage] || 0;
-  };
-
   const handleDecompositionEvent = (event) => {
     switch (event.type) {
       // Handle real-time service status events
@@ -50,12 +36,11 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
           const { stage, status, message, timestamp } = event;
           const stepTitle = stageLabels[stage] || stage;
           const stepId = `${stage}-${status}`;
-          
-          // Update current step and progress
+
+          // Update current step
           setCurrentStep(message);
-          
+
           if (status === 'started') {
-            setProgress(getProgressForStage(stage));
             // Add or update the step
             const existingStepIndex = decompositionSteps.findIndex(s => s.id.startsWith(stage));
             if (existingStepIndex >= 0) {
@@ -68,7 +53,6 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
             updateStepDescription(stepTitle, message);
           } else if (status === 'completed') {
             updateStep(stepTitle, 'completed', message);
-            setProgress(getProgressForStage(stage) + 10);
           } else if (status === 'error') {
             updateStep(stepTitle, 'error', message);
             setError(message);
@@ -76,24 +60,10 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
         }
         break;
 
-      // Handle task completion
-      case 'task.updated':
-        if (event.task_id === taskId && event.task?.status === 'completed') {
-          setCurrentStep('Task processing completed successfully!');
-          setProgress(100);
-          setTimeout(() => {
-            if (onDecompositionComplete) {
-              onDecompositionComplete();
-            }
-          }, 2000);
-        }
-        break;
-        
       // Handle task decomposition completed
       case 'task.decomposed':
         if (event.task_id === taskId) {
           setCurrentStep('Task decomposed into subtasks successfully!');
-          setProgress(85);
         }
         break;
 
@@ -102,21 +72,45 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
         if (event.task_id === taskId) {
           addStep('Event Model Generation', 'in_progress', 'Analyzing events, commands, and read models...');
           setCurrentStep('Generating event model...');
-          setProgress(85);
+        }
+        break;
+
+      // Handle event modeling progress
+      case 'event_modeling.progress':
+        if (event.task_id === taskId) {
+          const { events, commands, read_models, user_interactions, automations } = event;
+          const totalItems = (events || 0) + (commands || 0) + (read_models || 0) + (user_interactions || 0) + (automations || 0);
+          updateStep(
+            'Event Model Generation',
+            'in_progress',
+            `Identified ${totalItems} elements (${events || 0} events, ${commands || 0} commands, ${read_models || 0} read models)...`
+          );
+          setCurrentStep(`Processing event model: ${totalItems} elements identified`);
         }
         break;
 
       // Handle event modeling completed
       case 'event_modeling.completed':
         if (event.task_id === taskId) {
-          const { events, commands, read_models } = event.data || {};
+          const { events, commands, read_models, user_interactions, automations } = event;
           updateStep(
             'Event Model Generation',
             'completed',
             `Generated ${events || 0} events, ${commands || 0} commands, ${read_models || 0} read models`
           );
-          setCurrentStep('Task processing completed successfully!');
-          setProgress(100);
+          setCurrentStep('Event model complete! Finalizing...');
+          setTimeout(() => {
+            if (onDecompositionComplete) {
+              onDecompositionComplete();
+            }
+          }, 2000);
+        }
+        break;
+
+      // Handle task completion (final fallback)
+      case 'task.updated':
+        if (event.task_id === taskId && event.status === 'completed') {
+          setCurrentStep('Task processing completed!');
           setTimeout(() => {
             if (onDecompositionComplete) {
               onDecompositionComplete();
@@ -143,20 +137,19 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
     }
   }, [taskId, connected, subscribe, handleDecompositionEvent]);
 
-  // Fallback: If decomposing but no progress after 5 seconds, simulate progress
+  // Fallback: If decomposing but no steps after 5 seconds, show initial step
   useEffect(() => {
-    if (isDecomposing && progress === 0 && decompositionSteps.length === 0) {
+    if (isDecomposing && decompositionSteps.length === 0 && !currentStep) {
       const timer = setTimeout(() => {
-        if (progress === 0) {
+        if (decompositionSteps.length === 0) {
           setCurrentStep('AI is analyzing your task...');
-          setProgress(15);
           addStep('Task Analysis', 'in_progress', 'Breaking down the task requirements');
         }
       }, 5000);
 
       return () => clearTimeout(timer);
     }
-  }, [isDecomposing, progress, decompositionSteps.length]);
+  }, [isDecomposing, decompositionSteps.length, currentStep]);
 
   const addStep = (title, status, description) => {
     setDecompositionSteps(prev => [...prev, {
@@ -255,32 +248,36 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
           </Badge>
         </div>
 
-        {/* Progress Bar */}
-        <div style={{ marginBottom: tokens.spacing[4] }}>
-          <Text style={{
-            fontSize: tokens.typography.fontSize.sm[0],
-            color: tokens.colors.dark.muted,
-            margin: 0,
-            marginBottom: tokens.spacing[2],
+        {/* Current Status */}
+        {currentStep && (
+          <div style={{
+            marginBottom: tokens.spacing[4],
+            padding: tokens.spacing[3],
+            backgroundColor: tokens.colors.dark.surface,
+            borderRadius: tokens.borderRadius.md,
+            border: `1px solid ${tokens.colors.dark.border}`,
           }}>
-            {showWaitingState ? 'Waiting for AI to start decomposition...' : currentStep}
-          </Text>
-          <Progress 
-            value={showWaitingState ? 10 : progress}
-            variant={showWaitingState ? 'info' : (error ? 'error' : 'primary')}
-          />
-          {showWaitingState && (
             <Text style={{
-              fontSize: tokens.typography.fontSize.xs[0],
-              color: tokens.colors.dark.muted,
+              fontSize: tokens.typography.fontSize.sm[0],
+              color: tokens.colors.dark.text,
               margin: 0,
-              marginTop: tokens.spacing[1],
-              fontStyle: 'italic',
+              fontWeight: tokens.typography.fontWeight.medium,
             }}>
-              The AI is analyzing your task and will start creating subtasks shortly...
+              {currentStep}
             </Text>
-          )}
-        </div>
+            {showWaitingState && (
+              <Text style={{
+                fontSize: tokens.typography.fontSize.xs[0],
+                color: tokens.colors.dark.muted,
+                margin: 0,
+                marginTop: tokens.spacing[2],
+                fontStyle: 'italic',
+              }}>
+                The AI is analyzing your task and will start creating subtasks shortly...
+              </Text>
+            )}
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (

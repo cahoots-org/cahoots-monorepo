@@ -43,7 +43,6 @@ class Task(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     # Additional fields from the original system
-    tech_preferences: Optional[Dict[str, Any]] = None
     best_practices: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
     user_id: Optional[str] = None

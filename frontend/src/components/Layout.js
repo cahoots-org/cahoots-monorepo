@@ -392,9 +392,6 @@ const Layout = ({ children }) => {
         {children}
       </main>
 
-      {/* Footer */}
-      <Footer />
-
       {/* Global Loading Overlay */}
       {globalLoading && (
         <div style={{

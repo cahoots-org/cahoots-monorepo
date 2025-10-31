@@ -9,6 +9,7 @@ from app.models import (
     UserStory, StoryStatus, Epic
 )
 from .llm_client import LLMClient
+from app.config import PromptTuningConfig
 
 
 class StoryDrivenAnalyzer:
@@ -26,7 +27,8 @@ class StoryDrivenAnalyzer:
         self,
         stories: List[UserStory],
         epic: Epic,
-        context: Optional[Dict[str, Any]] = None
+        context: Optional[Dict[str, Any]] = None,
+        config: Optional[PromptTuningConfig] = None
     ) -> Dict[str, TaskDecomposition]:
         """Decompose multiple user stories into implementation tasks in a single call.
 
@@ -36,11 +38,23 @@ class StoryDrivenAnalyzer:
             stories: List of user stories to decompose
             epic: Parent epic for context
             context: Optional context (tech stack, etc.)
+            config: Optional prompt tuning configuration
 
         Returns:
             Dictionary mapping story IDs to their TaskDecompositions
         """
+        # Load config or use default
+        if config is None:
+            # Determine complexity from context and load appropriate config
+            complexity = context.get("complexity", "medium") if context else "medium"
+            config = PromptTuningConfig.for_complexity(complexity)
+
         system_prompt = self._build_story_decomposition_prompt(context)
+
+        # Inject prompt tuning guidance
+        complexity = context.get("complexity", "medium") if context else "medium"
+        prompt_guidance = config.to_prompt_guidance(complexity=complexity)
+        system_prompt += "\n\n" + prompt_guidance
 
         # Build stories list for the prompt
         stories_text = []
@@ -106,20 +120,57 @@ Important:
 - Use implementation verbs: Create, Implement, Add, Build, Connect
 - Maintain consistency across related stories"""
 
+        # DEBUG: Log prompts to understand what's being sent
+        print(f"[StoryAnalyzer] DEBUG: System prompt length: {len(system_prompt)} chars")
+        print(f"[StoryAnalyzer] DEBUG: User prompt length: {len(user_prompt)} chars")
+        print(f"[StoryAnalyzer] DEBUG: System prompt preview: {system_prompt[:500]}")
+        print(f"[StoryAnalyzer] DEBUG: User prompt preview: {user_prompt[:500]}")
+
+        # Save full prompts to /tmp for debugging if needed
+        import os
+        debug_dir = "/tmp/cahoots_prompts"
+        os.makedirs(debug_dir, exist_ok=True)
+        debug_file = f"{debug_dir}/story_decomp_{epic.id[:8]}.txt"
+        with open(debug_file, "w") as f:
+            f.write("=== SYSTEM PROMPT ===\n")
+            f.write(system_prompt)
+            f.write("\n\n=== USER PROMPT ===\n")
+            f.write(user_prompt)
+        print(f"[StoryAnalyzer] Full prompts saved to: {debug_file}")
+
         response = await self.llm.generate_json(
             system_prompt,
             user_prompt,
-            temperature=0.3,
-            max_tokens=128000  # Cerebras supports very high token limits
+            temperature=config.task_decomposition_temperature,
+            max_tokens=config.max_tokens_task_decomposition
         )
 
         result = {}
         story_tasks = response.get("story_tasks", {})
 
+        # Debug logging for missing stories
+        if not story_tasks:
+            print(f"[StoryAnalyzer] ERROR: Empty story_tasks in LLM response")
+            print(f"[StoryAnalyzer] Full response: {str(response)[:2000]}")
+            print(f"[StoryAnalyzer] Expected stories: {[s.id for s in stories]}")
+            raise ValueError("LLM returned empty story_tasks - this is a model/prompt issue")
+
         for story in stories:
-            tasks_data = story_tasks.get(story.id, {}).get("tasks", [])
+            story_data = story_tasks.get(story.id, {})
+
+            # Handle both formats: {"tasks": [...]} or directly [...]
+            if isinstance(story_data, list):
+                tasks_data = story_data
+            elif isinstance(story_data, dict):
+                tasks_data = story_data.get("tasks", [])
+            else:
+                tasks_data = []
 
             if not tasks_data:
+                print(f"[StoryAnalyzer] ERROR: No tasks for story {story.id}")
+                print(f"[StoryAnalyzer] Available story IDs: {list(story_tasks.keys())}")
+                print(f"[StoryAnalyzer] Story {story.id} data: {story_tasks.get(story.id, 'MISSING')}")
+                print(f"[StoryAnalyzer] Story data type: {type(story_data)}")
                 raise ValueError(f"No tasks generated for story {story.id}")
 
             # Add story and epic IDs to each task, converting strings to dicts if needed
@@ -145,7 +196,82 @@ Important:
                 epic_id=epic.id
             )
 
+        # Filter out redundant tasks if we have feature overlap data from GitHub context
+        if context and context.get("existing_features"):
+            print("[StoryDrivenAnalyzer] Filtering redundant tasks based on existing features...")
+            result = await self._filter_redundant_tasks(result, context["existing_features"])
+
         return result
+
+    async def _filter_redundant_tasks(
+        self,
+        story_decompositions: Dict[str, TaskDecomposition],
+        existing_features: Dict[str, Any]
+    ) -> Dict[str, TaskDecomposition]:
+        """
+        Filter out tasks that implement features that already exist.
+
+        Args:
+            story_decompositions: Dictionary mapping story IDs to TaskDecompositions
+            existing_features: Feature overlap analysis from FeatureOverlapDetector
+
+        Returns:
+            Filtered dictionary of TaskDecompositions with redundant tasks removed
+        """
+        from app.services.feature_overlap_detector import FeatureOverlapDetector
+
+        detector = FeatureOverlapDetector(self.llm)
+
+        # Collect all tasks across all stories
+        all_tasks = []
+        story_task_mapping = {}  # Map task index to (story_id, task_index_in_story)
+
+        task_idx = 0
+        for story_id, decomposition in story_decompositions.items():
+            for local_idx, task in enumerate(decomposition.subtasks):
+                all_tasks.append(task)
+                story_task_mapping[task_idx] = (story_id, local_idx)
+                task_idx += 1
+
+        # Filter tasks
+        filter_result = await detector.filter_redundant_tasks(all_tasks, existing_features)
+
+        # Rebuild story decompositions without redundant tasks
+        filtered_decompositions = {}
+        removed_count = 0
+
+        for story_id, decomposition in story_decompositions.items():
+            # Collect non-redundant tasks for this story
+            kept_tasks = []
+            for local_idx, task in enumerate(decomposition.subtasks):
+                task_desc = task.get("description", "")
+                # Check if this task was removed
+                is_removed = any(
+                    removed_task.get("description", "") == task_desc
+                    for removed_task in filter_result["removed_tasks"]
+                )
+
+                if not is_removed:
+                    kept_tasks.append(task)
+                else:
+                    removed_count += 1
+                    print(f"  ✗ Removed from story {story_id}: {task_desc[:80]}")
+
+            # Only create decomposition if there are tasks left
+            if kept_tasks:
+                reasoning = decomposition.decomposition_reasoning
+                if removed_count > 0:
+                    reasoning += f" ({removed_count} redundant tasks filtered)"
+
+                filtered_decompositions[story_id] = TaskDecomposition(
+                    subtasks=kept_tasks,
+                    decomposition_reasoning=reasoning,
+                    story_id=decomposition.story_id,
+                    epic_id=decomposition.epic_id
+                )
+
+        print(f"[StoryDrivenAnalyzer] ✅ Filtered {removed_count} redundant tasks total")
+        return filtered_decompositions
 
     async def analyze_story_task(
         self,
@@ -212,15 +338,107 @@ Is this task atomic and ready for implementation?"""
         Returns:
             System prompt string
         """
+        # Check model size to decide whether to include verbose event model context
+        # Smaller models (14B) get overwhelmed by event model details
+        import os
+        model_name = os.getenv("LOCAL_LLM_MODEL", "")
+        is_small_model = any(size in model_name.lower() for size in ["14b", "7b", "13b"])
+
+        # Check if we have event model context
+        has_event_model = context and context.get("event_model") and not is_small_model
+
         # Check if we have repository context
         has_repo_context = context and context.get("repository_architecture")
 
+        # Start with event model context if available
+        base_prompt = ""
+        if has_event_model:
+            event_model = context["event_model"]
+            commands = event_model.get("commands", [])
+            events = event_model.get("events", [])
+            read_models = event_model.get("read_models", [])
+
+            base_prompt = """You are a senior software engineer working with an EVENT-DRIVEN ARCHITECTURE.
+The Event Model below defines the domain language and behavior of the system.
+
+## EVENT MODEL (DOMAIN BLUEPRINT):
+
+"""
+            # Add commands summary
+            if commands:
+                base_prompt += f"### Commands ({len(commands)} total):\n"
+                for cmd in commands[:10]:  # Show first 10
+                    base_prompt += f"- **{cmd['name']}**: {cmd['description']}\n"
+                    if cmd.get('triggers_events'):
+                        base_prompt += f"  → Triggers: {', '.join(cmd['triggers_events'])}\n"
+                if len(commands) > 10:
+                    base_prompt += f"... and {len(commands) - 10} more\n"
+                base_prompt += "\n"
+
+            # Add events summary
+            if events:
+                base_prompt += f"### Events ({len(events)} total):\n"
+                event_names = []
+                for evt in events[:10]:  # Show first 10
+                    if hasattr(evt, 'name'):
+                        event_names.append(evt.name)
+                        base_prompt += f"- **{evt.name}**: {evt.description}\n"
+                    else:
+                        event_names.append(evt.get('name', 'Unknown'))
+                        base_prompt += f"- **{evt.get('name', 'Unknown')}**: {evt.get('description', '')}\n"
+                if len(events) > 10:
+                    base_prompt += f"... and {len(events) - 10} more\n"
+                base_prompt += "\n"
+
+            # Add read models summary
+            if read_models:
+                base_prompt += f"### Read Models ({len(read_models)} total):\n"
+                for rm in read_models[:10]:  # Show first 10
+                    base_prompt += f"- **{rm['name']}**: {rm['description']}\n"
+                if len(read_models) > 10:
+                    base_prompt += f"... and {len(read_models) - 10} more\n"
+                base_prompt += "\n"
+
+            base_prompt += """
+## CRITICAL: Ensure Complete Feature Coverage
+
+The event model above defines ALL user actions and system behaviors.
+Generate implementation tasks that cover every command and read model.
+
+**Task Description Guidelines:**
+1. Use clear, implementation-focused language (NOT event modeling jargon)
+2. Describe WHAT to build in developer-friendly terms
+3. Include technical details: API endpoints, UI components, database operations
+4. Every command and read model must have corresponding implementation tasks
+
+**Task Examples:**
+- "Add like/unlike functionality for posts with real-time counter updates"
+- "Implement friend request acceptance with automatic friend list updates"
+- "Create user profile page with edit and settings capabilities"
+- "Build post sharing feature with privacy controls"
+- "Add notifications for friend requests and post interactions"
+
+**Coverage Check:**
+- LikePost command → Need task for like/unlike posts
+- AcceptFriendRequest command → Need task for accepting friend requests
+- NotificationsList read model → Need task for notification display
+- Every command/read model must map to at least one implementation task
+
+"""
+
         if has_repo_context:
-            # When we have repository context, be very specific about using it
-            base_prompt = """You are a senior software engineer working with an EXISTING CODEBASE.
+            # When we have repository context, append it to the existing prompt
+            if not base_prompt:
+                base_prompt = """You are a senior software engineer working with an EXISTING CODEBASE.
 You must break down user stories into implementation tasks that integrate with the current architecture.
 
-## CRITICAL REQUIREMENT:
+"""
+            else:
+                base_prompt += """
+## EXISTING CODEBASE INTEGRATION
+
+"""
+            base_prompt += """## CRITICAL REQUIREMENT:
 ALL tasks MUST reference specific files and follow patterns from the existing codebase provided below.
 
 ## EXISTING CODEBASE STRUCTURE:
@@ -266,8 +484,8 @@ ALL tasks MUST reference specific files and follow patterns from the existing co
 ## IMPORTANT:
 Balance between avoiding micro-tasks and providing adequate detail.
 """
-        else:
-            # Original prompt for when no repository context is available
+        elif not has_event_model:
+            # Only use this fallback if we have NEITHER event model NOR repo context
             base_prompt = """You are a senior software engineer breaking down user stories into implementation tasks.
 
 ## DECOMPOSITION RULES:
@@ -309,14 +527,68 @@ Tasks must be traceable back to the story's acceptance criteria.
 Never create tasks for planning, documentation, or deployment.
 Focus on implementation tasks that deliver the story's value."""
 
-        if context:
-            tech_stack = context.get("tech_stack", "")
-            if tech_stack and isinstance(tech_stack, dict):
-                languages = tech_stack.get("preferred_languages", [])
-                frameworks = tech_stack.get("frameworks", {})
-                if languages or frameworks:
-                    base_prompt += f"\n\nTech Stack Configuration: Languages: {languages}, Frameworks: {frameworks}"
-            elif tech_stack:
-                base_prompt += f"\n\nTech Stack: {tech_stack}"
+        # Inject tech stack information - this is CRITICAL for correct implementation details
+        if context and context.get("tech_stack"):
+            tech_stack = context["tech_stack"]
+            frontend = tech_stack.get("frontend", "")
+            backend = tech_stack.get("backend", "")
+            services = tech_stack.get("services", {})
+
+            # Infer languages from frameworks
+            backend_lang = ""
+            if backend == "FastAPI":
+                backend_lang = "Python"
+            elif backend == "Express":
+                backend_lang = "TypeScript"
+
+            frontend_lang = "TypeScript/JavaScript" if frontend else ""
+
+            base_prompt += """
+
+## MANDATORY TECH STACK (YOU MUST USE THESE EXACT TECHNOLOGIES):
+"""
+            if backend:
+                base_prompt += f"\n**Backend Framework:** {backend} ({backend_lang})"
+            if frontend:
+                base_prompt += f"\n**Frontend Framework:** {frontend} ({frontend_lang})"
+            if services:
+                base_prompt += f"\n**Required Services:** {', '.join(f'{k}: {v}' for k, v in services.items())}"
+
+            base_prompt += "\n\n**CRITICAL IMPLEMENTATION RULES:**\n"
+
+            # FastAPI (Python) specific
+            if backend == "FastAPI":
+                base_prompt += """- Use Python for ALL backend code
+- Use FastAPI for API endpoints (NOT Express, NOT Node.js)
+- Use Pydantic models for validation
+- File paths: `app/routes/*.py`, `app/models/*.py`, `app/services/*.py`
+- Database: Use SQLAlchemy or similar Python ORM
+- Authentication: Use Python libraries (NOT Passport.js, NOT JWT.js)
+"""
+
+            # Express (TypeScript) specific
+            elif backend == "Express":
+                base_prompt += """- Use TypeScript for ALL backend code
+- Use Express.js for API endpoints (NOT FastAPI, NOT Flask)
+- File paths: `src/routes/*.ts`, `src/models/*.ts`, `src/services/*.ts`
+- Use TypeScript interfaces for types
+- Authentication: Use Node.js libraries (Passport, jsonwebtoken, etc.)
+"""
+
+            # React frontend
+            if frontend == "React":
+                base_prompt += """- Use React for frontend (NOT Vue, NOT Angular)
+- File paths: `frontend/src/components/*.jsx` or `*.tsx`
+- Use React hooks (useState, useEffect, etc.)
+"""
+
+            # Next.js frontend
+            elif frontend == "Next.js":
+                base_prompt += """- Use Next.js for frontend (NOT plain React)
+- File paths: `pages/*.tsx` or `app/*.tsx` (depending on Next.js version)
+- Use Next.js features (getServerSideProps, API routes, etc.)
+"""
+
+            base_prompt += "\n**YOU MUST NOT use technologies outside this tech stack!**\n"
 
         return base_prompt

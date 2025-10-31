@@ -12,14 +12,14 @@ from app.models import (
     Task, TaskStatus, TaskRequest, TaskResponse,
     TaskTreeNode, TaskTreeResponse, TaskListResponse, TaskStats
 )
-from app.api.dependencies import get_task_storage, get_task_processor, get_current_user, get_llm_client
+from app.api.dependencies import get_task_storage, get_task_processor, get_current_user, get_llm_client, get_context_engine_client
 from app.storage import TaskStorage
 from app.processor import TaskProcessor
 from app.websocket.events import task_event_emitter
-from app.services.tech_stack_enrichment import TechStackEnrichmentService
+from app.services.tech_stack_decision import TechStackDecisionService
 from app.analyzer.llm_client import LLMClient
-# TEMP: Commented out due to import issue
-# from app.services.github_metadata import GitHubMetadataService
+from app.services.github_context_agent import GitHubContextEnrichmentAgent
+from app.config import PromptTuningConfig
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -77,7 +77,8 @@ async def create_task(
     processor: TaskProcessor = Depends(get_task_processor),
     storage: TaskStorage = Depends(get_task_storage),
     current_user: dict = Depends(get_current_user),
-    llm_client: LLMClient = Depends(get_llm_client)
+    llm_client: LLMClient = Depends(get_llm_client),
+    context_engine = Depends(get_context_engine_client)
 ) -> dict:
     """Create a task and start processing it asynchronously.
 
@@ -90,56 +91,97 @@ async def create_task(
     try:
         # Build context from request
         context = {}
-        github_metadata = None
 
-        # Handle tech preferences and GitHub repo
-        user_tech_prefs = None
-        if request.tech_preferences:
-            user_tech_prefs = request.tech_preferences.model_dump()
+        # Get GitHub token from user's integration
+        github_token = None
+        user_id = current_user["id"]
+        try:
+            github_token = await storage.redis.get(f"github_token:{user_id}")
+            if github_token:
+                github_token = github_token.decode() if isinstance(github_token, bytes) else github_token
+                print(f"[TaskAPI] Using GitHub token for user {user_id}")
+        except Exception as e:
+            print(f"[TaskAPI] Could not fetch GitHub token: {e}")
 
-            # Check for GitHub repo URL in tech_preferences
-            if github_repo_url := user_tech_prefs.get("github_repo"):
-                # Quick metadata fetch (fast)
-                # TEMP: Commented out due to import issue
-                # github_service = GitHubMetadataService()
-                # repo_summary = await github_service.fetch_repository_summary(github_repo_url)
-                repo_summary = None
+        # Handle GitHub repo URL if provided
+        if request.github_repo_url:
+            try:
+                print(f"[TaskAPI] Enriching context from GitHub repo: {request.github_repo_url}")
 
-                if repo_summary and not repo_summary.get("error"):
-                    # Add basic metadata immediately
-                    github_metadata = repo_summary
-                    repo_context = github_service.format_summary_for_llm(repo_summary)
-                    context["repository_context"] = repo_context
-                    context["repository_metadata"] = repo_summary
+                # Initialize GitHub Context Enrichment Agent
+                github_agent = GitHubContextEnrichmentAgent(
+                    llm_client=llm_client,
+                    github_token=github_token
+                )
 
-                    # Mark that deeper analysis is pending
-                    repo_info = github_service.extract_repo_info(github_repo_url)
-                    if repo_info:
-                        owner, repo = repo_info
-                        context["repository_analysis_pending"] = {
-                            "owner": owner,
-                            "repo": repo,
-                            "status": "pending"
-                        }
-                        print(f"Repository {owner}/{repo} marked for background analysis")
-                elif repo_summary:
-                    print(f"Failed to fetch GitHub repo: {repo_summary.get('error')}")
+                # Run context enrichment
+                github_context = await github_agent.enrich_task_context(
+                    repo_url=request.github_repo_url,
+                    user_prompt=request.description,
+                    max_iterations=3
+                )
+
+                # Add GitHub context to task context
+                context["github"] = github_context
+
+                print(f"[TaskAPI] ✓ GitHub context enriched: "
+                      f"{github_context['context_metadata']['files_read']} files, "
+                      f"confidence: {github_context['context_metadata']['confidence']:.2f}")
+
+                # Detect feature overlap to filter redundant tasks
+                try:
+                    print(f"[TaskAPI] Detecting feature overlap...")
+                    existing_features = await github_agent.detect_feature_overlap(
+                        user_prompt=request.description
+                    )
+                    if existing_features:
+                        context["existing_features"] = existing_features
+                        print(f"[TaskAPI] ✓ Feature overlap detected: "
+                              f"{existing_features['summary']['already_exist']}/{existing_features['summary']['total_requested']} "
+                              f"features already exist ({existing_features['summary']['overlap_percentage']:.1f}% overlap)")
+
+                except Exception as e:
+                    print(f"[TaskAPI] ⚠ Feature overlap detection failed: {e}")
+                    # Continue without feature overlap detection - non-blocking
+
+            except Exception as e:
+                print(f"[TaskAPI] ⚠ GitHub context enrichment failed: {e}")
+                # Continue without GitHub context - non-blocking
+                context["github_error"] = str(e)
 
         if request.repository:
             context["repository"] = request.repository.model_dump()
 
-        # Enrich tech stack (from GitHub, LLM inference, or user preferences)
-        tech_enrichment = TechStackEnrichmentService(llm_client)
-        enriched_tech_stack = await tech_enrichment.enrich_tech_stack(
+        # Determine tech stack using constrained catalog and LLM decision-making
+        # This happens BEFORE decomposition to guide all subsequent task generation
+        # Strategy:
+        # - If GitHub context available: Match the existing repository's tech stack
+        # - Otherwise: Use prescribed default stack (Python + FastAPI + React)
+        tech_decision_service = TechStackDecisionService(llm_client)
+        tech_stack = await tech_decision_service.determine_tech_stack(
             task_description=request.description,
-            user_preferences=user_tech_prefs,
-            github_metadata=github_metadata
+            event_model=None,  # Event model not available yet
+            github_context=context.get("github")  # Pass GitHub context if available
         )
-        context["tech_stack"] = enriched_tech_stack
+        context["tech_stack"] = tech_stack
+
+        print(f"[TaskAPI] Tech stack determined: {tech_stack.get('language')}, "
+              f"frontend={tech_stack.get('frontend')}, backend={tech_stack.get('backend')}, "
+              f"from_github={context.get('github') is not None}")
 
         # Add human review flag if requested
         if request.requires_approval:
             context["require_human_review"] = True
+
+        # Parse prompt config if provided
+        prompt_config = None
+        if request.prompt_config:
+            try:
+                prompt_config = PromptTuningConfig(**request.prompt_config)
+                print(f"[TaskAPI] Using custom prompt config: {request.prompt_config}")
+            except Exception as e:
+                print(f"[TaskAPI] Warning: Invalid prompt_config provided, using defaults: {e}")
+                prompt_config = None
 
         # Create the root task immediately with current user
         user_id = current_user["id"]
@@ -158,13 +200,47 @@ async def create_task(
         # Emit task created event immediately
         await task_event_emitter.emit_task_created(root_task, user_id)
 
+        # Publish context to Context Engine for AI-powered analysis
+        if context_engine:
+            try:
+                # Publish GitHub context if available
+                if context.get("github"):
+                    await context_engine.publish_github_context(
+                        project_id=root_task.id,
+                        user_id=user_id,
+                        github_context=context["github"]
+                    )
+
+                # Publish existing features if available
+                if context.get("existing_features"):
+                    await context_engine.publish_existing_features(
+                        project_id=root_task.id,
+                        user_id=user_id,
+                        existing_features=context["existing_features"]
+                    )
+
+                # Publish tech stack
+                if context.get("tech_stack"):
+                    await context_engine.publish_data(
+                        project_id=root_task.id,
+                        data_key="tech_stack",
+                        data=context["tech_stack"]
+                    )
+
+            except Exception as e:
+                print(f"[TaskAPI] ⚠ Failed to interact with Context Engine: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue without Context Engine - non-blocking
+
         # Process the task decomposition in the background
         background_tasks.add_task(
             processor.process_task_async,
             root_task,
             context,
             request.user_id,
-            request.max_depth
+            request.max_depth,
+            prompt_config  # Pass prompt config to processor
         )
 
         # Return the root task immediately for frontend navigation
@@ -247,42 +323,25 @@ async def list_tasks(
     storage: TaskStorage = Depends(get_task_storage),
     current_user: dict = Depends(get_current_user)
 ) -> TaskListResponse:
-    """List tasks with optional filtering."""
+    """List tasks with optional filtering and pagination."""
     # Get current user
     user_id = current_user["id"]
 
-    # In development mode with dev_user, show all tasks (for backwards compatibility)
-    is_dev_user = user_id == "dev_user"
+    # Calculate offset for pagination
+    offset = (page - 1) * page_size
 
-    # Get tasks based on filters
-    if status:
-        # Get all tasks by status
-        all_status_tasks = await storage.get_tasks_by_status(status)
-        tasks = [t for t in all_status_tasks if t.user_id == user_id]
-    else:
-        # Get ALL user's tasks (no limit when filtering)
-        tasks = await storage.get_user_tasks(user_id)
+    # Use optimized storage method with filtering and pagination
+    paginated_tasks, total = await storage.get_user_tasks(
+        user_id=user_id,
+        limit=page_size,
+        offset=offset,
+        top_level_only=top_level_only,
+        status=status,
+        sort_by_created=True
+    )
 
-    # Filter for root-level tasks only if requested
-    if top_level_only:
-        tasks = [t for t in tasks if t.parent_id is None]
-
-    # Sort tasks by created_at date (newest first)
-    tasks.sort(key=lambda t: t.created_at, reverse=True)
-
-    # Apply pagination after filtering and sorting
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
-    paginated_tasks = tasks[start_idx:end_idx]
-
-    # Calculate stats (use all filtered tasks for accurate stats)
+    # Calculate stats (use cached status counts)
     task_counts = await storage.count_tasks_by_status()
-
-    # If filtering for top-level only, calculate total from filtered list
-    if top_level_only:
-        total = len(tasks)  # Total root-level tasks
-    else:
-        total = sum(task_counts.values())
 
     stats = TaskStats(
         total=total,
@@ -295,14 +354,15 @@ async def list_tasks(
         average_depth=sum(t.depth for t in paginated_tasks) / len(paginated_tasks) if paginated_tasks else 0
     )
 
-    # Convert tasks to responses with recursive subtask counting for root tasks
+    # Convert tasks to responses
+    # For root tasks, use subtasks length instead of recursive count for performance
     task_responses = []
     for task in paginated_tasks:
         task_response = TaskResponse.from_task(task)
-        # For root tasks, count all descendants recursively
+        # Use direct subtasks count (immediate children only)
+        # This avoids N recursive queries and is sufficient for UI
         if task.parent_id is None:
-            descendant_count = await storage.count_all_descendants(task.id)
-            task_response.children_count = descendant_count
+            task_response.children_count = len(task.subtasks) if task.subtasks else 0
         task_responses.append(task_response)
 
     return TaskListResponse(
@@ -552,5 +612,281 @@ async def delete_subtask(
         await storage.delete_task(task_id)
 
     return {"message": f"Deleted subtask {task_id}"}
+
+
+@router.post("/{task_id}/slices")
+async def add_slice(
+    task_id: str,
+    slice_data: Dict[str, Any],
+    storage: TaskStorage = Depends(get_task_storage),
+    llm_client: LLMClient = Depends(get_llm_client)
+) -> dict:
+    """Add a new slice to a task's event model with LLM analysis.
+
+    The LLM will:
+    - Fill in missing fields (command, events, read model, etc.)
+    - Generate GWT scenarios
+    - Create wireframe components
+    - Ensure consistency with the existing event model
+    - Make updates to related slices if needed
+    """
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if not task.metadata:
+        raise HTTPException(status_code=400, detail="Task has no event model")
+
+    # Extract current event model
+    current_event_model = {
+        "events": task.metadata.get("extracted_events", []),
+        "commands": task.metadata.get("commands", []),
+        "read_models": task.metadata.get("read_models", []),
+        "automations": task.metadata.get("automations", []),
+        "chapters": task.metadata.get("chapters", []),
+        "swimlanes": task.metadata.get("swimlanes", []),
+        "wireframes": task.metadata.get("wireframes", []),
+        "data_flow": task.metadata.get("data_flow", [])
+    }
+
+    # Build LLM prompt for slice analysis
+    import json
+    prompt = f"""You are enhancing an Event Model by adding a new slice.
+
+EXISTING EVENT MODEL:
+{json.dumps(current_event_model, indent=2)}
+
+NEW SLICE REQUEST:
+Name: {slice_data.get('name')}
+Type: {slice_data.get('type')}
+Description: {slice_data.get('description', '')}
+Chapter: {slice_data.get('chapter')}
+Command: {slice_data.get('command', '')}
+Read Model: {slice_data.get('read_model', '')}
+
+YOUR TASK:
+Analyze the new slice request and the existing event model, then:
+
+1. Fill in missing details for the new slice
+2. Generate appropriate events (past tense names)
+3. Create GWT scenarios (at least 2: happy path + error case)
+4. Generate wireframe components if applicable
+5. Add data flow mappings
+6. Ensure consistency with existing event model
+7. Update related slices/chapters if needed
+
+RULES:
+- Event names MUST be past tense (e.g., ItemAdded, CartSubmitted)
+- Command names MUST be imperative (e.g., AddItem, SubmitCart)
+- State change slices need: command, events, GWT scenarios with given/when/then
+- State view slices need: read_model, source_events, GWT scenarios with given/then
+- Every slice MUST have at least 2 GWT scenarios
+- Wireframes should have simple components (input, button, text, list, etc.)
+- Assign slice to appropriate swimlane based on domain
+
+Return JSON with this structure:
+{{
+  "slice": {{
+    "type": "state_change" | "state_view" | "automation",
+    "command": "CommandName" (if state_change),
+    "read_model": "ReadModelName" (if state_view),
+    "events": ["EventName1", "EventName2"],
+    "source_events": ["SourceEvent1"] (if state_view),
+    "gwt_scenarios": [
+      {{"given": "...", "when": "...", "then": "..."}},
+      {{"given": "...", "when": "...", "then": "..."}}
+    ]
+  }},
+  "new_command": {{
+    "name": "CommandName",
+    "description": "...",
+    "swimlane": "SwimlaneN ame",
+    "triggers_events": ["EventName"],
+    "parameters": ["param1", "param2"]
+  }} (if needed),
+  "new_events": [
+    {{
+      "name": "EventName",
+      "event_type": "user_action" | "system_event" | "integration",
+      "description": "...",
+      "actor": "User" | "System",
+      "affected_entity": "Entity",
+      "swimlane": "SwimlaneName",
+      "triggered_by": "CommandName" | "AutomationName"
+    }}
+  ],
+  "new_read_model": {{
+    "name": "ReadModelName",
+    "description": "...",
+    "swimlane": "SwimlaneName",
+    "data_source": ["EventName1", "EventName2"],
+    "fields": ["field1", "field2"]
+  }} (if needed),
+  "wireframe": {{
+    "name": "Screen Name",
+    "slice": "{slice_data.get('name')}",
+    "type": "state_change" | "state_view",
+    "components": [
+      {{
+        "type": "input" | "button" | "text" | "list",
+        "field": "fieldName",
+        "label": "Label",
+        "triggers": "CommandName" (if button),
+        "displays": ["field1"] (if display component)
+      }}
+    ]
+  }},
+  "data_flow": [
+    {{
+      "from": "UI:ScreenName.field",
+      "to": "Command:CommandName.field",
+      "description": "..."
+    }}
+  ],
+  "chapter_updates": {{
+    "chapter_name": "{slice_data.get('chapter')}",
+    "add_slice": {{...slice details...}}
+  }}
+}}
+
+Return ONLY valid JSON, no explanation."""
+
+    try:
+        # Call LLM
+        response = await llm_client.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=8000,
+            temperature=0.3
+        )
+
+        # Extract JSON from response
+        import re
+        if isinstance(response, dict) and "choices" in response:
+            content = response["choices"][0]["message"]["content"]
+        else:
+            raise HTTPException(status_code=500, detail="Unexpected LLM response format")
+
+        # Parse JSON
+        data = None
+        try:
+            data = json.loads(content.strip())
+        except json.JSONDecodeError:
+            # Try extracting from code block
+            code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', content)
+            if code_block_match:
+                data = json.loads(code_block_match.group(1))
+            else:
+                # Try brace matching
+                start_idx = content.find('{')
+                if start_idx != -1:
+                    brace_count = 0
+                    in_string = False
+                    escape = False
+
+                    for i in range(start_idx, len(content)):
+                        char = content[i]
+
+                        if escape:
+                            escape = False
+                            continue
+
+                        if char == '\\':
+                            escape = True
+                            continue
+
+                        if char == '"' and not escape:
+                            in_string = not in_string
+                            continue
+
+                        if not in_string:
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_str = content[start_idx:i+1]
+                                    data = json.loads(json_str)
+                                    break
+
+        if not data:
+            raise HTTPException(status_code=500, detail="Failed to parse LLM response")
+
+        # Update event model with new slice data
+        metadata = task.metadata
+
+        # Add new command if provided
+        if "new_command" in data and data["new_command"]:
+            if "commands" not in metadata:
+                metadata["commands"] = []
+            metadata["commands"].append(data["new_command"])
+
+        # Add new events if provided
+        if "new_events" in data and data["new_events"]:
+            if "extracted_events" not in metadata:
+                metadata["extracted_events"] = []
+            metadata["extracted_events"].extend(data["new_events"])
+
+        # Add new read model if provided
+        if "new_read_model" in data and data["new_read_model"]:
+            if "read_models" not in metadata:
+                metadata["read_models"] = []
+            metadata["read_models"].append(data["new_read_model"])
+
+        # Add wireframe if provided
+        if "wireframe" in data and data["wireframe"]:
+            if "wireframes" not in metadata:
+                metadata["wireframes"] = []
+            metadata["wireframes"].append(data["wireframe"])
+
+        # Add data flow if provided
+        if "data_flow" in data and data["data_flow"]:
+            if "data_flow" not in metadata:
+                metadata["data_flow"] = []
+            metadata["data_flow"].extend(data["data_flow"])
+
+        # Update chapter with new slice
+        if "chapter_updates" in data and data["chapter_updates"]:
+            chapter_name = data["chapter_updates"]["chapter_name"]
+            new_slice = data["chapter_updates"]["add_slice"]
+
+            if "chapters" not in metadata:
+                metadata["chapters"] = []
+
+            # Find the chapter
+            chapter_found = False
+            for chapter in metadata["chapters"]:
+                if chapter["name"] == chapter_name:
+                    if "slices" not in chapter:
+                        chapter["slices"] = []
+                    chapter["slices"].append(new_slice)
+                    chapter_found = True
+                    break
+
+            # If chapter not found, create it
+            if not chapter_found:
+                metadata["chapters"].append({
+                    "name": chapter_name,
+                    "description": f"Chapter containing {slice_data.get('name')}",
+                    "slices": [new_slice]
+                })
+
+        # Save updated task
+        success = await storage.update_task(task_id, {"metadata": metadata})
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update task")
+
+        # Get updated task
+        task = await storage.get_task(task_id)
+
+        return {
+            "data": TaskResponse.from_task(task).dict(),
+            "analysis": data
+        }
+
+    except Exception as e:
+        print(f"Error adding slice: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 

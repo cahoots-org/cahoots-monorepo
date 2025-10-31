@@ -31,18 +31,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
 
-# Create app user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Create app user with home directory
+RUN groupadd -r appuser && useradd -r -g appuser -m -d /home/appuser appuser
 
 # Create app directory
 WORKDIR /app
 
 # Copy application code
 COPY app/ ./app/
+COPY context-engine/ ./context-engine/
 COPY .env.example .env
 
-# Change ownership
-RUN chown -R appuser:appuser /app
+# Create cache directory for HuggingFace models
+RUN mkdir -p /home/appuser/.cache/huggingface && \
+    chown -R appuser:appuser /app /home/appuser
+
+# Set environment variable for HuggingFace cache
+ENV HF_HOME=/home/appuser/.cache/huggingface \
+    TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface/transformers
 
 # Switch to non-root user
 USER appuser
