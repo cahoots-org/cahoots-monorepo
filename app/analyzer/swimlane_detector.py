@@ -8,6 +8,58 @@ from typing import List, Dict, Any
 import json
 
 
+def _generate_fallback_structure(event_model: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate a basic swimlanes/chapters structure when LLM fails.
+
+    This creates a single "Main" swimlane and organizes slices into a single chapter.
+    """
+    commands = event_model.get('commands', [])
+    events = event_model.get('events', [])
+    read_models = event_model.get('read_models', [])
+
+    # Create one swimlane with all elements
+    event_model['swimlanes'] = [{
+        "name": "Main",
+        "description": "Primary system functionality",
+        "events": [e.name if hasattr(e, 'name') else e.get('name', '') for e in events],
+        "commands": [c.get('name', '') for c in commands if isinstance(c, dict)],
+        "read_models": [rm.get('name', '') for rm in read_models if isinstance(rm, dict)],
+        "automations": []
+    }]
+
+    # Create slices from commands
+    slices = []
+    for cmd in commands:
+        if isinstance(cmd, dict) and cmd.get('name'):
+            triggered_events = cmd.get('triggers_events', [])
+            slices.append({
+                "type": "state_change",
+                "command": cmd['name'],
+                "events": triggered_events,
+                "gwt_scenarios": []
+            })
+
+    # Add read model slices
+    for rm in read_models:
+        if isinstance(rm, dict) and rm.get('name'):
+            slices.append({
+                "type": "state_view",
+                "read_model": rm['name'],
+                "source_events": rm.get('data_source', []),
+                "gwt_scenarios": []
+            })
+
+    # Create one chapter with all slices
+    event_model['chapters'] = [{
+        "name": "Core Functionality",
+        "description": "Main system workflows",
+        "slices": slices
+    }]
+
+    print(f"[SwimlaneDetector] Generated fallback: 1 swimlane, 1 chapter with {len(slices)} slices")
+    return event_model
+
+
 async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict[str, Any]) -> Dict[str, Any]:
     """
     Detect swimlanes (business capabilities) and chapters (workflows) for the event model.
@@ -23,6 +75,8 @@ async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict
     Returns:
         Enhanced event model with swimlanes and chapters
     """
+    print(f"[SwimlaneDetector] CALLED with {len(event_model.get('events', []))} events, {len(event_model.get('commands', []))} commands")
+
     # Convert events to serializable format
     serializable_events = [
         {
@@ -243,10 +297,14 @@ Return ONLY valid JSON, no explanation."""
             else:
                 print("[SwimlaneDetector] ✗ Failed to parse JSON from LLM response")
                 print(f"[SwimlaneDetector] Raw content preview: {content[:500] if 'content' in locals() else 'N/A'}")
-            return event_model
+
+            # Generate basic swimlanes/chapters from existing data as fallback
+            print("[SwimlaneDetector] Generating basic fallback structure from event model data")
+            return _generate_fallback_structure(event_model)
 
     except Exception as e:
         print(f"[SwimlaneDetector] ✗ Error detecting swimlanes: {e}")
         import traceback
         print(f"[SwimlaneDetector] Traceback: {traceback.format_exc()}")
-        return event_model
+        print("[SwimlaneDetector] Generating basic fallback structure from event model data")
+        return _generate_fallback_structure(event_model)
