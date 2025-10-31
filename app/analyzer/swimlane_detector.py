@@ -234,12 +234,19 @@ Return ONLY valid JSON, no explanation."""
         if data and 'swimlanes' in data:
             event_model['swimlanes'] = data.get('swimlanes', [])
             event_model['chapters'] = data.get('chapters', [])
-            print(f"[SwimlaneDetector] Detected {len(event_model.get('swimlanes', []))} swimlanes and {len(event_model.get('chapters', []))} chapters")
+            print(f"[SwimlaneDetector] ✓ Detected {len(event_model.get('swimlanes', []))} swimlanes and {len(event_model.get('chapters', []))} chapters")
             return event_model
         else:
-            print("[SwimlaneDetector] Failed to detect swimlanes, skipping")
+            if data:
+                print(f"[SwimlaneDetector] ✗ LLM response missing 'swimlanes' key. Keys found: {list(data.keys())}")
+                print(f"[SwimlaneDetector] Response preview: {str(data)[:500]}")
+            else:
+                print("[SwimlaneDetector] ✗ Failed to parse JSON from LLM response")
+                print(f"[SwimlaneDetector] Raw content preview: {content[:500] if 'content' in locals() else 'N/A'}")
             return event_model
 
     except Exception as e:
-        print(f"[SwimlaneDetector] Error detecting swimlanes: {e}")
+        print(f"[SwimlaneDetector] ✗ Error detecting swimlanes: {e}")
+        import traceback
+        print(f"[SwimlaneDetector] Traceback: {traceback.format_exc()}")
         return event_model
