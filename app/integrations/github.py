@@ -43,9 +43,9 @@ async def get_github_status(current_user: Dict = Depends(get_current_user)):
     user_id = current_user.get("id", "dev-user")
 
     try:
-        from app.storage import get_redis_client
+        from app.api.dependencies import get_redis_client
         redis = await get_redis_client()
-        token = await redis.get(f"github_token:{user_id}")
+        token = await redis.client.get(f"github_token:{user_id}")
         if token:
             token = token.decode() if isinstance(token, bytes) else token
     except Exception:
@@ -147,11 +147,11 @@ async def connect_github_account(
         # Store the token per user in Redis (in production, use proper database)
         import os
         try:
-            from app.storage import get_redis_client
+            from app.api.dependencies import get_redis_client
             redis = await get_redis_client()
             # Store with user-specific key
             user_id = current_user.get("id", "dev-user")
-            await redis.set(f"github_token:{user_id}", request.access_token, ex=86400)  # 24 hour expiry
+            await redis.client.set(f"github_token:{user_id}", request.access_token)  # No expiry - persists until user disconnects
 
             # For backwards compatibility, also set environment variable (dev only)
             if os.environ.get("ENVIRONMENT", "development") == "development":
@@ -341,10 +341,10 @@ async def disconnect_github_account(
 
     try:
         # Remove user-specific token from Redis
-        from app.storage import get_redis_client
+        from app.api.dependencies import get_redis_client
         redis = await get_redis_client()
         user_id = current_user.get("id", "dev-user")
-        await redis.delete(f"github_token:{user_id}")
+        await redis.client.delete(f"github_token:{user_id}")
 
         # In dev mode, also clear environment variable
         if os.environ.get("ENVIRONMENT", "development") == "development":

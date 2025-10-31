@@ -11,8 +11,9 @@ This replaces 4 separate LLM calls with 1 comprehensive analysis.
 
 from typing import List, Dict, Any
 from app.models import Task
-from app.analyzer.llm_client import LLMClient
-from app.analyzer.event_extractor import DomainEvent, EventType
+from app.analyzer.llm_client import LLMClient, LocalLLMClient
+from app.analyzer.validation_tools import VALIDATION_TOOLS, execute_tool_call
+from app.analyzer.event_extractor import DomainEvent, EventType, EVENT_TYPE_MAPPING
 from app.analyzer.state_machine_detector import StateMachine, StateTransition, TransitionType
 from app.analyzer.cqrs_detector import Command, Query, CQRSAnalysis
 from app.analyzer.schema_generator import Entity, Field, SchemaAnalysis
@@ -21,10 +22,77 @@ from app.analyzer.schema_generator import Entity, Field, SchemaAnalysis
 class UnifiedDomainAnalyzer:
     """Single-pass domain analysis that extracts everything at once"""
 
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, task_event_emitter=None):
         self.llm = llm_client
+        self.task_event_emitter = task_event_emitter
 
-    async def analyze_domain(self, task_tree: List[Task]) -> Dict[str, Any]:
+    async def analyze_domain_from_description(self, root_task: Task, user_id: str = None) -> Dict[str, Any]:
+        """
+        Perform event modeling analysis from just the root task description (before decomposition).
+
+        This is used when Event Modeling runs BEFORE task decomposition to establish
+        the domain model first.
+
+        Args:
+            root_task: Root task with description
+            user_id: User ID for emitting progress events
+
+        Returns:
+            Dictionary with events, commands, read_models, user_interactions, and automations
+        """
+        print(f"[UnifiedDomainAnalyzer] Analyzing domain from description only (pre-decomposition)")
+
+        # Single LLM call analyzing just the root description
+        analysis = await self._analyze_description_only(root_task)
+
+        # Add swimlanes and chapters (no validation yet)
+        print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
+        analysis = await self._detect_swimlanes_and_chapters(root_task, analysis)
+
+        # Generate wireframes and data flow tracking (no validation yet)
+        print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
+        analysis = await self._generate_wireframes_and_dataflow(root_task, analysis)
+
+        # Skip data flow validation - too slow with retry loops
+        # Final validation will catch major issues
+
+        # NOW validate everything once at the end
+        print(f"[UnifiedDomainAnalyzer] Running final validation...")
+        from app.analyzer.event_model_validator import EventModelValidator
+        validator = EventModelValidator()
+
+        max_retries = 3  # Reduced from 10 to 3
+        for retry in range(max_retries):
+            is_valid, validation_issues = validator.validate(analysis)
+
+            if is_valid:
+                print(f"[UnifiedDomainAnalyzer] Final validation passed")
+                break
+
+            errors = [issue for issue in validation_issues if issue.severity == 'error']
+
+            if errors and retry < max_retries - 1:
+                print(f"[UnifiedDomainAnalyzer] Final validation failed with {len(errors)} errors (attempt {retry + 1}/{max_retries})")
+                analysis = await self._fix_validation_errors(analysis, validation_issues)
+            else:
+                print(f"[UnifiedDomainAnalyzer] Proceeding with {len(errors)} validation errors after {max_retries} attempts")
+                break
+
+        # Emit progress
+        if self.task_event_emitter and user_id:
+            await self.task_event_emitter.emit_event_modeling_progress(
+                root_task,
+                user_id,
+                events_count=len(analysis.get("events", [])),
+                commands_count=len(analysis.get("commands", [])),
+                read_models_count=len(analysis.get("read_models", [])),
+                interactions_count=len(analysis.get("user_interactions", [])),
+                automations_count=len(analysis.get("automations", []))
+            )
+
+        return analysis
+
+    async def analyze_domain(self, task_tree: List[Task], root_task: Task = None, user_id: str = None) -> Dict[str, Any]:
         """
         Perform complete domain analysis, batching if needed.
 
@@ -47,7 +115,8 @@ class UnifiedDomainAnalyzer:
             }
 
         # Build context
-        root_task = next((t for t in task_tree if t.parent_id is None), None)
+        if root_task is None:
+            root_task = next((t for t in task_tree if t.parent_id is None), None)
 
         # Batch tasks if we have too many (to avoid token limits)
         batch_size = 20  # Process 20 tasks at a time
@@ -72,49 +141,27 @@ class UnifiedDomainAnalyzer:
         for batch_idx, task_descriptions in enumerate(batches):
             print(f"[UnifiedDomainAnalyzer] Processing batch {batch_idx + 1}/{len(batches)} ({len(task_descriptions)} tasks)")
 
-            # Try up to 10 times with validation feedback
-            batch_result = None
-            validation_feedback = None
-            max_retries = 10
-
-            for retry in range(max_retries):
-                batch_result = await self._analyze_batch(root_task, task_descriptions, len(atomic_tasks), validation_feedback)
-
-                # Validate the batch result
-                from app.analyzer.event_model_validator import EventModelValidator
-                validator = EventModelValidator()
-                is_valid, validation_issues = validator.validate(batch_result)
-
-                # If valid, accept it
-                if is_valid:
-                    print(f"[UnifiedDomainAnalyzer] Batch validation passed")
-                    break
-
-                # If not valid, try to fix errors with separate LLM call
-                errors = [issue for issue in validation_issues if issue.severity == 'error']
-
-                if errors and retry < max_retries - 1:
-                    print(f"[UnifiedDomainAnalyzer] Batch validation failed with {len(errors)} errors (attempt {retry + 1}/{max_retries})")
-                    print(f"[UnifiedDomainAnalyzer] Attempting to fix errors with separate LLM call...")
-
-                    batch_result = await self._fix_validation_errors(batch_result, validation_issues)
-
-                    # Re-validate after fixes
-                    is_valid, validation_issues = validator.validate(batch_result)
-                    if is_valid:
-                        print(f"[UnifiedDomainAnalyzer] Fixes successful, validation passed")
-                        break
-                    else:
-                        print(f"[UnifiedDomainAnalyzer] Fixes incomplete, {len([i for i in validation_issues if i.severity == 'error'])} errors remain")
-                elif retry == max_retries - 1:
-                    print(f"[UnifiedDomainAnalyzer] Batch validation failed after {max_retries} attempts, proceeding anyway")
-                    break
+            # Generate batch without validation (validation happens once at the end)
+            batch_result = await self._analyze_batch(root_task, task_descriptions, len(atomic_tasks), None)
 
             all_events.extend(batch_result.get("events", []))
             all_commands.extend(batch_result.get("commands", []))
             all_read_models.extend(batch_result.get("read_models", []))
             all_user_interactions.extend(batch_result.get("user_interactions", []))
             all_automations.extend(batch_result.get("automations", []))
+
+            # Emit progress after each batch
+            if self.task_event_emitter and root_task and user_id:
+                await self.task_event_emitter.emit_event_modeling_progress(
+                    root_task,
+                    user_id,
+                    events_count=len(all_events),
+                    commands_count=len(all_commands),
+                    read_models_count=len(all_read_models),
+                    interactions_count=len(all_user_interactions),
+                    automations_count=len(all_automations)
+                )
+                print(f"[UnifiedDomainAnalyzer] Emitted progress: {len(all_events)} events, {len(all_commands)} commands, {len(all_read_models)} read models")
 
         # Deduplicate by name (events are DomainEvent objects, others are dicts)
         events = self._deduplicate_events(all_events)
@@ -136,11 +183,24 @@ class UnifiedDomainAnalyzer:
             print(f"[UnifiedDomainAnalyzer] Making final consolidation pass to ensure completeness")
             combined_result = await self._consolidate_event_model(root_task, combined_result, atomic_tasks)
 
-        # Final validation with fix attempts
+        # Add swimlanes and chapters for Event Modeling structure (no validation yet)
+        print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
+        combined_result = await self._detect_swimlanes_and_chapters(root_task, combined_result)
+
+        # Generate wireframes and data flow tracking (no validation yet)
+        print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
+        combined_result = await self._generate_wireframes_and_dataflow(root_task, combined_result)
+
+        # Skip data flow validation - too slow with retry loops
+        # Final validation will catch major issues
+
+        # NOW validate everything once at the very end
+        print(f"[UnifiedDomainAnalyzer] Running final validation...")
         from app.analyzer.event_model_validator import EventModelValidator
         validator = EventModelValidator()
 
-        for retry in range(10):
+        max_retries = 3  # Reduced from 10 to 3
+        for retry in range(max_retries):
             is_valid, validation_issues = validator.validate(combined_result)
 
             if is_valid:
@@ -149,18 +209,464 @@ class UnifiedDomainAnalyzer:
 
             errors = [issue for issue in validation_issues if issue.severity == 'error']
 
-            if errors and retry < 9:
-                print(f"[UnifiedDomainAnalyzer] Final validation failed with {len(errors)} errors (attempt {retry + 1}/10)")
+            if errors and retry < max_retries - 1:
+                print(f"[UnifiedDomainAnalyzer] Final validation failed with {len(errors)} errors (attempt {retry + 1}/{max_retries})")
                 combined_result = await self._fix_validation_errors(combined_result, validation_issues)
             else:
-                print(f"[UnifiedDomainAnalyzer] Proceeding with {len(errors)} validation errors")
+                print(f"[UnifiedDomainAnalyzer] Proceeding with {len(errors)} validation errors after {max_retries} attempts")
                 break
 
-        # Add swimlanes and chapters for Event Modeling structure
-        print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
-        combined_result = await self._detect_swimlanes_and_chapters(root_task, combined_result)
-
         return combined_result
+
+    async def _analyze_description_only(self, root_task: Task) -> Dict[str, Any]:
+        """Analyze domain from just the root task description (no atomic tasks yet).
+
+        This is used when running Event Modeling BEFORE task decomposition.
+
+        Args:
+            root_task: Root task with description and optional context
+
+        Returns:
+            Event model with commands, events, read models, user interactions, and automations
+        """
+        # Extract context if available
+        context_info = ""
+        if root_task.context:
+            if root_task.context.get("tech_stack"):
+                context_info += f"\nTech Stack: {root_task.context['tech_stack']}"
+            if root_task.context.get("repository_context"):
+                context_info += f"\nRepository Context:\n{root_task.context['repository_context'][:1000]}"
+
+            # Add GitHub repository context if available
+            if root_task.context.get("github"):
+                github_ctx = root_task.context["github"]
+                print(f"[UnifiedDomainAnalyzer] ✅ Injecting GitHub context from {github_ctx.get('repo_url', 'Unknown')}")
+                context_info += f"\n\nGitHub Repository Context:"
+                context_info += f"\nRepository: {github_ctx.get('repo_url', 'Unknown')}"
+
+                # Add repository summary
+                if github_ctx.get("repo_summary"):
+                    print(f"[UnifiedDomainAnalyzer]   - Repository summary: {len(github_ctx['repo_summary'])} chars")
+                    context_info += f"\n\nRepository Overview:\n{github_ctx['repo_summary'][:2000]}"
+
+                # Add file summaries for implementation patterns
+                if github_ctx.get("file_summaries"):
+                    file_count = len(github_ctx["file_summaries"])
+                    print(f"[UnifiedDomainAnalyzer]   - File summaries: {file_count} files")
+                    context_info += f"\n\nKey Implementation Files:"
+                    for file_path, summary in list(github_ctx["file_summaries"].items())[:5]:
+                        context_info += f"\n\n{file_path}:\n{summary[:500]}"
+            else:
+                print(f"[UnifiedDomainAnalyzer] No GitHub context available for this task")
+
+        prompt = f"""Analyze this software project using Event Modeling methodology.
+
+Project Description:
+{root_task.description}
+{context_info}
+
+IMPORTANT - Event Modeling Principles:
+1. Events are FACTS (past tense) - what happened in the system
+2. Commands are INTENTIONS (imperative) - what users/systems want to do
+3. Read Models are QUERIES - data views (only create when displaying/querying data)
+4. Automations are BACKGROUND PROCESSES - triggered automatically
+5. Focus on BEHAVIOR not implementation
+
+Extract the following components:
+
+1. EVENTS - Facts that happened (past tense):
+   - name: PastTense format ("UserRegistered", "ItemAdded", "OrderPlaced")
+   - event_type: user_action, system_event, integration, or state_change
+   - description: What happened
+   - actor: Who/what triggered it (User, System, ExternalService, etc.)
+   - affected_entity: What was affected (User, Order, Cart, etc.)
+   - payload: Array of field objects with:
+     * name: Field name
+     * type: Data type (string, integer, decimal, boolean, datetime, array, object)
+     * description: What this field represents
+     * source: Object describing where this data comes from:
+       - type: "command_parameter" | "derived" | "system" | "lookup"
+       - from: Source reference (command.parameterName, calculation formula, system field, lookup source)
+       - details: Additional context if needed
+
+   Include lifecycle events:
+   - Creation: "CartCreated", "SessionStarted", "UserRegistered"
+   - Changes: "ItemAdded", "PriceChanged", "StatusUpdated"
+   - Completion: "OrderSubmitted", "SessionEnded", "GameFinished"
+
+2. COMMANDS - User/system intentions (imperative):
+   - name: Imperative format ("AddItem", "RegisterUser", "SubmitOrder")
+   - description: What the command does
+   - parameters: Array of parameter objects with:
+     * name: Parameter name
+     * type: Data type (string, integer, decimal, boolean, datetime, array, object)
+     * description: What this parameter represents
+     * required: Boolean (true/false)
+     * constraints: Optional object with min, max, pattern, enum
+     * source: Object describing where this data comes from:
+       - type: "ui_input" | "url_parameter" | "read_model" | "system" | "session"
+       - details: Additional context (wireframe component, route, field name, etc.)
+   - triggers_events: Events produced (list of event names)
+
+   Each command represents a State Change slice (Command → Event(s))
+
+3. READ MODELS - Data views (only when querying/displaying):
+   - name: What data is shown ("CartItems", "UserProfile", "OrderHistory")
+   - description: Purpose of this view
+   - fields: Array of field objects with:
+     * name: Field name
+     * type: Data type (string, integer, decimal, boolean, datetime, array, object)
+     * item_type: For arrays, the type of items
+     * schema: For arrays of objects, the schema of each object
+     * description: What this field represents
+     * source: Object describing where this data comes from:
+       - type: "event_field" | "aggregation" | "derived"
+       - from: Source reference (EventName.fieldName, aggregation formula, calculation)
+       - events: Array of event names that populate this field
+
+   CRITICAL: Only create read models when:
+   - Displaying data to users
+   - Querying current state for validation
+   - Feeding data to automations
+   - NOT for every command/event
+
+   Each read model represents a State View slice (Events → Read Model)
+
+4. USER INTERACTIONS - How users trigger commands:
+   - action: User action ("Click submit", "Enter email", "Select item")
+   - triggers_command: Command name
+   - viewed_read_model: Read model shown (if any)
+
+5. AUTOMATIONS - Background processes (Event → Process → Event):
+   - name: What the automation does
+   - trigger_event: Event that triggers it
+   - result_events: Events it produces
+
+   Each automation represents an Automation slice (Event → Read Model → Processor → Command → Event)
+
+REQUIRED OUTPUT FORMAT - You MUST include ALL 5 sections:
+
+Return JSON with exactly these keys (all are required, use empty arrays if none found):
+{{
+  "events": [...],
+  "commands": [...],
+  "read_models": [...],
+  "user_interactions": [...],
+  "automations": [...]
+}}
+
+Example for a shopping cart WITH COMPLETE SCHEMAS (notice the 'payload', 'parameters', and 'fields' arrays with full type information and source tracking):
+{{
+  "events": [
+    {{
+      "name": "ItemAdded",
+      "event_type": "user_action",
+      "description": "Item added to cart",
+      "actor": "User",
+      "affected_entity": "Cart",
+      "payload": [
+        {{"name": "cartId", "type": "string", "description": "Cart identifier", "source": {{"type": "command_parameter", "from": "AddItem.cartId"}}}},
+        {{"name": "productId", "type": "string", "description": "Product added", "source": {{"type": "command_parameter", "from": "AddItem.productId"}}}},
+        {{"name": "quantity", "type": "integer", "description": "Quantity added", "source": {{"type": "command_parameter", "from": "AddItem.quantity"}}}},
+        {{"name": "price", "type": "decimal", "description": "Product price at add time", "source": {{"type": "lookup", "from": "ProductCatalog.price", "details": "Retrieved by productId"}}}},
+        {{"name": "timestamp", "type": "datetime", "description": "When item was added", "source": {{"type": "system", "from": "server_timestamp"}}}}
+      ]
+    }},
+    {{
+      "name": "CartCreated",
+      "event_type": "system_event",
+      "description": "Shopping cart created",
+      "actor": "System",
+      "affected_entity": "Cart",
+      "payload": [
+        {{"name": "cartId", "type": "string", "description": "New cart ID", "source": {{"type": "system", "from": "uuid_generator"}}}},
+        {{"name": "userId", "type": "string", "description": "Cart owner", "source": {{"type": "command_parameter", "from": "AddItem.userId"}}}},
+        {{"name": "timestamp", "type": "datetime", "description": "Creation time", "source": {{"type": "system", "from": "server_timestamp"}}}}
+      ]
+    }}
+  ],
+  "commands": [
+    {{
+      "name": "AddItem",
+      "description": "Add item to shopping cart",
+      "parameters": [
+        {{"name": "cartId", "type": "string", "description": "Cart to add to", "required": false, "source": {{"type": "url_parameter", "details": "/cart/:cartId"}}}},
+        {{"name": "productId", "type": "string", "description": "Product to add", "required": true, "source": {{"type": "ui_input", "details": "productSelector component"}}}},
+        {{"name": "quantity", "type": "integer", "description": "Number to add", "required": true, "constraints": {{"min": 1, "max": 99}}, "source": {{"type": "ui_input", "details": "quantityInput"}}}},
+        {{"name": "userId", "type": "string", "description": "Current user", "required": true, "source": {{"type": "session", "details": "authenticated user"}}}}
+      ],
+      "triggers_events": ["CartCreated", "ItemAdded"]
+    }},
+    {{
+      "name": "RemoveItem",
+      "description": "Remove item from cart",
+      "parameters": [
+        {{"name": "cartId", "type": "string", "description": "Cart to remove from", "required": true, "source": {{"type": "url_parameter", "details": "/cart/:cartId"}}}},
+        {{"name": "itemId", "type": "string", "description": "Item to remove", "required": true, "source": {{"type": "ui_input", "details": "removeButton in item row"}}}}
+      ],
+      "triggers_events": ["ItemRemoved"]
+    }}
+  ],
+  "read_models": [
+    {{
+      "name": "CartItems",
+      "description": "Display items in cart",
+      "fields": [
+        {{
+          "name": "items",
+          "type": "array",
+          "item_type": "object",
+          "schema": [
+            {{"name": "productId", "type": "string"}},
+            {{"name": "quantity", "type": "integer"}},
+            {{"name": "price", "type": "decimal"}}
+          ],
+          "description": "List of cart items",
+          "source": {{"type": "event_field", "from": "ItemAdded", "events": ["ItemAdded", "ItemRemoved"]}}
+        }},
+        {{
+          "name": "totalPrice",
+          "type": "decimal",
+          "description": "Sum of all items",
+          "source": {{"type": "aggregation", "from": "SUM(items.price * items.quantity)", "events": ["ItemAdded", "ItemRemoved"]}}
+        }},
+        {{
+          "name": "itemCount",
+          "type": "integer",
+          "description": "Total number of items",
+          "source": {{"type": "aggregation", "from": "COUNT(items)", "events": ["ItemAdded", "ItemRemoved"]}}
+        }}
+      ]
+    }}
+  ],
+  "user_interactions": [
+    {{"action": "Click 'Add to Cart' button", "triggers_command": "AddItem", "viewed_read_model": "ProductDetails"}},
+    {{"action": "Click 'Remove' button", "triggers_command": "RemoveItem", "viewed_read_model": "CartItems"}}
+  ],
+  "automations": [
+    {{"name": "Publish cart to order system", "trigger_event": "CartSubmitted", "result_events": ["ExternalCartPublished"]}}
+  ]
+}}
+
+6. AUTOMATIC BEHAVIORS - System behaviors that happen without user input:
+   Think through the complete behavior lifecycle. What happens automatically?
+
+   Examples of automatic behaviors to identify:
+   - Timers and intervals (pieces falling every N seconds, session timeouts, countdowns)
+   - State transitions (piece locks when can't fall, order expires after timeout)
+   - Spawning and generation (new piece spawns after lock, new enemy appears after delay)
+   - Background calculations (score updates, health regeneration, auto-save)
+   - Periodic checks (inventory level alerts, deadline reminders)
+
+   For each automatic behavior, you MUST create:
+   a) The triggering event or timer (e.g., "GameTick", "TimerElapsed", "ThresholdReached")
+   b) The automation that processes it
+   c) The resulting events (e.g., "PieceMoved", "PieceLocked", "NewPieceSpawned")
+
+CRITICAL - Think Through Complete Lifecycles and State Machines:
+
+For each entity/concept in the system, ask yourself:
+1. How is it created? → Creation event (e.g., "PieceSpawned", "SessionStarted")
+2. What states can it be in? → State transition events (e.g., "PieceFalling", "PieceLocked")
+3. What triggers state changes? → Commands, automations, or time-based events
+4. What happens automatically over time? → Timer events and automations
+5. What is the end state? → Termination event (e.g., "PieceRemoved", "SessionEnded")
+
+Example: Tetris Piece Lifecycle
+- Created: "PieceSpawned" (spawned by "SpawnNextPiece" automation)
+- States: Falling (automatic via "GameTick"), Moving (user commands), Locked
+- State Transitions:
+  * Spawned → Falling (automatic via GameTick automation)
+  * Falling → Locked (when can't fall further, triggers "PieceLocked" event)
+  * Locked → Removed (when line clears, triggers "LineCleared" event)
+- Automatic Behaviors:
+  * GameTick automation: Every 500ms → Move piece down → "PieceMoved" or "PieceLocked"
+  * SpawnNextPiece automation: "PieceLocked" → Spawn new piece → "PieceSpawned"
+
+COMPLETE Tetris Example (showing what you MUST include):
+{{
+  "events": [
+    {{"name": "GameStarted", "event_type": "user_action", "description": "Game started", "actor": "User", "affected_entity": "Game"}},
+    {{"name": "GameTick", "event_type": "system_event", "description": "Game timer tick (occurs every 500ms)", "actor": "System", "affected_entity": "Game"}},
+    {{"name": "PieceSpawned", "event_type": "system_event", "description": "New piece spawned", "actor": "System", "affected_entity": "Piece"}},
+    {{"name": "PieceMoved", "event_type": "user_action", "description": "Piece moved by user or gravity", "actor": "User|System", "affected_entity": "Piece"}},
+    {{"name": "PieceRotated", "event_type": "user_action", "description": "Piece rotated", "actor": "User", "affected_entity": "Piece"}},
+    {{"name": "PieceLocked", "event_type": "system_event", "description": "Piece locked in place (can't fall further)", "actor": "System", "affected_entity": "Piece"}},
+    {{"name": "LineCleared", "event_type": "system_event", "description": "Full line cleared", "actor": "System", "affected_entity": "Board"}},
+    {{"name": "GameOver", "event_type": "system_event", "description": "Game ended", "actor": "System", "affected_entity": "Game"}}
+  ],
+  "commands": [
+    {{"name": "StartGame", "description": "Start new game", "triggers_events": ["GameStarted", "GameTick", "PieceSpawned"]}},
+    {{"name": "MoveLeft", "description": "Move piece left", "triggers_events": ["PieceMoved"]}},
+    {{"name": "MoveRight", "description": "Move piece right", "triggers_events": ["PieceMoved"]}},
+    {{"name": "MoveDown", "description": "Soft drop (move down faster)", "triggers_events": ["PieceMoved", "PieceLocked"]}},
+    {{"name": "RotatePiece", "description": "Rotate piece", "triggers_events": ["PieceRotated"]}},
+    {{"name": "HardDrop", "description": "Instant drop to bottom", "triggers_events": ["PieceMoved", "PieceLocked"]}}
+  ],
+  "read_models": [
+    {{"name": "GameBoard", "description": "Current game board state"}},
+    {{"name": "Score", "description": "Current score and level"}},
+    {{"name": "NextPiece", "description": "Preview of next piece"}}
+  ],
+  "user_interactions": [
+    {{"action": "Press arrow key left", "triggers_command": "MoveLeft", "viewed_read_model": "GameBoard"}},
+    {{"action": "Press arrow key down", "triggers_command": "MoveDown", "viewed_read_model": "GameBoard"}},
+    {{"action": "Press spacebar", "triggers_command": "HardDrop", "viewed_read_model": "GameBoard"}}
+  ],
+  "automations": [
+    {{"name": "AutomaticGravity", "trigger_event": "GameTick", "result_events": ["PieceMoved", "PieceLocked"]}},
+    {{"name": "SpawnNextPiece", "trigger_event": "PieceLocked", "result_events": ["PieceSpawned"]}},
+    {{"name": "CheckLineComplete", "trigger_event": "PieceLocked", "result_events": ["LineCleared"]}},
+    {{"name": "CheckGameOver", "trigger_event": "PieceLocked", "result_events": ["GameOver"]}},
+    {{"name": "GameLoop", "trigger_event": "GameTick", "result_events": ["GameTick"]}}
+  ]
+}}
+
+Notice in this example:
+- GameTick is a recurring system event (timer-based)
+- PieceLocked is a state transition event (system detects piece can't fall)
+- Automations create complete behavior loops (gravity, spawning, line clearing)
+- Distinction between MoveDown (soft drop) and HardDrop (instant drop)
+
+Guidelines:
+- Be comprehensive: include ALL commands for user actions AND system actions
+- Past tense for events, imperative for commands
+- Include timer/tick events for time-based behaviors
+- Create automations for ALL automatic behaviors
+- Think through complete state machines and lifecycles
+- Every user action should have a corresponding command
+- Every automatic behavior should have an automation
+
+CRITICAL COMMAND RULES - AVOID THESE COMMON MISTAKES:
+
+1. ❌ NO UI-SPECIFIC COMMANDS - Commands should represent DOMAIN ACTIONS, not UI interactions
+   - BAD: "ClickSubmitButton", "DisplayProductList", "ShowCheckout", "RenderCart"
+   - GOOD: "SubmitOrder", "PlaceOrder", "InitiateCheckout", "AddItem"
+   - Rule: If the command verb is Click, Display, Show, Render, View → it's a UI action, NOT a domain command
+
+2. ❌ NO QUERY/RETRIEVAL COMMANDS - Queries are handled by READ MODELS, not commands
+   - BAD: "RetrieveOrderHistory", "GetUserProfile", "FetchProductDetails"
+   - GOOD: Use Read Models instead (e.g., "OrderHistory" read model, "UserProfile" read model)
+   - Rule: If the command verb is Retrieve, Get, Fetch, Load, Query → it's a query, use a Read Model instead
+
+3. ❌ AVOID DUPLICATE READ MODELS - Check for semantic duplicates
+   - BAD: Having both "CartContents" and "CartItems" (same thing)
+   - BAD: Having both "ProductList" and "ProductCatalog" (same thing)
+   - GOOD: Choose ONE name per concept and stick with it
+   - Rule: Before adding a read model, check if a similar one already exists
+
+4. ✅ COMMANDS MUST CHANGE STATE - Every command should trigger at least one event
+   - Commands represent user/system INTENTIONS that change the system state
+   - Examples: CreateOrder, UpdateProfile, DeleteProduct, ProcessPayment
+
+CRITICAL: Your response must be ONLY valid JSON. No explanations, no markdown, no code blocks, no extra text.
+Just the raw JSON object starting with {{ and ending with }}.
+"""
+
+        try:
+            response = await self.llm.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=32000
+            )
+
+            # Extract and parse response using same robust method as _analyze_batch
+            import json
+            import re
+
+            if isinstance(response, dict) and "choices" in response:
+                content = response["choices"][0]["message"]["content"]
+
+                data = None
+
+                # Strategy 1: Try direct JSON parse
+                try:
+                    data = json.loads(content.strip())
+                    print(f"[UnifiedDomainAnalyzer] Successfully parsed JSON directly")
+                except json.JSONDecodeError:
+                    pass
+
+                # Strategy 2: Look for JSON in code blocks
+                if data is None:
+                    code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', content)
+                    if code_block_match:
+                        try:
+                            data = json.loads(code_block_match.group(1))
+                            print(f"[UnifiedDomainAnalyzer] Successfully extracted JSON from code block")
+                        except json.JSONDecodeError:
+                            pass
+
+                # Strategy 3: Find the first complete JSON object
+                if data is None:
+                    start_idx = content.find('{')
+                    if start_idx != -1:
+                        brace_count = 0
+                        in_string = False
+                        escape = False
+
+                        for i in range(start_idx, len(content)):
+                            char = content[i]
+
+                            if escape:
+                                escape = False
+                                continue
+
+                            if char == '\\':
+                                escape = True
+                                continue
+
+                            if char == '"' and not escape:
+                                in_string = not in_string
+                                continue
+
+                            if not in_string:
+                                if char == '{':
+                                    brace_count += 1
+                                elif char == '}':
+                                    brace_count -= 1
+                                    if brace_count == 0:
+                                        json_str = content[start_idx:i+1]
+                                        try:
+                                            data = json.loads(json_str)
+                                            print(f"[UnifiedDomainAnalyzer] Successfully extracted JSON using brace matching")
+                                            break
+                                        except json.JSONDecodeError:
+                                            pass
+
+                if data is None:
+                    print(f"[UnifiedDomainAnalyzer] Failed to parse JSON, returning empty analysis")
+                    print(f"[UnifiedDomainAnalyzer] Response preview: {content[:500]}")
+                    data = {"events": [], "commands": [], "read_models": [], "user_interactions": [], "automations": []}
+            else:
+                data = response
+
+            # Parse results
+            events = self._parse_events(data.get("events", []))
+            commands = data.get("commands", [])
+            read_models = data.get("read_models", [])
+            user_interactions = data.get("user_interactions", [])
+            automations = data.get("automations", [])
+
+            print(f"[UnifiedDomainAnalyzer] Description-based analysis returned: {len(events)} events, {len(commands)} commands, {len(read_models)} read models")
+
+            return {
+                "events": events,
+                "commands": commands,
+                "read_models": read_models,
+                "user_interactions": user_interactions,
+                "automations": automations
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"Error in description-based domain analysis: {e}")
+            traceback.print_exc()
+            return {
+                "events": [],
+                "commands": [],
+                "read_models": [],
+                "user_interactions": [],
+                "automations": []
+            }
 
     async def _analyze_batch(self, root_task, task_descriptions: list, total_tasks: int, validation_feedback: str = None) -> Dict[str, Any]:
         """Analyze a single batch of tasks.
@@ -196,6 +702,14 @@ Extract the following components:
    - description: What happened
    - actor: Who/what triggered it (User, System, ExternalService, etc.)
    - affected_entity: What was affected (User, Order, Cart, etc.)
+   - payload: Array of field objects with:
+     * name: Field name
+     * type: Data type (string, integer, decimal, boolean, datetime, array, object)
+     * description: What this field represents
+     * source: Object describing where this data comes from:
+       - type: "command_parameter" | "derived" | "system" | "lookup"
+       - from: Source reference (command.parameterName, calculation formula, system field, lookup source)
+       - details: Additional context if needed
 
    Include lifecycle events:
    - Creation: "CartCreated", "SessionStarted", "UserRegistered"
@@ -205,7 +719,15 @@ Extract the following components:
 2. COMMANDS - User/system intentions (imperative):
    - name: Imperative format ("AddItem", "RegisterUser", "SubmitOrder")
    - description: What the command does
-   - input_data: Required input fields (list of field names)
+   - parameters: Array of parameter objects with:
+     * name: Parameter name
+     * type: Data type (string, integer, decimal, boolean, datetime, array, object)
+     * description: What this parameter represents
+     * required: Boolean (true/false)
+     * constraints: Optional object with min, max, pattern, enum
+     * source: Object describing where this data comes from:
+       - type: "ui_input" | "url_parameter" | "read_model" | "system" | "session"
+       - details: Additional context (wireframe component, route, field name, etc.)
    - triggers_events: Events produced (list of event names)
 
    Each command represents a State Change slice (Command → Event(s))
@@ -213,7 +735,16 @@ Extract the following components:
 3. READ MODELS - Data views (only when querying/displaying):
    - name: What data is shown ("CartItems", "UserProfile", "OrderHistory")
    - description: Purpose of this view
-   - data_fields: Fields displayed (list)
+   - fields: Array of field objects with:
+     * name: Field name
+     * type: Data type (string, integer, decimal, boolean, datetime, array, object)
+     * item_type: For arrays, the type of items
+     * schema: For arrays of objects, the schema of each object
+     * description: What this field represents
+     * source: Object describing where this data comes from:
+       - type: "event_field" | "aggregation" | "derived"
+       - from: Source reference (EventName.fieldName, aggregation formula, calculation)
+       - events: Array of event names that populate this field
 
    CRITICAL: Only create read models when:
    - Displaying data to users
@@ -246,18 +777,89 @@ Return JSON with exactly these keys (all are required, use empty arrays if none 
   "automations": [...]
 }}
 
-Example for a shopping cart:
+Example for a shopping cart WITH COMPLETE SCHEMAS (notice the 'payload', 'parameters', and 'fields' arrays with full type information and source tracking):
 {{
   "events": [
-    {{"name": "ItemAdded", "event_type": "user_action", "description": "Item added to cart", "actor": "User", "affected_entity": "Cart"}},
-    {{"name": "CartCreated", "event_type": "system_event", "description": "Shopping cart created", "actor": "System", "affected_entity": "Cart"}}
+    {{
+      "name": "ItemAdded",
+      "event_type": "user_action",
+      "description": "Item added to cart",
+      "actor": "User",
+      "affected_entity": "Cart",
+      "payload": [
+        {{"name": "cartId", "type": "string", "description": "Cart identifier", "source": {{"type": "command_parameter", "from": "AddItem.cartId"}}}},
+        {{"name": "productId", "type": "string", "description": "Product added", "source": {{"type": "command_parameter", "from": "AddItem.productId"}}}},
+        {{"name": "quantity", "type": "integer", "description": "Quantity added", "source": {{"type": "command_parameter", "from": "AddItem.quantity"}}}},
+        {{"name": "price", "type": "decimal", "description": "Product price at add time", "source": {{"type": "lookup", "from": "ProductCatalog.price", "details": "Retrieved by productId"}}}},
+        {{"name": "timestamp", "type": "datetime", "description": "When item was added", "source": {{"type": "system", "from": "server_timestamp"}}}}
+      ]
+    }},
+    {{
+      "name": "CartCreated",
+      "event_type": "system_event",
+      "description": "Shopping cart created",
+      "actor": "System",
+      "affected_entity": "Cart",
+      "payload": [
+        {{"name": "cartId", "type": "string", "description": "New cart ID", "source": {{"type": "system", "from": "uuid_generator"}}}},
+        {{"name": "userId", "type": "string", "description": "Cart owner", "source": {{"type": "command_parameter", "from": "AddItem.userId"}}}},
+        {{"name": "timestamp", "type": "datetime", "description": "Creation time", "source": {{"type": "system", "from": "server_timestamp"}}}}
+      ]
+    }}
   ],
   "commands": [
-    {{"name": "AddItem", "description": "Add item to shopping cart", "input_data": ["productId", "quantity"], "triggers_events": ["CartCreated", "ItemAdded"]}},
-    {{"name": "RemoveItem", "description": "Remove item from cart", "input_data": ["itemId"], "triggers_events": ["ItemRemoved"]}}
+    {{
+      "name": "AddItem",
+      "description": "Add item to shopping cart",
+      "parameters": [
+        {{"name": "cartId", "type": "string", "description": "Cart to add to", "required": false, "source": {{"type": "url_parameter", "details": "/cart/:cartId"}}}},
+        {{"name": "productId", "type": "string", "description": "Product to add", "required": true, "source": {{"type": "ui_input", "details": "productSelector component"}}}},
+        {{"name": "quantity", "type": "integer", "description": "Number to add", "required": true, "constraints": {{"min": 1, "max": 99}}, "source": {{"type": "ui_input", "details": "quantityInput"}}}},
+        {{"name": "userId", "type": "string", "description": "Current user", "required": true, "source": {{"type": "session", "details": "authenticated user"}}}}
+      ],
+      "triggers_events": ["CartCreated", "ItemAdded"]
+    }},
+    {{
+      "name": "RemoveItem",
+      "description": "Remove item from cart",
+      "parameters": [
+        {{"name": "cartId", "type": "string", "description": "Cart to remove from", "required": true, "source": {{"type": "url_parameter", "details": "/cart/:cartId"}}}},
+        {{"name": "itemId", "type": "string", "description": "Item to remove", "required": true, "source": {{"type": "ui_input", "details": "removeButton in item row"}}}}
+      ],
+      "triggers_events": ["ItemRemoved"]
+    }}
   ],
   "read_models": [
-    {{"name": "CartItems", "description": "Display items in cart", "data_fields": ["items", "totalPrice", "quantity"]}}
+    {{
+      "name": "CartItems",
+      "description": "Display items in cart",
+      "fields": [
+        {{
+          "name": "items",
+          "type": "array",
+          "item_type": "object",
+          "schema": [
+            {{"name": "productId", "type": "string"}},
+            {{"name": "quantity", "type": "integer"}},
+            {{"name": "price", "type": "decimal"}}
+          ],
+          "description": "List of cart items",
+          "source": {{"type": "event_field", "from": "ItemAdded", "events": ["ItemAdded", "ItemRemoved"]}}
+        }},
+        {{
+          "name": "totalPrice",
+          "type": "decimal",
+          "description": "Sum of all items",
+          "source": {{"type": "aggregation", "from": "SUM(items.price * items.quantity)", "events": ["ItemAdded", "ItemRemoved"]}}
+        }},
+        {{
+          "name": "itemCount",
+          "type": "integer",
+          "description": "Total number of items",
+          "source": {{"type": "aggregation", "from": "COUNT(items)", "events": ["ItemAdded", "ItemRemoved"]}}
+        }}
+      ]
+    }}
   ],
   "user_interactions": [
     {{"action": "Click 'Add to Cart' button", "triggers_command": "AddItem", "viewed_read_model": "ProductDetails"}},
@@ -282,6 +884,33 @@ Guidelines:
 - Only create read models when displaying/querying data
 - Every user action should have a corresponding command
 
+CRITICAL COMMAND RULES - AVOID THESE COMMON MISTAKES:
+
+1. ❌ NO UI-SPECIFIC COMMANDS - Commands should represent DOMAIN ACTIONS, not UI interactions
+   - BAD: "ClickSubmitButton", "DisplayProductList", "ShowCheckout", "RenderCart", "ClickOrderReturnInitiationButton"
+   - GOOD: "SubmitOrder", "PlaceOrder", "InitiateCheckout", "AddItem", "InitiateOrderReturn"
+   - Rule: If the command verb is Click, Display, Show, Render, View → it's a UI action, NOT a domain command
+
+2. ❌ NO QUERY/RETRIEVAL COMMANDS - Queries are handled by READ MODELS, not commands
+   - BAD: "RetrieveOrderHistory", "GetUserProfile", "FetchProductDetails", "RetrieveOrderStatusUpdateHistory"
+   - GOOD: Use Read Models instead (e.g., "OrderHistory" read model, "UserProfile" read model)
+   - Rule: If the command verb is Retrieve, Get, Fetch, Load, Query → it's a query, use a Read Model instead
+
+3. ❌ AVOID DUPLICATE READ MODELS - Check for semantic duplicates
+   - BAD: Having both "CartContents" and "CartItems" (same thing, keep the more descriptive one)
+   - BAD: Having both "ProductList" and "ProductCatalog" (same thing)
+   - GOOD: Choose ONE name per concept and stick with it (prefer "CartItems" over "CartContents")
+   - Rule: Before adding a read model, check if a similar one already exists
+
+4. ✅ COMMANDS MUST CHANGE STATE - Every command should trigger at least one event
+   - Commands represent user/system INTENTIONS that change the system state
+   - Examples: CreateOrder, UpdateProfile, DeleteProduct, ProcessPayment, InitiateReturn
+
+5. ✅ READ MODELS MUST HAVE PROPER EVENT SOURCES - Every read model field must reference the events that populate it
+   - BAD: Read model "OrderStatusUpdateHistory" sourcing from event "OrderStatusUpdateHistoryRetrieved" (that's a query, not an event!)
+   - GOOD: Read model "OrderStatusUpdateHistory" sourcing from events "OrderStatusUpdated", "OrderShipped", "OrderDelivered"
+   - Rule: Read model sources must be actual DOMAIN EVENTS (past tense facts), not query operations
+
 CRITICAL: Your response must be ONLY valid JSON. No explanations, no markdown, no code blocks, no extra text.
 Just the raw JSON object starting with {{ and ending with }}.
 """
@@ -305,13 +934,31 @@ MANDATORY FIXES:
 4. All commands must be imperative (e.g., "PauseGame", not "GamePaused")
 
 DO NOT submit a response that fails these validations. Fix the issues now.
+
+IMPORTANT: If validation tools are available, use them to check your output BEFORE returning:
+- validate_event_type: Check each event type is valid
+- validate_command_event_pair: Check each command triggers events
+- validate_event_name: Check event names are past tense
+- validate_command_name: Check command names are imperative
 """
 
         try:
-            response = await self.llm.chat_completion(
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=32000  # Llama 3.3 70B supports up to 128K context
-            )
+            # Use tool-based validation for local models that support it
+            if isinstance(self.llm, LocalLLMClient):
+                print(f"[UnifiedDomainAnalyzer] Using tool-based validation for event model generation")
+                response = await self.llm.chat_completion_with_tools(
+                    messages=[{"role": "user", "content": prompt}],
+                    tools=VALIDATION_TOOLS,
+                    tool_executor=execute_tool_call,
+                    max_tokens=32000,
+                    max_rounds=3  # Limit to 3 rounds to prevent infinite loops
+                )
+            else:
+                # Cerebras or other LLMs without tool support
+                response = await self.llm.chat_completion(
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=32000  # Llama 3.3 70B supports up to 128K context
+                )
 
             # Extract and parse response
             import json
@@ -755,15 +1402,24 @@ Return ONLY valid JSON, no explanation:
                 # Source task ID will be unknown for batched analysis
                 source_task_id = "batch_analysis"
 
+                # Preserve payload in metadata
+                metadata = {}
+                if "payload" in event_data:
+                    metadata["payload"] = event_data["payload"]
+
+                # Map LLM-generated event type to canonical value
+                raw_event_type = event_data["event_type"]
+                mapped_event_type = EVENT_TYPE_MAPPING.get(raw_event_type, raw_event_type)
+
                 event = DomainEvent(
                     name=event_data["name"],
-                    event_type=EventType(event_data["event_type"]),
+                    event_type=EventType(mapped_event_type),
                     description=event_data["description"],
                     source_task_id=source_task_id,
                     actor=event_data.get("actor"),
                     affected_entity=event_data.get("affected_entity"),
                     triggers=[],
-                    metadata={}
+                    metadata=metadata
                 )
                 events.append(event)
             except Exception as e:
@@ -809,4 +1465,221 @@ Return ONLY valid JSON, no explanation:
         """Detect swimlanes and chapters using the swimlane_detector module."""
         from app.analyzer.swimlane_detector import detect_swimlanes_and_chapters
         return await detect_swimlanes_and_chapters(self.llm, root_task, event_model)
+
+    async def _generate_wireframes_and_dataflow(self, root_task, event_model: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate wireframes and data flow using the wireframe_generator module."""
+        from app.analyzer.wireframe_generator import generate_wireframes_and_dataflow
+        return await generate_wireframes_and_dataflow(self.llm, root_task, event_model)
+
+    async def _validate_and_fix_data_flow(self, root_task, event_model: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate data flow and use LLM to fix any issues."""
+        from app.analyzer.data_flow_validator import DataFlowValidator
+        import json
+
+        validator = DataFlowValidator()
+
+        # Try validation and fixes up to 3 times
+        max_retries = 3
+        for retry in range(max_retries):
+            is_valid, issues = validator.validate(event_model)
+
+            errors = [issue for issue in issues if issue.severity == 'error']
+            warnings = [issue for issue in issues if issue.severity == 'warning']
+
+            if is_valid:
+                print(f"[DataFlowValidator] Validation passed with {len(warnings)} warnings")
+                if warnings:
+                    for warning in warnings[:5]:  # Show first 5 warnings
+                        print(f"[DataFlowValidator] Warning: {warning.message}")
+                break
+
+            if retry == max_retries - 1:
+                print(f"[DataFlowValidator] Validation failed after {max_retries} attempts, proceeding with {len(errors)} errors")
+                # Store validation errors in metadata for frontend display
+                event_model['data_flow_validation'] = {
+                    'valid': False,
+                    'errors': [
+                        {
+                            'severity': e.severity,
+                            'category': e.category,
+                            'message': e.message,
+                            'details': e.details,
+                            'suggestions': e.suggestions
+                        }
+                        for e in errors
+                    ],
+                    'warnings': [
+                        {
+                            'severity': w.severity,
+                            'category': w.category,
+                            'message': w.message,
+                            'details': w.details,
+                            'suggestions': w.suggestions
+                        }
+                        for w in warnings
+                    ]
+                }
+                break
+
+            # Try to fix errors
+            print(f"[DataFlowValidator] Found {len(errors)} errors, attempting to fix (attempt {retry + 1}/{max_retries})")
+            event_model = await self._fix_data_flow_errors(event_model, errors)
+
+        return event_model
+
+    async def _fix_data_flow_errors(self, event_model: Dict[str, Any], errors: List) -> Dict[str, Any]:
+        """Use LLM to fix data flow validation errors."""
+        import json
+
+        # Build error descriptions
+        error_descriptions = []
+        for error in errors[:10]:  # Limit to first 10 errors to avoid token overflow
+            error_descriptions.append(f"\nERROR: {error.message}")
+            error_descriptions.append(f"Category: {error.category}")
+            error_descriptions.append(f"Details: {json.dumps(error.details, indent=2)}")
+            error_descriptions.append(f"Suggestions:")
+            for suggestion in error.suggestions:
+                error_descriptions.append(f"  - {suggestion}")
+
+        errors_text = "\n".join(error_descriptions)
+
+        # Convert event model to serializable format
+        serializable_model = {
+            "events": [
+                {
+                    "name": e.name if hasattr(e, 'name') else e.get('name'),
+                    "event_type": e.event_type.value if hasattr(e, 'event_type') else e.get('event_type'),
+                    "description": e.description if hasattr(e, 'description') else e.get('description'),
+                    "actor": e.actor if hasattr(e, 'actor') else e.get('actor'),
+                    "affected_entity": e.affected_entity if hasattr(e, 'affected_entity') else e.get('affected_entity'),
+                    "payload": e.metadata.get('payload', []) if hasattr(e, 'metadata') else e.get('payload', [])
+                }
+                for e in event_model.get('events', [])
+            ],
+            "commands": event_model.get('commands', []),
+            "read_models": event_model.get('read_models', []),
+            "wireframes": event_model.get('wireframes', [])
+        }
+
+        prompt = f"""You are fixing DATA FLOW VALIDATION errors in an event model.
+
+DATA FLOW VALIDATION ensures that all data has a proper source throughout the entire flow:
+UI → Command → Event → Read Model → UI
+
+CURRENT EVENT MODEL (with errors):
+{json.dumps(serializable_model, indent=2)[:15000]}
+
+DATA FLOW ERRORS THAT MUST BE FIXED:
+{errors_text}
+
+YOUR TASK:
+Return the COMPLETE corrected event model with ALL sections.
+For each error, apply ONE of the suggested fixes.
+
+CRITICAL - You MUST preserve the schema structure:
+- Commands MUST have 'parameters' array with 'name', 'type', 'description', 'required', and 'source' objects
+- Events MUST have 'payload' array with 'name', 'type', 'description', and 'source' objects
+- Read Models MUST have 'fields' array with 'name', 'type', 'description', and 'source' objects with 'events' array
+- Sources MUST have 'type' and appropriate details ('from', 'details', 'events')
+
+Example command parameter with source:
+{{"name": "productId", "type": "string", "description": "Product to add", "required": true, "source": {{"type": "ui_input", "details": "productSelector component"}}}}
+
+Example event payload field with source:
+{{"name": "productId", "type": "string", "description": "Product added", "source": {{"type": "command_parameter", "from": "AddItem.productId"}}}}
+
+Example read model field with source:
+{{"name": "items", "type": "array", "description": "Cart items", "source": {{"type": "event_field", "from": "ItemAdded.items", "events": ["ItemAdded", "ItemRemoved"]}}}}
+
+Return ONLY valid JSON with the complete event model (events, commands, read_models, wireframes)."""
+
+        try:
+            response = await self.llm.chat_completion(
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=64000,
+                temperature=0.2
+            )
+
+            # Extract JSON
+            import re
+            if isinstance(response, dict) and "choices" in response:
+                content = response["choices"][0]["message"]["content"]
+            else:
+                print("[DataFlowValidator] Unexpected response format")
+                return event_model
+
+            data = None
+
+            # Try direct parse
+            try:
+                data = json.loads(content.strip())
+                print("[DataFlowValidator] Successfully parsed fix JSON directly")
+            except json.JSONDecodeError:
+                pass
+
+            # Try code block extraction
+            if data is None:
+                code_block_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', content)
+                if code_block_match:
+                    try:
+                        data = json.loads(code_block_match.group(1))
+                        print("[DataFlowValidator] Successfully extracted fix JSON from code block")
+                    except json.JSONDecodeError:
+                        pass
+
+            # Try brace matching
+            if data is None:
+                start_idx = content.find('{')
+                if start_idx != -1:
+                    brace_count = 0
+                    in_string = False
+                    escape = False
+
+                    for i in range(start_idx, len(content)):
+                        char = content[i]
+
+                        if escape:
+                            escape = False
+                            continue
+
+                        if char == '\\':
+                            escape = True
+                            continue
+
+                        if char == '"' and not escape:
+                            in_string = not in_string
+                            continue
+
+                        if not in_string:
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    json_str = content[start_idx:i+1]
+                                    try:
+                                        data = json.loads(json_str)
+                                        print("[DataFlowValidator] Successfully extracted fix JSON using brace matching")
+                                        break
+                                    except json.JSONDecodeError:
+                                        pass
+
+            if data:
+                # Parse events back to DomainEvent objects
+                data["events"] = self._parse_events(data.get("events", []))
+
+                # Preserve other parts of event model that weren't in the fix
+                for key in ['chapters', 'swimlanes', 'data_flow', 'user_interactions', 'automations']:
+                    if key in event_model and key not in data:
+                        data[key] = event_model[key]
+
+                print(f"[DataFlowValidator] Applied fixes to event model")
+                return data
+            else:
+                print("[DataFlowValidator] Failed to parse fix response, keeping original")
+                return event_model
+
+        except Exception as e:
+            print(f"[DataFlowValidator] Error fixing data flow: {e}")
+            return event_model
 

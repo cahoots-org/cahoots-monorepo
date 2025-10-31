@@ -171,31 +171,64 @@ class TaskStorage:
         self,
         user_id: str,
         limit: Optional[int] = None,
-        offset: int = 0
-    ) -> List[Task]:
-        """Get tasks for a specific user.
+        offset: int = 0,
+        top_level_only: bool = False,
+        status: Optional[TaskStatus] = None,
+        sort_by_created: bool = True
+    ) -> tuple[List[Task], int]:
+        """Get tasks for a specific user with filtering and pagination.
 
         Args:
             user_id: User ID
             limit: Maximum number of tasks to return
             offset: Offset for pagination
+            top_level_only: Only return root-level tasks (no parents)
+            status: Filter by task status
+            sort_by_created: Sort by created_at date (newest first)
 
         Returns:
-            List of tasks
+            Tuple of (tasks, total_count) where total_count is total matching tasks
         """
         key = self._user_tasks_key(user_id)
 
-        # If no limit, get all tasks
-        if limit is None:
-            task_ids = await self.redis.lrange(key, 0, -1)
-        else:
-            task_ids = await self.redis.lrange(key, offset, offset + limit - 1)
+        # Get all task IDs for this user (we need this for filtering)
+        # In future, can optimize with separate indices for top_level, status
+        task_ids = await self.redis.lrange(key, 0, -1)
 
         if not task_ids:
-            return []
+            return [], 0
 
+        # Fetch all tasks (needed for filtering)
         tasks = await self.get_tasks(task_ids)
-        return [task for task in tasks if task is not None]
+        tasks = [task for task in tasks if task is not None]
+
+        # Apply filters
+        filtered_tasks = []
+        for task in tasks:
+            # Filter by top_level_only
+            if top_level_only and task.parent_id is not None:
+                continue
+
+            # Filter by status
+            if status and task.status != status:
+                continue
+
+            filtered_tasks.append(task)
+
+        # Sort by created_at (newest first)
+        if sort_by_created:
+            filtered_tasks.sort(key=lambda t: t.created_at, reverse=True)
+
+        # Get total count before pagination
+        total_count = len(filtered_tasks)
+
+        # Apply pagination
+        if limit is not None:
+            paginated_tasks = filtered_tasks[offset:offset + limit]
+        else:
+            paginated_tasks = filtered_tasks[offset:]
+
+        return paginated_tasks, total_count
 
     async def get_children(self, parent_id: str) -> List[Task]:
         """Get all children of a task.

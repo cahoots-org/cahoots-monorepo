@@ -10,7 +10,6 @@ from .task import (
 )
 from .request import (
     TaskRequest,
-    TechPreferences,
     RepositoryInfo,
 )
 from .response import (
@@ -31,6 +30,13 @@ from .story import (
     StoryPriority,
     StoryGeneration,
 )
+from .user_settings import (
+    UserSettings,
+    TrelloIntegration,
+    JiraIntegration,
+    UserSettingsUpdateRequest,
+    UserSettingsResponse,
+)
 
 __all__ = [
     # Task models
@@ -42,7 +48,6 @@ __all__ = [
     "TaskTree",
     # Request models
     "TaskRequest",
-    "TechPreferences",
     "RepositoryInfo",
     # Response models
     "TaskResponse",
@@ -59,4 +64,10 @@ __all__ = [
     "StoryStatus",
     "StoryPriority",
     "StoryGeneration",
+    # User settings models
+    "UserSettings",
+    "TrelloIntegration",
+    "JiraIntegration",
+    "UserSettingsUpdateRequest",
+    "UserSettingsResponse",
 ]

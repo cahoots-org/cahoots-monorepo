@@ -12,6 +12,7 @@ groq==0.4.1
 # Utilities
 python-dotenv==1.0.0
 httpx==0.25.2
+aiohttp==3.9.1
 tenacity==8.2.3
 structlog==23.2.0
 pyjwt==2.8.0
@@ -20,12 +21,14 @@ duckduckgo-search==4.1.0
 email-validator==2.1.0
 
 # Caching and embeddings (CPU-only versions)
-numpy==1.24.3
+numpy<2.0
 scikit-learn==1.3.2
 sentence-transformers==2.2.2
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.0.1+cpu
-torchvision==0.15.2+cpu
+torch==2.9.0+cpu
+torchvision==0.24.0+cpu
+transformers==4.50.0
+accelerate>=0.26.0
 
 # Testing
 pytest==7.4.3
@@ -39,3 +42,4 @@ black==23.11.0
 pylint==3.0.3
 mypy==1.7.1
 pre-commit==3.5.0
+prometheus-client==0.23.1

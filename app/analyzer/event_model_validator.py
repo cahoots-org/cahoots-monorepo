@@ -47,6 +47,7 @@ class EventModelValidator:
         self._validate_automations(automations, events)
         self._validate_slice_balance(commands, read_models, automations)
         self._validate_orphaned_events(events, commands, automations)
+        self._validate_event_flow(events, commands, automations, analysis.get('chapters', []))
 
         # Validate swimlanes if present
         swimlanes = analysis.get('swimlanes', [])
@@ -259,6 +260,24 @@ class EventModelValidator:
                         'automation': name,
                         'missing_event': trigger_event,
                         'available_events': list(event_names)
+                    }
+                ))
+
+            # CRITICAL: Check if automation produces events (must have result_events)
+            if not result_events or len(result_events) == 0:
+                self.issues.append(ValidationIssue(
+                    severity='error',
+                    category='flow',
+                    message=f'Automation "{name}" does not produce any events',
+                    details={
+                        'automation': name,
+                        'trigger': trigger_event,
+                        'issue': 'Automations must produce at least one event to continue the flow',
+                        'suggestions': [
+                            'Add events that this automation produces',
+                            'Remove this automation if it has no side effects',
+                            'Convert to a read model update if it only updates state'
+                        ]
                     }
                 ))
 
@@ -523,5 +542,155 @@ class EventModelValidator:
                 details={
                     'swimlanes': len(swimlanes),
                     'note': 'Consider consolidating related capabilities. Typical systems have 3-8 swimlanes.'
+                }
+            ))
+
+    def _validate_event_flow(self, events, commands, automations, chapters):
+        """Validate that events flow and connect to tell a story, not just isolated chapters"""
+
+        # Build event flow graph: which events trigger which commands/automations
+        event_graph = {}  # event_name -> list of (command/automation names it triggers)
+
+        # Map: which events are consumed by automations
+        for automation in automations:
+            trigger_event = automation.get('trigger_event')
+            name = automation.get('name', 'Unknown')
+            if trigger_event:
+                if trigger_event not in event_graph:
+                    event_graph[trigger_event] = []
+                event_graph[trigger_event].append(('automation', name))
+
+        # Get all events that are produced
+        event_names = {e.name if hasattr(e, 'name') else e.get('name') for e in events}
+        produced_events = set()
+
+        for cmd in commands:
+            produced_events.update(cmd.get('triggers_events', []))
+
+        for auto in automations:
+            produced_events.update(auto.get('result_events', []))
+
+        # Find events that are produced but never consumed (dead ends in the flow)
+        consumed_events = set(event_graph.keys())
+        dead_end_events = produced_events - consumed_events
+
+        # Check if we have too many dead-end events (indicates isolated chapters)
+        if len(dead_end_events) > len(event_names) * 0.5:  # More than 50% are dead ends
+            self.issues.append(ValidationIssue(
+                severity='error',
+                category='flow',
+                message=f'{len(dead_end_events)} out of {len(event_names)} events are dead ends (not consumed by automations)',
+                details={
+                    'dead_end_events': list(dead_end_events)[:10],
+                    'issue': 'Events should trigger automations to create flow between chapters',
+                    'suggestions': [
+                        'Add automations that react to these events',
+                        'Connect chapters by having events from one chapter trigger automations that produce events in another chapter',
+                        'Create cascading flows: Event → Automation → Event → Automation...'
+                    ]
+                }
+            ))
+        elif len(dead_end_events) > 3 and len(automations) < 2:
+            self.issues.append(ValidationIssue(
+                severity='warning',
+                category='flow',
+                message=f'Multiple events ({len(dead_end_events)}) have no follow-up automations',
+                details={
+                    'dead_end_events': list(dead_end_events)[:5],
+                    'automations': len(automations),
+                    'suggestion': 'Consider adding automations to create event flows between features'
+                }
+            ))
+
+        # Validate chapter connectivity if chapters exist
+        if len(chapters) > 1:
+            self._validate_chapter_connectivity(chapters, commands, automations, events)
+
+    def _validate_chapter_connectivity(self, chapters, commands, automations, events):
+        """Validate that chapters are connected through event flows, not isolated"""
+
+        # Build chapter-to-events mapping
+        chapter_events = {}  # chapter_name -> set of event names
+
+        for chapter in chapters:
+            chapter_name = chapter.get('name', 'Unknown')
+            chapter_events[chapter_name] = set()
+
+            for slice_ref in chapter.get('slices', []):
+                # Get events from commands in this chapter
+                if slice_ref.get('command'):
+                    cmd = next((c for c in commands if c.get('name') == slice_ref['command']), None)
+                    if cmd:
+                        chapter_events[chapter_name].update(cmd.get('triggers_events', []))
+
+                # Get events from automations in this chapter
+                if slice_ref.get('type') == 'automation':
+                    auto = next((a for a in automations if a.get('name') == slice_ref.get('name')), None)
+                    if auto:
+                        chapter_events[chapter_name].add(auto.get('trigger_event'))
+                        chapter_events[chapter_name].update(auto.get('result_events', []))
+
+        # Build automation trigger/result mapping
+        auto_triggers = {}  # event_name -> automation_name
+        auto_results = {}   # automation_name -> [event_names]
+
+        for auto in automations:
+            name = auto.get('name')
+            trigger = auto.get('trigger_event')
+            results = auto.get('result_events', [])
+
+            if trigger:
+                auto_triggers[trigger] = name
+            auto_results[name] = results
+
+        # Check for cross-chapter connections
+        connections = 0
+        for chapter in chapters:
+            chapter_name = chapter.get('name', 'Unknown')
+            chapter_evts = chapter_events.get(chapter_name, set())
+
+            # Check if any events from this chapter trigger automations that produce events in other chapters
+            for evt_name in chapter_evts:
+                if evt_name in auto_triggers:
+                    auto_name = auto_triggers[evt_name]
+                    result_evts = auto_results.get(auto_name, [])
+
+                    # Check if result events belong to other chapters
+                    for other_chapter in chapters:
+                        if other_chapter.get('name') != chapter_name:
+                            other_evts = chapter_events.get(other_chapter.get('name'), set())
+                            if any(re in other_evts for re in result_evts):
+                                connections += 1
+
+        # If we have multiple chapters but zero cross-chapter connections, that's a problem
+        if len(chapters) > 2 and connections == 0:
+            self.issues.append(ValidationIssue(
+                severity='error',
+                category='flow',
+                message=f'{len(chapters)} chapters exist but they are completely isolated (no cross-chapter event flows)',
+                details={
+                    'chapters': [c.get('name') for c in chapters],
+                    'issue': 'Chapters should connect through automations: Event from Chapter A → Automation → Event in Chapter B',
+                    'examples': [
+                        'UserRegistered (UserRegistration) → SendWelcomeEmail → WelcomeEmailSent (Messaging)',
+                        'PostCreated (PostCreation) → NotifyFollowers → NotificationSent (Notifications)',
+                        'OrderPlaced (Orders) → ProcessPayment → PaymentProcessed (Payments)'
+                    ],
+                    'suggestions': [
+                        'Add automations that react to events from one chapter and produce events in another',
+                        'Look for natural workflows that span multiple chapters',
+                        'Consider "What happens after X?" for each important event'
+                    ]
+                }
+            ))
+        elif len(chapters) > 1 and connections < len(chapters) - 1:
+            self.issues.append(ValidationIssue(
+                severity='warning',
+                category='flow',
+                message=f'Only {connections} cross-chapter connections found for {len(chapters)} chapters',
+                details={
+                    'chapters': len(chapters),
+                    'connections': connections,
+                    'suggestion': 'Consider adding more automations to connect related chapters'
                 }
             ))

@@ -9,13 +9,23 @@ from app.models import Task, TaskStatus, TaskAnalysis, TaskDecomposition, TaskTr
 from app.storage import TaskStorage
 from app.analyzer import UnifiedAnalyzer, EpicAnalyzer, StoryAnalyzer, CoverageValidator
 from app.analyzer.agentic_analyzer import AgenticAnalyzer
-from app.analyzer.unified_domain_analyzer import UnifiedDomainAnalyzer
+from app.analyzer.context_aware_domain_analyzer import ContextAwareDomainAnalyzer
 from app.analyzer.state_machine_detector import StateMachineDetector
 from app.analyzer.cqrs_detector import CQRSDetector
 from app.analyzer.schema_generator import SchemaGenerator
 from app.websocket.events import task_event_emitter
 from .processing_rules import ProcessingRules, ProcessingConfig
 from .epic_story_processor import EpicStoryProcessor
+from app.config import PromptTuningConfig
+from app.metrics import (
+    epic_story_generation_duration,
+    story_decomposition_duration,
+    event_modeling_duration,
+    context_engine_publish_duration,
+    epics_generated_total,
+    stories_generated_total,
+    get_task_count_bucket
+)
 
 
 class TaskProcessor:
@@ -28,7 +38,8 @@ class TaskProcessor:
         config: Optional[ProcessingConfig] = None,
         agentic_analyzer: Optional[AgenticAnalyzer] = None,
         epic_story_processor: Optional[EpicStoryProcessor] = None,
-        story_driven_analyzer: Optional[Any] = None
+        story_driven_analyzer: Optional[Any] = None,
+        context_engine_client: Optional[Any] = None
     ):
         """Initialize task processor.
 
@@ -39,11 +50,13 @@ class TaskProcessor:
             agentic_analyzer: Optional agentic analyzer for root tasks
             epic_story_processor: Optional epic/story processor for story-driven decomposition
             story_driven_analyzer: Optional story-driven analyzer for decomposing stories to tasks
+            context_engine_client: Optional Context Engine Redis client for event publishing
         """
         self.storage = storage
         self.analyzer = analyzer
         self.agentic_analyzer = agentic_analyzer
         self.story_driven_analyzer = story_driven_analyzer
+        self.context_engine_client = context_engine_client
         self.rules = ProcessingRules(config or ProcessingConfig())
 
         # Initialize Epic/Story processor if not provided
@@ -68,7 +81,8 @@ class TaskProcessor:
         description: str,
         context: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
-        max_depth: Optional[int] = None
+        max_depth: Optional[int] = None,
+        prompt_config: Optional[PromptTuningConfig] = None
     ) -> TaskTree:
         """Process a task completely from description to full decomposition.
 
@@ -84,11 +98,23 @@ class TaskProcessor:
             context: Optional context (tech stack, etc.)
             user_id: User ID for the task
             max_depth: Maximum decomposition depth
+            prompt_config: Optional prompt tuning configuration
 
         Returns:
             Complete task tree
         """
+        # Store prompt config in context for use throughout processing
+        if context is None:
+            context = {}
+        if prompt_config is not None:
+            context['prompt_config'] = prompt_config
         start_time = datetime.now(timezone.utc)
+
+        # Initialize timing dictionary
+        timing_metrics = {
+            "start_time": start_time.isoformat(),
+            "phases": {}
+        }
 
         # Create root task
         root_task = Task(
@@ -111,10 +137,23 @@ class TaskProcessor:
         epics = []
         stories_by_epic = {}
         if self.epic_story_processor:
+            phase_start = datetime.now(timezone.utc)
             print(f"[TaskProcessor] Generating Epics and Stories for root task")
             epics, stories_by_epic = await self.epic_story_processor.initialize_epics_and_stories(
                 root_task, context
             )
+            phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+
+            # Record Prometheus metrics
+            # Use story count as proxy for complexity
+            story_count = sum(len(stories) for stories in stories_by_epic.values())
+            task_bucket = get_task_count_bucket(story_count)
+            epic_story_generation_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+            epics_generated_total.inc(len(epics))
+            stories_generated_total.inc(story_count)
+
+            timing_metrics["phases"]["epic_story_generation"] = phase_duration
+            print(f"[TaskProcessor] ⏱️  Epic/Story generation took {phase_duration:.2f}s")
             self.stats["epics_created"] = len(epics)
             self.stats["stories_created"] = sum(len(stories) for stories in stories_by_epic.values())
 
@@ -130,12 +169,34 @@ class TaskProcessor:
 
         # Step 2: Process stories into tasks (story-driven decomposition)
         if self.story_driven_analyzer and stories_by_epic:
+            phase_start = datetime.now(timezone.utc)
             print(f"[TaskProcessor] Decomposing stories into implementation tasks")
             await self._process_stories_to_tasks(root_task, tree, epics, stories_by_epic, context, max_depth)
+            phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+
+            # Record Prometheus metrics
+            # Use total task count as proxy for complexity
+            total_tasks = len(tree.tasks) - 1  # Exclude root task
+            task_bucket = get_task_count_bucket(total_tasks)
+            story_decomposition_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+
+            timing_metrics["phases"]["story_decomposition"] = phase_duration
+            print(f"[TaskProcessor] ⏱️  Story decomposition took {phase_duration:.2f}s")
         else:
             # Fallback to old recursive processing if no story-driven analyzer
+            phase_start = datetime.now(timezone.utc)
             effective_max_depth = max_depth if max_depth is not None else 5
             await self._process_task_recursive(root_task, tree, context, effective_max_depth, parent_epic=None)
+            phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+
+            # Record Prometheus metrics
+            # Use total task count as proxy for complexity
+            total_tasks = len(tree.tasks) - 1  # Exclude root task
+            task_bucket = get_task_count_bucket(total_tasks)
+            story_decomposition_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+
+            timing_metrics["phases"]["recursive_processing"] = phase_duration
+            print(f"[TaskProcessor] ⏱️  Recursive processing took {phase_duration:.2f}s")
 
         # Update statistics
         processing_time = (datetime.now(timezone.utc) - start_time).total_seconds()
@@ -157,8 +218,101 @@ class TaskProcessor:
             # Emit event modeling started
             await task_event_emitter.emit_event_modeling_started(root_task, user_id)
 
-            unified_analyzer = UnifiedDomainAnalyzer(self.analyzer.llm)
-            analysis = await unified_analyzer.analyze_domain(list(tree.tasks.values()))
+            # Publish context data to Context Engine before domain analysis
+            if self.context_engine_client:
+                project_id = root_task.id
+
+                # Publish tech stack from root task context
+                if context and any(k in context for k in ['tech_stack', 'database', 'framework']):
+                    await self.context_engine_client.publish_data(
+                        project_id=project_id,
+                        data_key="tech_stack",
+                        data=context
+                    )
+                    print(f"[TaskProcessor] ✓ Published tech_stack to Context Engine")
+
+                # Publish epics and stories
+                if epics or stories_by_epic:
+                    epics_data = [
+                        {
+                            "id": epic.id,
+                            "title": epic.title,
+                            "description": epic.description,
+                            "user_value": epic.user_value,
+                            "acceptance_criteria": epic.acceptance_criteria
+                        }
+                        for epic in epics
+                    ]
+
+                    stories_data = []
+                    for epic_stories in stories_by_epic.values():
+                        for story in epic_stories:
+                            stories_data.append({
+                                "id": story.id,
+                                "title": story.title,
+                                "description": story.user_story,
+                                "acceptance_criteria": story.acceptance_criteria,
+                                "epic_id": story.epic_id
+                            })
+
+                    await self.context_engine_client.publish_data(
+                        project_id=project_id,
+                        data_key="epics_and_stories",
+                        data={
+                            "epics": epics_data,
+                            "stories": stories_data,
+                            "total_epics": len(epics),
+                            "total_stories": len(stories_data)
+                        }
+                    )
+                    print(f"[TaskProcessor] ✓ Published {len(epics)} epics and {len(stories_data)} stories to Context Engine")
+
+                # Publish decomposed tasks
+                task_summary = []
+                for task in tree.tasks.values():
+                    if task.depth > 0:  # Skip root task
+                        task_summary.append({
+                            "id": task.id,
+                            "description": task.description,
+                            "depth": task.depth,
+                            "complexity": task.metadata.get("complexity_score") if hasattr(task, "metadata") else None,
+                            "parent_id": task.parent_id
+                        })
+
+                if task_summary:
+                    await self.context_engine_client.publish_data(
+                        project_id=project_id,
+                        data_key="decomposed_tasks",
+                        data={
+                            "tasks": task_summary,
+                            "total_tasks": len(task_summary),
+                            "max_depth": max(t["depth"] for t in task_summary) if task_summary else 0
+                        }
+                    )
+                    print(f"[TaskProcessor] ✓ Published {len(task_summary)} decomposed tasks to Context Engine")
+
+            # Track event modeling timing
+            event_modeling_start = datetime.now(timezone.utc)
+
+            unified_analyzer = ContextAwareDomainAnalyzer(
+                self.analyzer.llm,
+                self.context_engine_client,
+                task_event_emitter
+            )
+            analysis = await unified_analyzer.analyze_domain(
+                list(tree.tasks.values()),
+                root_task,
+                user_id,
+                project_id=root_task.id
+            )
+
+            # Record event modeling metrics
+            event_modeling_time = (datetime.now(timezone.utc) - event_modeling_start).total_seconds()
+            total_tasks = len(tree.tasks) - 1  # Exclude root task
+            task_bucket = get_task_count_bucket(total_tasks)
+            event_modeling_duration.labels(task_count_bucket=task_bucket).observe(event_modeling_time)
+            timing_metrics["phases"]["event_modeling"] = event_modeling_time
+            print(f"[TaskProcessor] ⏱️  Event modeling took {event_modeling_time:.2f}s")
 
             # Ensure metadata is a dict
             if not isinstance(root_task.metadata, dict):
@@ -175,7 +329,9 @@ class TaskProcessor:
                         "affected_entity": e.affected_entity,
                         "triggers": e.triggers,
                         "source_task_id": e.source_task_id,
-                        "metadata": e.metadata
+                        "metadata": e.metadata,
+                        # Flatten payload from metadata for frontend convenience
+                        "payload": e.metadata.get("payload", []) if isinstance(e.metadata, dict) else []
                     }
                     for e in analysis["events"]
                 ]
@@ -251,14 +407,29 @@ class TaskProcessor:
                 root_task,
                 user_id,
                 events_count=len(analysis.get("events", [])),
-                commands_count=len(analysis.get("commands", [])),
+                commands_count=len(analysis.get("events", [])),
                 read_models_count=len(analysis.get("read_models", [])),
                 interactions_count=len(analysis.get("user_interactions", [])),
                 automations_count=len(analysis.get("automations", []))
             )
+
+            # PASS 3: Task Enrichment with Complete Event Model
+            if self.story_driven_analyzer and stories_by_epic and analysis:
+                print(f"[TaskProcessor] PASS 3: Enriching tasks with complete event model context")
+                enriched_tasks = await self._enrich_tasks_with_event_model(
+                    root_task, tree, epics, stories_by_epic, analysis, context, max_depth, user_id
+                )
+                print(f"[TaskProcessor] Task enrichment complete: {len(enriched_tasks)} new tasks added")
+
+            # Mark task as completed after event modeling
+            root_task.status = TaskStatus.COMPLETED
+            await self.storage.save_task(root_task)
+
         except Exception as e:
             print(f"[TaskProcessor] Error in event modeling analysis: {e}")
-            # Don't fail the entire processing if event extraction fails
+            # Mark as completed even if event modeling fails
+            root_task.status = TaskStatus.COMPLETED
+            await self.storage.save_task(root_task)
 
         # Save complete tree
         await self.storage.save_task_tree(tree)
@@ -270,7 +441,8 @@ class TaskProcessor:
         root_task: Task,
         context: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
-        max_depth: Optional[int] = None
+        max_depth: Optional[int] = None,
+        prompt_config: Optional[PromptTuningConfig] = None
     ) -> None:
         """Process a task asynchronously in the background.
 
@@ -282,7 +454,13 @@ class TaskProcessor:
             context: Optional context
             user_id: User ID
             max_depth: Maximum decomposition depth
+            prompt_config: Optional prompt tuning configuration
         """
+        # Store prompt config in context for use throughout processing
+        if context is None:
+            context = {}
+        if prompt_config is not None:
+            context['prompt_config'] = prompt_config
         print(f"[TaskProcessor] Starting async processing for task {root_task.id}")
         try:
             # Check if repository analysis is pending
@@ -336,16 +514,28 @@ class TaskProcessor:
             tree = TaskTree(root=root_task)
             tree.add_task(root_task)
 
-            # Initialize Epics and Stories for root task (if processor available)
+            # STEP 1: Initialize Epics and Stories
             epics = []
             stories_by_epic = {}
             if self.epic_story_processor:
-                print(f"[TaskProcessor] Initializing Epics and Stories for root task in async processing")
+                phase_start = datetime.now(timezone.utc)
+                print(f"[TaskProcessor] STEP 1: Initializing Epics and Stories")
                 epics, stories_by_epic = await self.epic_story_processor.initialize_epics_and_stories(
                     root_task, context
                 )
+                phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+
+                # Record Prometheus metrics
+                story_count = sum(len(stories) for stories in stories_by_epic.values())
+                task_bucket = get_task_count_bucket(story_count)
+                epic_story_generation_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+                epics_generated_total.inc(len(epics))
+                stories_generated_total.inc(story_count)
+
+                print(f"[TaskProcessor] ⏱️  Epic/Story generation took {phase_duration:.2f}s (bucket: {task_bucket})")
+
                 self.stats["epics_created"] = len(epics)
-                self.stats["stories_created"] = sum(len(stories) for stories in stories_by_epic.values())
+                self.stats["stories_created"] = story_count
 
             # Store epics and stories in context for frontend
             if epics or stories_by_epic:
@@ -357,14 +547,43 @@ class TaskProcessor:
                     root_task.context["user_stories"].extend([story.to_dict() for story in epic_stories])
                 await self.storage.save_task(root_task)
 
-            # Process stories into tasks (story-driven decomposition)
+                # Publish user stories to Context Engine
+                if self.context_engine_client:
+                    try:
+                        stories_data = {
+                            "epics": root_task.context["epics"],
+                            "stories": root_task.context["user_stories"]
+                        }
+                        await self.context_engine_client.redis.publish(
+                            "project:stories_updated",
+                            __import__('json').dumps({
+                                "project_id": root_task.id,
+                                "user_id": root_task.user_id,
+                                "stories": stories_data
+                            })
+                        )
+                        print(f"[TaskProcessor] ✓ Published {len(root_task.context['user_stories'])} user stories to Context Engine")
+                    except Exception as e:
+                        print(f"[TaskProcessor] ⚠ Failed to publish stories to Context Engine: {e}")
+
+            # STEP 2: Process stories into preliminary tasks
+            phase_start = datetime.now(timezone.utc)
+            print(f"[TaskProcessor] STEP 2: Decomposing stories into preliminary tasks")
             if self.story_driven_analyzer and stories_by_epic:
-                print(f"[TaskProcessor] Using story-driven decomposition in async processing")
                 await self._process_stories_to_tasks(root_task, tree, epics, stories_by_epic, context, max_depth)
             else:
                 # Fallback to old recursive processing if no story-driven analyzer
                 effective_max_depth = max_depth if max_depth is not None else 5
                 await self._process_task_recursive(root_task, tree, context, effective_max_depth, parent_epic=None)
+
+            phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
+
+            # Record Prometheus metrics
+            total_tasks = len(tree.tasks) - 1  # Exclude root task
+            task_bucket = get_task_count_bucket(total_tasks)
+            story_decomposition_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+
+            print(f"[TaskProcessor] ⏱️  Story decomposition took {phase_duration:.2f}s (bucket: {task_bucket}, tasks: {total_tasks})")
 
             # Generate and log coverage report (if processor available)
             if self.epic_story_processor:
@@ -375,98 +594,102 @@ class TaskProcessor:
                 epic_stats = self.epic_story_processor.get_processing_statistics()
                 self.stats.update(epic_stats)
 
-            # Event modeling analysis - Single LLM call
-            print(f"[TaskProcessor] Performing event modeling analysis")
+            # PASS 2: Event Modeling from ALL preliminary tasks
+            print(f"[TaskProcessor] PASS 2: Analyzing ALL {len(tree.tasks) - 1} tasks to create complete event model")
+            event_model_analysis = None
             try:
                 # Emit event modeling started
                 await task_event_emitter.emit_event_modeling_started(root_task, user_id)
 
-                unified_analyzer = UnifiedDomainAnalyzer(self.analyzer.llm)
-                analysis = await unified_analyzer.analyze_domain(list(tree.tasks.values()))
+                # Publish context data to Context Engine before domain analysis (PASS 2)
+                if self.context_engine_client:
+                    project_id = root_task.id
+                    print(f"[TaskProcessor] DEBUG: context_engine_client exists, project_id={project_id}")
+                    print(f"[TaskProcessor] DEBUG: context={context}")
+                    print(f"[TaskProcessor] DEBUG: root_task.context keys={list(root_task.context.keys()) if root_task.context else None}")
+
+                    # Publish tech stack from root task context
+                    if context and any(k in context for k in ['tech_stack', 'database', 'framework']):
+                        print(f"[TaskProcessor] DEBUG: Publishing tech_stack...")
+                        await self.context_engine_client.publish_data(
+                            project_id=project_id,
+                            data_key="tech_stack",
+                            data=context
+                        )
+                        print(f"[TaskProcessor] ✓ Published tech_stack to Context Engine")
+                    else:
+                        print(f"[TaskProcessor] DEBUG: NOT publishing tech_stack. context={bool(context)}, has_keys={any(k in context for k in ['tech_stack', 'database', 'framework']) if context else False}")
+
+                    # Publish epics and stories (already stored in root_task.context)
+                    if root_task.context and ('epics' in root_task.context or 'user_stories' in root_task.context):
+                        epics_data = root_task.context.get('epics', [])
+                        stories_data = root_task.context.get('user_stories', [])
+
+                        if epics_data or stories_data:
+                            await self.context_engine_client.publish_data(
+                                project_id=project_id,
+                                data_key="epics_and_stories",
+                                data={
+                                    "epics": epics_data,
+                                    "stories": stories_data,
+                                    "total_epics": len(epics_data),
+                                    "total_stories": len(stories_data)
+                                }
+                            )
+                            print(f"[TaskProcessor] ✓ Published {len(epics_data)} epics and {len(stories_data)} stories to Context Engine")
+
+                    # Publish decomposed tasks
+                    all_tasks_summary = []
+                    for task in tree.tasks.values():
+                        if task.depth > 0:  # Skip root task
+                            all_tasks_summary.append({
+                                "id": task.id,
+                                "description": task.description,
+                                "depth": task.depth,
+                                "complexity": task.metadata.get("complexity_score") if hasattr(task, "metadata") else None,
+                                "parent_id": task.parent_id
+                            })
+
+                    if all_tasks_summary:
+                        await self.context_engine_client.publish_data(
+                            project_id=project_id,
+                            data_key="decomposed_tasks",
+                            data={
+                                "tasks": all_tasks_summary,
+                                "total_tasks": len(all_tasks_summary),
+                                "max_depth": max(t["depth"] for t in all_tasks_summary) if all_tasks_summary else 0
+                            }
+                        )
+                        print(f"[TaskProcessor] ✓ Published {len(all_tasks_summary)} decomposed tasks to Context Engine")
+
+                # Analyze domain from ALL tasks (excluding root)
+                event_modeling_start = datetime.now(timezone.utc)
+                unified_analyzer = ContextAwareDomainAnalyzer(
+                    self.analyzer.llm,
+                    self.context_engine_client,
+                    task_event_emitter
+                )
+                all_tasks = [task for task in tree.tasks.values() if task.depth > 0]
+                event_model_analysis = await unified_analyzer.analyze_domain(
+                    all_tasks,
+                    root_task,
+                    user_id,
+                    project_id=root_task.id
+                )
+
+                # Record event modeling metrics
+                event_modeling_time = (datetime.now(timezone.utc) - event_modeling_start).total_seconds()
+                total_tasks = len(tree.tasks) - 1  # Exclude root task
+                task_bucket = get_task_count_bucket(total_tasks)
+                event_modeling_duration.labels(task_count_bucket=task_bucket).observe(event_modeling_time)
+                print(f"[TaskProcessor] ⏱️  Event modeling took {event_modeling_time:.2f}s (bucket: {task_bucket}, tasks: {total_tasks})")
 
                 # Ensure metadata is a dict
                 if not isinstance(root_task.metadata, dict):
                     root_task.metadata = {}
 
-                # Store events
-                if analysis["events"]:
-                    root_task.metadata["extracted_events"] = [
-                        {
-                            "name": e.name,
-                            "event_type": e.event_type.value,
-                            "description": e.description,
-                            "actor": e.actor,
-                            "affected_entity": e.affected_entity,
-                            "triggers": e.triggers,
-                            "source_task_id": e.source_task_id,
-                            "metadata": e.metadata
-                        }
-                        for e in analysis["events"]
-                    ]
-                    print(f"[TaskProcessor] Extracted {len(analysis['events'])} events")
-
-                # Store commands, read models, user interactions, automations
-                if analysis["commands"]:
-                    root_task.metadata["commands"] = analysis["commands"]
-                    print(f"[TaskProcessor] Identified {len(analysis['commands'])} commands")
-
-                if analysis["read_models"]:
-                    root_task.metadata["read_models"] = analysis["read_models"]
-                    print(f"[TaskProcessor] Identified {len(analysis['read_models'])} read models")
-
-                if analysis["user_interactions"]:
-                    root_task.metadata["user_interactions"] = analysis["user_interactions"]
-                    print(f"[TaskProcessor] Identified {len(analysis['user_interactions'])} user interactions")
-
-                if analysis["automations"]:
-                    root_task.metadata["automations"] = analysis["automations"]
-                    print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
-
-                # Store swimlanes and chapters
-                if analysis.get("swimlanes"):
-                    root_task.metadata["swimlanes"] = analysis["swimlanes"]
-                    print(f"[TaskProcessor] Identified {len(analysis['swimlanes'])} swimlanes")
-
-                if analysis.get("chapters"):
-                    root_task.metadata["chapters"] = analysis["chapters"]
-                    print(f"[TaskProcessor] Identified {len(analysis['chapters'])} chapters")
-
-                # Validate event model
-                from app.analyzer.event_model_validator import EventModelValidator
-                validator = EventModelValidator()
-                is_valid, validation_issues = validator.validate(analysis)
-                validation_summary = validator.get_validation_summary()
-
-                print(f"[TaskProcessor] Event model validation: {'PASSED' if is_valid else 'FAILED'}")
-                print(f"  - Errors: {validation_summary['errors']}")
-                print(f"  - Warnings: {validation_summary['warnings']}")
-
-                # Store validation results
-                root_task.metadata["event_model_validation"] = {
-                    "valid": is_valid,
-                    "summary": validation_summary,
-                    "issues": [
-                        {
-                            "severity": issue.severity,
-                            "category": issue.category,
-                            "message": issue.message,
-                            "details": issue.details
-                        }
-                        for issue in validation_issues
-                    ]
-                }
-
-                # Generate event model markdown
-                from app.analyzer.event_model_markdown_generator import EventModelMarkdownGenerator
-                markdown_generator = EventModelMarkdownGenerator()
-                event_model_markdown = markdown_generator.generate(analysis, root_task.description)
-
-                # Append validation results to markdown
-                if not is_valid or validation_summary['warnings'] > 0:
-                    event_model_markdown += self._generate_validation_section(validation_summary, validation_issues)
-
-                root_task.metadata["event_model_markdown"] = event_model_markdown
-                print(f"[TaskProcessor] Generated event model markdown ({len(event_model_markdown)} chars)")
+                # Store complete event model
+                self._store_event_model(root_task, event_model_analysis)
 
                 await self.storage.save_task(root_task)
 
@@ -474,24 +697,128 @@ class TaskProcessor:
                 await task_event_emitter.emit_event_modeling_completed(
                     root_task,
                     user_id,
-                    len(analysis["events"]),
-                    len(analysis["commands"]),
-                    len(analysis["read_models"])
+                    len(event_model_analysis.get("events", [])),
+                    len(event_model_analysis.get("commands", [])),
+                    len(event_model_analysis.get("read_models", []))
                 )
+
+                print(f"[TaskProcessor] Complete event model: {len(event_model_analysis.get('commands', []))} commands, {len(event_model_analysis.get('events', []))} events")
+
+                # Publish event model to Context Engine
+                if self.context_engine_client:
+                    try:
+                        # Serialize event model for JSON (convert DomainEvent objects to dicts)
+                        serializable_event_model = {}
+
+                        # Serialize events (DomainEvent objects)
+                        if event_model_analysis.get("events"):
+                            serializable_event_model["events"] = [
+                                {
+                                    "name": e.name,
+                                    "event_type": e.event_type.value,
+                                    "description": e.description,
+                                    "actor": e.actor,
+                                    "affected_entity": e.affected_entity,
+                                    "triggers": e.triggers,
+                                    "source_task_id": e.source_task_id,
+                                    "metadata": e.metadata
+                                }
+                                for e in event_model_analysis["events"]
+                            ]
+
+                        # Copy other fields directly (they're already serializable)
+                        for key in ["commands", "read_models", "user_interactions", "automations", "swimlanes", "chapters", "wireframes"]:
+                            if event_model_analysis.get(key):
+                                serializable_event_model[key] = event_model_analysis[key]
+
+                        await self.context_engine_client.redis.publish(
+                            "project:event_model_updated",
+                            __import__('json').dumps({
+                                "project_id": root_task.id,
+                                "user_id": root_task.user_id,
+                                "event_model": serializable_event_model
+                            })
+                        )
+                        print(f"[TaskProcessor] ✓ Published event model to Context Engine")
+                    except Exception as e:
+                        print(f"[TaskProcessor] ⚠ Failed to publish event model to Context Engine: {e}")
+
             except Exception as e:
                 print(f"[TaskProcessor] Error in event modeling analysis: {e}")
                 import traceback
                 traceback.print_exc()
-                # Don't fail the entire processing if event extraction fails
+                # Continue even if event modeling fails
 
-            # Mark root task as complete (after all processing including event modeling)
+            # PASS 3: Task Enrichment with Complete Event Model (if event model exists)
+            if self.story_driven_analyzer and stories_by_epic and event_model_analysis:
+                print(f"[TaskProcessor] PASS 3: Enriching tasks with complete event model context")
+                enriched_tasks = await self._enrich_tasks_with_event_model(
+                    root_task, tree, epics, stories_by_epic, event_model_analysis, context, max_depth, user_id
+                )
+                print(f"[TaskProcessor] Task enrichment complete: {len(enriched_tasks)} new tasks added")
+
+            # PASS 4: Associate tasks with slices
+            if event_model_analysis and event_model_analysis.get("chapters"):
+                print(f"[TaskProcessor] PASS 4: Associating tasks with slices for code generation")
+                from app.services.slice_associator import SliceAssociator
+                slice_associator = SliceAssociator(self.analyzer.llm)
+
+                # Get all atomic tasks
+                all_tasks = [task for task in tree.tasks.values() if task.is_atomic]
+
+                # Associate and update tasks
+                task_slice_map = await slice_associator.associate_and_update_tasks(
+                    all_tasks, event_model_analysis, self.storage
+                )
+
+                # Store slice mapping in root task metadata for easy access
+                if not isinstance(root_task.metadata, dict):
+                    root_task.metadata = {}
+                root_task.metadata["task_slice_map"] = task_slice_map
+                await self.storage.save_task(root_task)
+
+                print(f"[TaskProcessor] Associated tasks with {len(task_slice_map)} slices")
+
+            # Mark root task as complete
             if root_task.status != TaskStatus.COMPLETED:
-                print(f"[TaskProcessor] All processing complete (including event modeling), marking root task as complete")
+                print(f"[TaskProcessor] All processing complete, marking root task as complete")
                 root_task.status = TaskStatus.COMPLETED
                 await self.storage.save_task(root_task)
 
             # Save complete tree
             await self.storage.save_task_tree(tree)
+
+            # Publish task tree to Context Engine
+            if self.context_engine_client:
+                try:
+                    # Build task tree summary for Context Engine
+                    task_tree_data = {
+                        "root_task_id": root_task.id,
+                        "total_tasks": len(tree.tasks),
+                        "atomic_tasks": len([t for t in tree.tasks.values() if t.is_atomic]),
+                        "max_depth": max([t.depth for t in tree.tasks.values()]),
+                        "tasks": [
+                            {
+                                "id": task.id,
+                                "description": task.description,
+                                "depth": task.depth,
+                                "is_atomic": task.is_atomic,
+                                "parent_id": task.parent_id
+                            }
+                            for task in tree.tasks.values()
+                        ]
+                    }
+                    await self.context_engine_client.redis.publish(
+                        "project:task_tree_updated",
+                        __import__('json').dumps({
+                            "project_id": root_task.id,
+                            "user_id": root_task.user_id,
+                            "task_tree": task_tree_data
+                        })
+                    )
+                    print(f"[TaskProcessor] ✓ Published task tree ({len(tree.tasks)} tasks) to Context Engine")
+                except Exception as e:
+                    print(f"[TaskProcessor] ⚠ Failed to publish task tree to Context Engine: {e}")
 
             # Update statistics
             processing_time = (datetime.now(timezone.utc) - root_task.created_at).total_seconds()
@@ -850,8 +1177,10 @@ class TaskProcessor:
             print(f"[TaskProcessor] Batch decomposing {len(epic_stories)} stories for epic: {epic.title}")
 
             # Batch decompose all stories for this epic in a single call
+            # Extract prompt config from context if present
+            prompt_config = context.get('prompt_config') if context else None
             story_decompositions = await self.story_driven_analyzer.decompose_stories_to_tasks(
-                epic_stories, epic, context
+                epic_stories, epic, context, config=prompt_config
             )
 
             # Process the decompositions
@@ -907,6 +1236,112 @@ class TaskProcessor:
         # NOTE: Do NOT mark as complete here - event modeling happens after this method returns
         # Completion is handled in process_task_async after event modeling completes
 
+    async def _enrich_tasks_with_event_model(
+        self,
+        root_task: Task,
+        tree: TaskTree,
+        epics: List[Any],
+        stories_by_epic: Dict[str, List[Any]],
+        event_model: Dict[str, Any],
+        context: Optional[Dict[str, Any]],
+        max_depth: Optional[int],
+        user_id: Optional[str]
+    ) -> List[Task]:
+        """Re-decompose stories with full event model context to ensure completeness.
+
+        This generates additional tasks informed by the complete event model,
+        ensuring every command/read model has corresponding implementation tasks.
+
+        Args:
+            root_task: Root task
+            tree: Current task tree (with preliminary tasks from Pass 1)
+            epics: List of epics
+            stories_by_epic: Stories grouped by epic
+            event_model: Complete event model from Pass 2
+            context: Processing context
+            max_depth: Maximum depth
+            user_id: User ID for events
+
+        Returns:
+            List of newly created enriched tasks
+        """
+        # Create enriched context with full event model
+        enriched_context = {**(context or {}), "event_model": event_model}
+
+        new_tasks = []
+        existing_descriptions = {task.description.lower().strip() for task in tree.tasks.values()}
+
+        total_stories = sum(len(stories) for stories in stories_by_epic.values())
+        print(f"[TaskProcessor] Re-decomposing {total_stories} stories with {len(event_model.get('commands', []))} commands in event model context")
+
+        for epic in epics:
+            epic_stories = stories_by_epic.get(epic.id, [])
+            if not epic_stories:
+                continue
+
+            print(f"[TaskProcessor] Re-decomposing {len(epic_stories)} stories for epic: {epic.title} (with event model)")
+
+            # Re-decompose with full event model context
+            try:
+                # Extract prompt config from enriched context if present
+                prompt_config = enriched_context.get('prompt_config')
+                story_decompositions = await self.story_driven_analyzer.decompose_stories_to_tasks(
+                    epic_stories, epic, enriched_context,  # ← Now has complete event model!
+                    config=prompt_config
+                )
+            except Exception as e:
+                print(f"[TaskProcessor] Error in enriched decomposition for epic {epic.title}: {e}")
+                continue
+
+            # Process decompositions
+            for story in epic_stories:
+                decomposition = story_decompositions.get(story.id)
+                if not decomposition:
+                    continue
+
+                for subtask_data in decomposition.subtasks:
+                    description = subtask_data["description"]
+                    description_normalized = description.lower().strip()
+
+                    # Skip if we already have this task (avoid duplicates)
+                    if description_normalized in existing_descriptions:
+                        continue
+
+                    # Create new enriched task
+                    task = Task(
+                        id=str(uuid.uuid4()),
+                        description=description,
+                        status=TaskStatus.COMPLETED,
+                        depth=1,
+                        parent_id=root_task.id,
+                        is_atomic=True,
+                        implementation_details=subtask_data.get("implementation_details"),
+                        story_points=subtask_data.get("story_points"),
+                        story_ids=[story.id],
+                        epic_ids=[epic.id],
+                        context=enriched_context,
+                        user_id=root_task.user_id,
+                        metadata={"source": "event_model_enrichment"}  # Mark as enriched
+                    )
+
+                    # Add to tree
+                    tree.add_task(task)
+                    await self.storage.save_task(task)
+
+                    # Add to root task's children
+                    if not root_task.subtasks:
+                        root_task.subtasks = []
+                    root_task.subtasks.append(task.id)
+
+                    # Track
+                    new_tasks.append(task)
+                    existing_descriptions.add(description_normalized)
+
+                    # Emit event
+                    await task_event_emitter.emit_task_created(task, user_id)
+
+        return new_tasks
+
     async def _check_task_completion(self, task: Task, tree: TaskTree) -> None:
         """Check if a task is complete based on its children.
 
@@ -914,6 +1349,10 @@ class TaskProcessor:
             task: Task to check
             tree: Task tree
         """
+        # Don't auto-complete root tasks - they need event modeling first
+        if task.depth == 0:
+            return
+
         if not task.subtasks:
             return
 
@@ -961,6 +1400,104 @@ class TaskProcessor:
             "llm_calls_saved": 0,
             "processing_time": 0.0
         }
+
+    def _store_event_model(self, root_task: Task, analysis: Dict[str, Any]) -> None:
+        """Store event model analysis in task metadata.
+
+        Args:
+            root_task: Root task to store metadata in
+            analysis: Event model analysis from UnifiedDomainAnalyzer
+        """
+        # Store events
+        if analysis.get("events"):
+            root_task.metadata["extracted_events"] = [
+                {
+                    "name": e.name,
+                    "event_type": e.event_type.value,
+                    "description": e.description,
+                    "actor": e.actor,
+                    "affected_entity": e.affected_entity,
+                    "triggers": e.triggers,
+                    "source_task_id": e.source_task_id,
+                    "metadata": e.metadata,
+                    # Flatten payload from metadata for frontend convenience
+                    "payload": e.metadata.get("payload", []) if isinstance(e.metadata, dict) else []
+                }
+                for e in analysis["events"]
+            ]
+            print(f"[TaskProcessor] Extracted {len(analysis['events'])} events")
+
+        # Store commands, read models, user interactions, automations
+        if analysis.get("commands"):
+            root_task.metadata["commands"] = analysis["commands"]
+            print(f"[TaskProcessor] Identified {len(analysis['commands'])} commands")
+
+        if analysis.get("read_models"):
+            root_task.metadata["read_models"] = analysis["read_models"]
+            print(f"[TaskProcessor] Identified {len(analysis['read_models'])} read models")
+
+        if analysis.get("user_interactions"):
+            root_task.metadata["user_interactions"] = analysis["user_interactions"]
+            print(f"[TaskProcessor] Identified {len(analysis['user_interactions'])} user interactions")
+
+        if analysis.get("automations"):
+            root_task.metadata["automations"] = analysis["automations"]
+            print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
+
+        # Store swimlanes and chapters
+        if analysis.get("swimlanes"):
+            root_task.metadata["swimlanes"] = analysis["swimlanes"]
+            print(f"[TaskProcessor] Identified {len(analysis['swimlanes'])} swimlanes")
+
+        if analysis.get("chapters"):
+            root_task.metadata["chapters"] = analysis["chapters"]
+            print(f"[TaskProcessor] Identified {len(analysis['chapters'])} chapters")
+
+        # Store wireframes if present
+        if analysis.get("wireframes"):
+            root_task.metadata["wireframes"] = analysis["wireframes"]
+            print(f"[TaskProcessor] Generated {len(analysis['wireframes'])} wireframes")
+
+        # Validate event model
+        from app.analyzer.event_model_validator import EventModelValidator
+        validator = EventModelValidator()
+        is_valid, validation_issues = validator.validate(analysis)
+        validation_summary = validator.get_validation_summary()
+
+        print(f"[TaskProcessor] Event model validation: {'PASSED' if is_valid else 'FAILED'}")
+        print(f"  - Errors: {validation_summary['errors']}")
+        print(f"  - Warnings: {validation_summary['warnings']}")
+
+        # Store validation results
+        root_task.metadata["event_model_validation"] = {
+            "valid": is_valid,
+            "summary": validation_summary,
+            "issues": [
+                {
+                    "severity": issue.severity,
+                    "category": issue.category,
+                    "message": issue.message,
+                    "details": issue.details
+                }
+                for issue in validation_issues
+            ]
+        }
+
+        # Store data flow validation if present
+        if analysis.get("data_flow_validation"):
+            root_task.metadata["data_flow_validation"] = analysis["data_flow_validation"]
+
+        # Generate event model markdown
+        from app.analyzer.event_model_markdown_generator import EventModelMarkdownGenerator
+        markdown_generator = EventModelMarkdownGenerator()
+        event_model_markdown = markdown_generator.generate(analysis, root_task.description)
+
+        # Append validation results to markdown
+        if not is_valid or validation_summary['warnings'] > 0:
+            event_model_markdown += self._generate_validation_section(validation_summary, validation_issues)
+
+        root_task.metadata["event_model_markdown"] = event_model_markdown
+        print(f"[TaskProcessor] Generated event model markdown ({len(event_model_markdown)} chars)")
 
     def _generate_validation_section(self, summary: Dict[str, Any], issues: List) -> str:
         """Generate markdown section for validation results"""

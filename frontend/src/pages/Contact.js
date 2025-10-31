@@ -1,49 +1,7 @@
-import React, { useState } from 'react';
-import { useToast } from '../hooks/useToast';
+import React from 'react';
 import Footer from '../components/Footer';
 
 const Contact = () => {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    subject: '',
-    message: ''
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { addToast } = useToast();
-
-  const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      // Create mailto link with form data
-      const subject = encodeURIComponent(formData.subject || 'Contact Form Submission');
-      const body = encodeURIComponent(
-        `Name: ${formData.name}\nEmail: ${formData.email}\n\nMessage:\n${formData.message}`
-      );
-      const mailtoLink = `mailto:admin@cahoots.cc?subject=${subject}&body=${body}`;
-      
-      // Open email client
-      window.location.href = mailtoLink;
-      
-      // Reset form
-      setFormData({ name: '', email: '', subject: '', message: '' });
-      addToast('Email client opened with your message!', 'success');
-    } catch (error) {
-      addToast('Unable to open email client. Please email us directly at admin@cahoots.cc', 'error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div style={{ backgroundColor: 'var(--color-bg)', minHeight: '100vh' }}>
       <div className="max-w-2xl mx-auto py-12 px-4">
@@ -55,7 +13,12 @@ const Contact = () => {
         </div>
 
         <div className="card p-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form action="https://formsubmit.co/admin@cahoots.cc" method="POST" className="space-y-6">
+            {/* FormSubmit.co configuration - hidden fields */}
+            <input type="hidden" name="_subject" value="New Contact Form Submission - Cahoots" />
+            <input type="hidden" name="_captcha" value="false" />
+            <input type="hidden" name="_template" value="table" />
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label htmlFor="name" className="block text-sm font-medium mb-2" style={{ color: 'var(--color-text)' }}>
@@ -65,8 +28,6 @@ const Contact = () => {
                   type="text"
                   id="name"
                   name="name"
-                  value={formData.name}
-                  onChange={handleChange}
                   required
                   className="input-field w-full"
                   placeholder="Your full name"
@@ -80,8 +41,6 @@ const Contact = () => {
                   type="email"
                   id="email"
                   name="email"
-                  value={formData.email}
-                  onChange={handleChange}
                   required
                   className="input-field w-full"
                   placeholder="your.email@example.com"
@@ -97,8 +56,6 @@ const Contact = () => {
                 type="text"
                 id="subject"
                 name="subject"
-                value={formData.subject}
-                onChange={handleChange}
                 className="input-field w-full"
                 placeholder="What's this about?"
               />
@@ -111,8 +68,6 @@ const Contact = () => {
               <textarea
                 id="message"
                 name="message"
-                value={formData.message}
-                onChange={handleChange}
                 required
                 rows={6}
                 className="input-field w-full resize-none"
@@ -123,10 +78,9 @@ const Contact = () => {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <button
                 type="submit"
-                disabled={isSubmitting}
                 className="btn btn-primary px-8 py-3"
               >
-                {isSubmitting ? 'Opening Email...' : 'Send Message'}
+                Send Message
               </button>
               <a
                 href="mailto:admin@cahoots.cc"

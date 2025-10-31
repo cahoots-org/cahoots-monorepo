@@ -4,17 +4,6 @@ from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
 
-class TechPreferences(BaseModel):
-    """Tech stack preferences for task decomposition."""
-    application_type: Optional[str] = Field(None, description="Type of application (e.g., 'web-application', 'mobile-application')")
-    tech_stack_id: Optional[str] = Field(None, description="Specific tech stack ID (e.g., 'react-node-postgres')")
-    github_repo: Optional[str] = Field(None, description="GitHub repository URL for context")
-    additional_requirements: Optional[str] = Field(None, description="Additional technical requirements")
-    preferred_languages: Optional[list[str]] = Field(default_factory=list, description="Preferred programming languages")
-    frameworks: Optional[Dict[str, str]] = Field(default_factory=dict, description="Preferred frameworks by category")
-    deployment_target: Optional[str] = Field(None, description="Deployment target (e.g., 'aws', 'gcp', 'on-premise')")
-
-
 class RepositoryInfo(BaseModel):
     """Repository information for context."""
     type: str = Field(..., description="Repository type: 'github', 'custom', or 'url'")
@@ -38,7 +27,7 @@ class TaskRequest(BaseModel):
     max_depth: int = Field(5, ge=1, le=10, description="Maximum recursion depth for decomposition")
     max_subtasks: int = Field(7, ge=1, le=20, description="Maximum number of subtasks per task")
     complexity_threshold: float = Field(0.45, ge=0.1, le=0.9, description="Threshold for determining task atomicity")
-    tech_preferences: Optional[TechPreferences] = Field(None, description="User's tech stack preferences")
+    github_repo_url: Optional[str] = Field(None, description="GitHub repository URL for context enrichment")
     requires_approval: bool = Field(False, description="Whether to pause for approval after decomposition")
     repository: Optional[RepositoryInfo] = Field(None, description="Repository information for context")
     user_id: Optional[str] = Field(None, description="ID of the user creating the task")
@@ -47,6 +36,14 @@ class TaskRequest(BaseModel):
     use_cache: bool = Field(True, description="Whether to use caching for similar tasks")
     use_templates: bool = Field(True, description="Whether to use templates for common patterns")
     batch_siblings: bool = Field(True, description="Whether to batch process sibling tasks")
+
+    # Prompt tuning configuration
+    prompt_config: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional prompt tuning configuration. If not provided, will auto-detect based on complexity. "
+                    "Can include keys like: task_sizing_guidance, emphasize_consolidation, "
+                    "task_decomposition_temperature, etc."
+    )
 
     @field_validator("description")
     def validate_description(cls, v):

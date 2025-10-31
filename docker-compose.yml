@@ -32,6 +32,9 @@ services:
       - LAMBDA_API_KEY=${LAMBDA_API_KEY:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-70b}
+      - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:11434/v1}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-llama3.1:70b}
       - MAX_DEPTH=${MAX_DEPTH:-5}
       - COMPLEXITY_THRESHOLD=${COMPLEXITY_THRESHOLD:-0.45}
       - BATCH_SIZE=${BATCH_SIZE:-3}
@@ -48,6 +51,74 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
+
+  # Contex - Semantic context routing for AI agents
+  # Using published image from: https://github.com/cahoots-org/contex
+  context-engine:
+    image: ghcr.io/cahoots-org/contex:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.5}
+      - MAX_MATCHES=${MAX_MATCHES:-10}
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2GB
+          cpus: '2.0'
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # vLLM Local Inference Server
+  # NOTE: Due to Docker Desktop GPU limitations, run vLLM directly on host instead
+  # Install: pip install vllm
+  # Run: HF_TOKEN=$HUGGINGFACE_API_KEY vllm serve Qwen/Qwen3-32B-Instruct \
+  #        --quantization awq --dtype auto --max-model-len 32768 \
+  #        --gpu-memory-utilization 0.9 --enable-prefix-caching --port 8001
+  # Then set LLM_PROVIDER=local and LOCAL_LLM_URL=http://localhost:8001/v1
+  #
+  # Alternatively, if you switch from Docker Desktop to native Docker, uncomment below:
+  # vllm:
+  #   image: vllm/vllm-openai:latest
+  #   command:
+  #     - --model=Qwen/Qwen3-32B-Instruct
+  #     - --quantization=awq
+  #     - --dtype=auto
+  #     - --max-model-len=32768
+  #     - --gpu-memory-utilization=0.9
+  #     - --enable-prefix-caching
+  #   ports:
+  #     - "8001:8000"
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   environment:
+  #     - CUDA_VISIBLE_DEVICES=0
+  #     - HF_TOKEN=${HUGGINGFACE_API_KEY}
+  #   volumes:
+  #     - vllm-cache:/root/.cache/huggingface
+  #   profiles:
+  #     - local-inference
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 600s
+  #   restart: unless-stopped
 
   # Frontend (React)
   frontend:
@@ -95,3 +166,4 @@ services:
 
 volumes:
   redis_data:
+  vllm-cache:

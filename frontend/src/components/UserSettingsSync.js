@@ -12,9 +12,9 @@ export const UserSettingsSync = () => {
   const { loadUserSettings } = useSettings();
   const location = useLocation();
 
-  // Sync settings whenever user, loading state, or location changes
+  // Sync settings whenever user ID or loading state changes
   useEffect(() => {
-    
+
     // Only sync after auth has finished loading
     if (loading) {
       // Auth still loading, waiting...
@@ -22,10 +22,10 @@ export const UserSettingsSync = () => {
     }
 
     // Auth loaded, syncing settings
-    
+
     // Load settings for the current user (or reset to defaults if no user)
     loadUserSettings(user?.id || null);
-  }, [user?.id, loading, loadUserSettings, location.pathname, user]);
+  }, [user?.id, loading, loadUserSettings]);
 
   // This component doesn't render anything
   return null;

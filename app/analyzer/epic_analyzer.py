@@ -72,9 +72,19 @@ Return as JSON."""
                 max_tokens=8000  # Enough for comprehensive epic coverage
             )
 
+            # Debug: Log response to understand what we got
+            print(f"[EpicAnalyzer] LLM response keys: {list(response.keys())}")
+            print(f"[EpicAnalyzer] Epics count in response: {len(response.get('epics', []))}")
+
             # Parse epics from response
             epics = []
             epic_data_list = response.get("epics", [])
+
+            # Validate that we actually got epics - if the response is empty, raise an error
+            if not epic_data_list:
+                error_msg = f"LLM returned empty epics list. Response: {response}"
+                print(f"[EpicAnalyzer] ERROR: {error_msg}")
+                raise ValueError(error_msg)
 
             for i, epic_data in enumerate(epic_data_list):
                 epic = Epic(

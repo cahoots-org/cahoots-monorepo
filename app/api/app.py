@@ -8,7 +8,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.api.routes import task_router, health_router, websocket_router, epics_router, auth_router, events_router
+from app.api.routes import (
+    task_router,
+    health_router,
+    websocket_router,
+    epics_router,
+    auth_router,
+    events_router,
+    cascade_router,
+    user_settings_router,
+    metrics_router
+)
 from app.api.dependencies import cleanup_dependencies
 
 
@@ -17,7 +27,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan manager."""
     # Startup
     print("Starting Cahoots Monolith API...")
+
+    # Initialize Context Engine (only if not disabled)
+    import os
+    if os.getenv("DISABLE_CONTEXT_ENGINE", "false").lower() != "true":
+        try:
+            from app.api.dependencies import get_context_engine_client
+            await get_context_engine_client()
+            print("✓ Context Engine initialized")
+        except Exception as e:
+            print(f"⚠ Context Engine initialization failed: {e}")
+            print("  Continuing without Context Engine...")
+
     yield
+
     # Shutdown
     print("Shutting down...")
     await cleanup_dependencies()
@@ -129,6 +152,9 @@ def create_app() -> FastAPI:
     app.include_router(websocket_router)
     app.include_router(auth_router)
     app.include_router(events_router)
+    app.include_router(cascade_router)
+    app.include_router(user_settings_router)
+    app.include_router(metrics_router)
 
     # Include utility routers
     from app.api.routes import regenerate_router
@@ -153,6 +179,7 @@ def create_app() -> FastAPI:
                 "epics": "/api/epics",
                 "websocket": "/ws/global",
                 "auth": "/api/auth",
+                "settings": "/api/settings",
                 "jira": "/api/jira",
                 "trello": "/api/trello",
                 "github": "/api/github",

@@ -8,11 +8,12 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.storage import RedisClient, TaskStorage
 from app.analyzer import UnifiedAnalyzer, LLMClient, MockLLMClient
-from app.analyzer.llm_client import OpenAILLMClient, GroqLLMClient, LambdaLLMClient, CerebrasLLMClient
+from app.analyzer.llm_client import OpenAILLMClient, GroqLLMClient, LambdaLLMClient, CerebrasLLMClient, LocalLLMClient
 from app.analyzer.agentic_analyzer import AgenticAnalyzer
 from app.analyzer.story_driven_analyzer import StoryDrivenAnalyzer
 from app.processor import TaskProcessor
 from app.processor.processing_rules import ProcessingConfig
+from app.services.context_engine_client import ContextEngineClient, initialize_context_engine
 
 
 security = HTTPBearer(auto_error=False)
@@ -24,6 +25,7 @@ _task_storage: Optional[TaskStorage] = None
 _llm_client: Optional[LLMClient] = None
 _analyzer: Optional[UnifiedAnalyzer] = None
 _task_processor: Optional[TaskProcessor] = None
+_context_engine_client: Optional[ContextEngineClient] = None
 
 
 async def get_redis_client() -> RedisClient:
@@ -103,6 +105,14 @@ async def get_llm_client() -> LLMClient:
                 api_key=api_key,
                 model=model
             )
+        elif provider == "local":
+            base_url = os.getenv("LOCAL_LLM_URL", "http://localhost:8001/v1")
+            model = os.getenv("LOCAL_LLM_MODEL", "Qwen/Qwen2.5-Coder-32B-Instruct")
+            print(f"DEBUG: Using Local LLM: {model} at {base_url}")
+            _llm_client = LocalLLMClient(
+                base_url=base_url,
+                model=model
+            )
         else:  # mock or any other value
             _llm_client = MockLLMClient()
 
@@ -152,10 +162,28 @@ async def get_task_processor() -> TaskProcessor:
             batch_sibling_threshold=int(os.getenv("BATCH_SIZE", "3"))
         )
 
+        # Get Context Engine client for event publishing
+        context_engine_client = await get_context_engine_client()
+
         _task_processor = TaskProcessor(
-            storage, analyzer, config, agentic_analyzer, epic_story_processor, story_driven_analyzer
+            storage, analyzer, config, agentic_analyzer, epic_story_processor, story_driven_analyzer, context_engine_client
         )
     return _task_processor
+
+
+async def get_context_engine_client() -> Optional[ContextEngineClient]:
+    """Get Context Engine client instance."""
+    global _context_engine_client
+    if _context_engine_client is None:
+        # Create async Redis client for pub/sub subscriptions
+        from redis.asyncio import Redis
+        redis_url = os.getenv("REDIS_URL", f"redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', 6379)}")
+        async_redis = Redis.from_url(redis_url, decode_responses=True)
+
+        # Initialize HTTP-based Context Engine client
+        _context_engine_client = await initialize_context_engine(redis_client=async_redis)
+        print("[Dependencies] ✓ Context Engine client initialized")
+    return _context_engine_client
 
 
 async def cleanup_dependencies():
