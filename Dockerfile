@@ -39,7 +39,6 @@ WORKDIR /app
 
 # Copy application code
 COPY app/ ./app/
-COPY context-engine/ ./context-engine/
 COPY .env.example .env
 
 # Create cache directory for HuggingFace models
