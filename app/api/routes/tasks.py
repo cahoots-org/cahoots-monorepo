@@ -40,8 +40,8 @@ async def get_task_stats(
         # For dev user, get all tasks
         all_tasks = await storage.search_tasks("", limit=10000)
     else:
-        # Get user's tasks
-        all_tasks = await storage.get_user_tasks(user_id, limit=10000, offset=0)
+        # Get user's tasks (returns tuple of tasks, total)
+        all_tasks, _ = await storage.get_user_tasks(user_id, limit=10000, offset=0)
 
     # Filter for root-level tasks only if requested
     if top_level_only:

@@ -97,12 +97,18 @@ class ContextEngineClient:
                     "event_type": event_type
                 }
             )
+
+            # Log response for debugging
+            if response.status_code >= 400:
+                print(f"[ContextEngine] ✗ Error response: {response.status_code}")
+                print(f"[ContextEngine] ✗ Response body: {response.text}")
+
             response.raise_for_status()
             result = response.json()
-            
+
             print(f"[ContextEngine] ✓ Published {data_key} for project {project_id} (seq: {result['sequence']})")
             return result["sequence"]
-            
+
         except httpx.HTTPError as e:
             print(f"[ContextEngine] ✗ Failed to publish data: {e}")
             raise
