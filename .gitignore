@@ -19,3 +19,5 @@ zen-mcp-server/
 output.txt
 .mcp.json
 **/*.tfvars
+
+.vscode

@@ -1177,17 +1177,31 @@ class TaskProcessor:
             print(f"[TaskProcessor] Batch decomposing {len(epic_stories)} stories for epic: {epic.title}")
 
             # Batch decompose all stories for this epic in a single call
+<<<<<<< Updated upstream
             # Extract prompt config from context if present
             prompt_config = context.get('prompt_config') if context else None
             story_decompositions = await self.story_driven_analyzer.decompose_stories_to_tasks(
                 epic_stories, epic, context, config=prompt_config
             )
+=======
+            try:
+                story_decompositions = await self.story_driven_analyzer.decompose_stories_to_tasks(
+                    epic_stories, epic, context
+                )
+            except Exception as e:
+                print(f"[TaskProcessor] ERROR: Story decomposition failed for epic {epic.title}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Continue with next epic instead of failing entirely
+                continue
+>>>>>>> Stashed changes
 
             # Process the decompositions
             for story in epic_stories:
                 decomposition = story_decompositions.get(story.id)
                 if not decomposition:
-                    raise ValueError(f"No decomposition generated for story {story.id}")
+                    print(f"[TaskProcessor] WARNING: No decomposition generated for story {story.id}, skipping")
+                    continue
 
                 # Create tasks from decomposition
                 for subtask_data in decomposition.subtasks:
