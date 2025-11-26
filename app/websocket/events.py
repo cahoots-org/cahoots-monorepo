@@ -23,6 +23,7 @@ class TaskEventType(str, Enum):
     EVENT_MODELING_STARTED = "event_modeling.started"
     EVENT_MODELING_PROGRESS = "event_modeling.progress"
     EVENT_MODELING_COMPLETED = "event_modeling.completed"
+    EVENT_MODELING_ERROR = "event_modeling.error"
 
 
 class TaskEventEmitter:
@@ -309,7 +310,9 @@ class TaskEventEmitter:
         commands_count: int = 0,
         read_models_count: int = 0,
         interactions_count: int = 0,
-        automations_count: int = 0
+        automations_count: int = 0,
+        chapters_count: int = 0,
+        swimlanes_count: int = 0
     ):
         """Emit event modeling completed event."""
         await self._emit_task_event(
@@ -322,7 +325,26 @@ class TaskEventEmitter:
                 "read_models": read_models_count,
                 "user_interactions": interactions_count,
                 "automations": automations_count,
+                "chapters": chapters_count,
+                "swimlanes": swimlanes_count,
                 "message": f"Event modeling complete: {events_count} events, {commands_count} commands, {read_models_count} read models"
+            }
+        )
+
+    async def emit_event_modeling_error(
+        self,
+        task: Task,
+        error_message: str,
+        user_id: Optional[str] = None
+    ):
+        """Emit event modeling error event."""
+        await self._emit_task_event(
+            TaskEventType.EVENT_MODELING_ERROR,
+            task,
+            user_id,
+            {
+                "error": error_message,
+                "message": f"Event modeling failed: {error_message}"
             }
         )
 

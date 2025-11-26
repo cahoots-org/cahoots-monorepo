@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Card,
@@ -20,6 +20,7 @@ import {
   tokens,
 } from '../../design-system';
 import { useApp } from '../../contexts/AppContext';
+import { useWebSocket } from '../../contexts/WebSocketContext';
 import EditableElement from '../EditableElement';
 import ChangePreview from '../ChangePreview';
 import AddSliceModal from '../AddSliceModal';
@@ -28,7 +29,8 @@ import unifiedApiClient from '../../services/unifiedApiClient';
 
 const EventModelTab = ({ task, taskTree }) => {
   const queryClient = useQueryClient();
-  const { showError, showSuccess } = useApp();
+  const { showError } = useApp();
+  const { subscribe, connected } = useWebSocket();
 
   const [expandedChapters, setExpandedChapters] = useState(new Set());
   const [expandedSlices, setExpandedSlices] = useState(new Set());
@@ -37,6 +39,47 @@ const EventModelTab = ({ task, taskTree }) => {
   const [addSliceModalOpen, setAddSliceModalOpen] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState(null);
+
+  // Subscribe to WebSocket events for this task
+  useEffect(() => {
+    if (!connected) return;
+
+    const unsubscribe = subscribe((data) => {
+      // Only handle events for this task
+      if (data.task_id !== task.task_id) return;
+
+      switch (data.type) {
+        case 'event_modeling.started':
+          setIsGenerating(true);
+          setGenerationStatus('Starting event model analysis...');
+          break;
+
+        case 'event_modeling.progress':
+          setGenerationStatus(
+            `Found ${data.events || 0} events, ${data.commands || 0} commands...`
+          );
+          break;
+
+        case 'event_modeling.completed':
+          setIsGenerating(false);
+          setGenerationStatus(null);
+          // Query invalidation is handled by WebSocketContext
+          break;
+
+        case 'event_modeling.error':
+          setIsGenerating(false);
+          setGenerationStatus(null);
+          // Error notification is handled by WebSocketContext
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    return () => unsubscribe();
+  }, [connected, subscribe, task.task_id]);
 
   const isProcessing = task.status === 'processing' || task.status === 'pending';
 
@@ -204,18 +247,16 @@ const EventModelTab = ({ task, taskTree }) => {
   // Handler for generating event model
   const handleGenerateEventModel = async () => {
     setIsGenerating(true);
+    setGenerationStatus('Starting...');
     try {
-      const result = await unifiedApiClient.post(`/events/generate-model/${task.task_id}`);
-      showSuccess(`Event model generated: ${result.commands_count} commands, ${result.events_count} events, ${result.chapters_count} chapters`);
-
-      // Refresh task data
-      queryClient.invalidateQueries(['tasks', 'detail', task.task_id]);
-      queryClient.invalidateQueries(['tasks', 'tree', task.task_id]);
+      // API returns immediately, progress comes via WebSocket
+      await unifiedApiClient.post(`/events/generate-model/${task.task_id}`);
+      // Success/error notifications and query invalidation handled by WebSocket events
     } catch (error) {
-      console.error('Error generating event model:', error);
-      showError(error.response?.data?.detail || 'Failed to generate event model');
-    } finally {
+      console.error('Error starting event model generation:', error);
+      showError(error.response?.data?.detail || 'Failed to start event model generation');
       setIsGenerating(false);
+      setGenerationStatus(null);
     }
   };
 
@@ -241,7 +282,7 @@ const EventModelTab = ({ task, taskTree }) => {
           <div style={{ marginTop: tokens.spacing[4], display: 'flex', alignItems: 'center', justifyContent: 'center', gap: tokens.spacing[2] }}>
             <LoadingSpinner size="sm" />
             <Text style={{ color: 'var(--color-text-muted)' }}>
-              Analyzing tasks and building event model... This may take 30-60 seconds.
+              {generationStatus || 'Analyzing tasks and building event model...'}
             </Text>
           </div>
         )}

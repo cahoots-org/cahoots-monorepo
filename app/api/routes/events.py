@@ -144,6 +144,126 @@ async def get_cached_events(
     )
 
 
+async def _generate_event_model_task(
+    task_id: str,
+    user_id: str,
+    storage: TaskStorage,
+    llm_client: LLMClient,
+    redis_client: RedisClient
+):
+    """Background task to generate event model and emit WebSocket events."""
+    from app.analyzer.context_aware_domain_analyzer import ContextAwareDomainAnalyzer
+    from app.services.context_engine_client import ContextEngineClient
+    from app.websocket.events import TaskEventEmitter
+
+    # Create event emitter for WebSocket notifications
+    task_event_emitter = TaskEventEmitter()
+
+    try:
+        # Get the root task
+        root_task = await storage.get_task(task_id)
+        if not root_task:
+            print(f"[EventModel] Task {task_id} not found")
+            return
+
+        # Emit started event
+        await task_event_emitter.emit_event_modeling_started(root_task, user_id)
+
+        # Get entire task tree
+        task_tree = await storage.get_task_tree(task_id)
+        if not task_tree:
+            await task_event_emitter.emit_event_modeling_error(
+                root_task, "Task tree not found", user_id
+            )
+            return
+
+        # Get all tasks except root from the TaskTree object
+        all_tasks = [task for task in task_tree.tasks.values() if task.depth > 0]
+
+        if not all_tasks:
+            await task_event_emitter.emit_event_modeling_error(
+                root_task, "No subtasks found to analyze", user_id
+            )
+            return
+
+        # Create analyzers
+        context_engine_client = ContextEngineClient(redis_client=redis_client)
+
+        unified_analyzer = ContextAwareDomainAnalyzer(
+            llm_client,
+            context_engine_client,
+            task_event_emitter
+        )
+
+        # Analyze domain
+        print(f"[EventModel] Generating event model for task {task_id} with {len(all_tasks)} subtasks")
+        event_model_analysis = await unified_analyzer.analyze_domain(
+            all_tasks,
+            root_task,
+            user_id,
+            project_id=task_id
+        )
+
+        # Store event model in task metadata
+        if not isinstance(root_task.metadata, dict):
+            root_task.metadata = {}
+
+        # Store events
+        if event_model_analysis.get("events"):
+            root_task.metadata["extracted_events"] = [
+                {
+                    "name": e.name,
+                    "event_type": e.event_type.value,
+                    "description": e.description,
+                    "actor": e.actor,
+                    "affected_entity": e.affected_entity,
+                    "triggers": e.triggers,
+                    "source_task_id": e.source_task_id,
+                    "metadata": e.metadata,
+                    "payload": e.metadata.get("payload", []) if isinstance(e.metadata, dict) else []
+                }
+                for e in event_model_analysis["events"]
+            ]
+
+        # Store commands, read models, etc.
+        for key in ["commands", "read_models", "user_interactions", "automations", "swimlanes", "chapters", "wireframes", "data_flow", "slices"]:
+            if event_model_analysis.get(key):
+                root_task.metadata[key] = event_model_analysis[key]
+
+        # Save updated task
+        await storage.save_task(root_task)
+
+        # Emit completed event
+        await task_event_emitter.emit_event_modeling_completed(
+            root_task,
+            user_id,
+            events_count=len(event_model_analysis.get("events", [])),
+            commands_count=len(event_model_analysis.get("commands", [])),
+            read_models_count=len(event_model_analysis.get("read_models", [])),
+            interactions_count=len(event_model_analysis.get("user_interactions", [])),
+            automations_count=len(event_model_analysis.get("automations", [])),
+            chapters_count=len(event_model_analysis.get("chapters", [])),
+            swimlanes_count=len(event_model_analysis.get("swimlanes", []))
+        )
+
+        print(f"[EventModel] Completed event model for task {task_id}")
+
+    except Exception as e:
+        print(f"[EventModel] Error generating event model for task {task_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Try to emit error event
+        try:
+            root_task = await storage.get_task(task_id)
+            if root_task:
+                await task_event_emitter.emit_event_modeling_error(
+                    root_task, str(e), user_id
+                )
+        except Exception as emit_error:
+            print(f"[EventModel] Failed to emit error event: {emit_error}")
+
+
 @router.post("/generate-model/{task_id}")
 async def generate_event_model(
     task_id: str,
@@ -156,18 +276,14 @@ async def generate_event_model(
     """
     Generate a complete event model for an existing task.
 
-    This analyzes the task tree and generates:
-    - Commands
-    - Events
-    - Read Models
-    - Swimlanes
-    - Chapters with slices
+    This starts background processing and returns immediately.
+    Progress and completion are sent via WebSocket events:
+    - event_modeling.started
+    - event_modeling.progress
+    - event_modeling.completed
+    - event_modeling.error
     """
-    from app.analyzer.context_aware_domain_analyzer import ContextAwareDomainAnalyzer
-    from app.services.context_engine_client import ContextEngineClient
-    from app.websocket.events import TaskEventEmitter
-
-    # Get the root task
+    # Get the root task to validate it exists and user has access
     root_task = await storage.get_task(task_id)
     if not root_task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -176,7 +292,7 @@ async def generate_event_model(
     if root_task.user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
 
-    # Get entire task tree
+    # Get entire task tree to validate
     task_tree = await storage.get_task_tree(task_id)
     if not task_tree:
         raise HTTPException(status_code=400, detail="Task tree not found")
@@ -187,60 +303,19 @@ async def generate_event_model(
     if not all_tasks:
         raise HTTPException(status_code=400, detail="No subtasks found to analyze")
 
-    # Create analyzers
-    context_engine_client = ContextEngineClient(redis_client=redis_client)
-    task_event_emitter = TaskEventEmitter(redis_client)
-
-    unified_analyzer = ContextAwareDomainAnalyzer(
-        llm_client,
-        context_engine_client,
-        task_event_emitter
-    )
-
-    # Analyze domain
-    print(f"[EventModel] Generating event model for task {task_id} with {len(all_tasks)} subtasks")
-    event_model_analysis = await unified_analyzer.analyze_domain(
-        all_tasks,
-        root_task,
+    # Add background task - it will emit WebSocket events for progress
+    background_tasks.add_task(
+        _generate_event_model_task,
+        task_id,
         current_user["id"],
-        project_id=task_id
+        storage,
+        llm_client,
+        redis_client
     )
-
-    # Store event model in task metadata
-    if not isinstance(root_task.metadata, dict):
-        root_task.metadata = {}
-
-    # Store events
-    if event_model_analysis.get("events"):
-        root_task.metadata["extracted_events"] = [
-            {
-                "name": e.name,
-                "event_type": e.event_type.value,
-                "description": e.description,
-                "actor": e.actor,
-                "affected_entity": e.affected_entity,
-                "triggers": e.triggers,
-                "source_task_id": e.source_task_id,
-                "metadata": e.metadata,
-                "payload": e.metadata.get("payload", []) if isinstance(e.metadata, dict) else []
-            }
-            for e in event_model_analysis["events"]
-        ]
-
-    # Store commands, read models, etc.
-    for key in ["commands", "read_models", "user_interactions", "automations", "swimlanes", "chapters", "wireframes", "data_flow", "slices"]:
-        if event_model_analysis.get(key):
-            root_task.metadata[key] = event_model_analysis[key]
-
-    # Save updated task
-    await storage.save_task(root_task)
 
     return {
-        "message": "Event model generated successfully",
+        "message": "Event model generation started",
         "task_id": task_id,
-        "events_count": len(event_model_analysis.get("events", [])),
-        "commands_count": len(event_model_analysis.get("commands", [])),
-        "read_models_count": len(event_model_analysis.get("read_models", [])),
-        "chapters_count": len(event_model_analysis.get("chapters", [])),
-        "swimlanes_count": len(event_model_analysis.get("swimlanes", []))
+        "status": "processing",
+        "subtasks_count": len(all_tasks)
     }

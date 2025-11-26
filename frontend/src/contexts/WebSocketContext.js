@@ -332,19 +332,44 @@ export const WebSocketProvider = ({ children }) => {
         
       case 'service.status':
         // Handle detailed service status updates
-        
+
         // Don't show notifications - let individual components handle service.status events
         // This allows DecompositionStatus to display them as status messages instead
-        
+
         // Still invalidate queries to refresh UI if needed
         if (data.task_id) {
-          queryClient.invalidateQueries({ 
-            queryKey: queryKeys.tasks.detail(data.task_id) 
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.tasks.detail(data.task_id)
           });
-          queryClient.invalidateQueries({ 
-            queryKey: queryKeys.tasks.tree(data.task_id) 
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.tasks.tree(data.task_id)
           });
         }
+        break;
+
+      case 'event_modeling.started':
+      case 'event_modeling.progress':
+        // Let EventModelTab handle these via subscribe - don't show notifications
+        break;
+
+      case 'event_modeling.completed':
+        // Show success notification
+        showSuccess(data.message || 'Event model generated successfully');
+
+        // Invalidate task queries to refresh the event model data
+        if (data.task_id) {
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.tasks.detail(data.task_id)
+          });
+          queryClient.invalidateQueries({
+            queryKey: queryKeys.tasks.tree(data.task_id)
+          });
+        }
+        break;
+
+      case 'event_modeling.error':
+        // Show error notification
+        showError(data.message || 'Event model generation failed');
         break;
     }
   };
