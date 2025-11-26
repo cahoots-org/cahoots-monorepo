@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.models import (
     UserSettings,
     UserSettingsUpdateRequest,
-    UserSettingsResponse
+    UserSettingsResponse,
+    TrelloIntegration,
+    JiraIntegration
 )
 from app.storage import UserSettingsStorage
 from app.api.dependencies import get_current_user, get_redis_client
@@ -68,6 +70,11 @@ async def update_user_settings(
 
     for field, value in update_data.items():
         if hasattr(settings, field):
+            # Convert dicts to proper model objects for integration settings
+            if field == 'trello_integration' and isinstance(value, dict):
+                value = TrelloIntegration(**value)
+            elif field == 'jira_integration' and isinstance(value, dict):
+                value = JiraIntegration(**value)
             setattr(settings, field, value)
 
     # Save updated settings

@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime, timezone
 import json
 
-from app.models.user_settings import UserSettings
+from app.models.user_settings import UserSettings, TrelloIntegration, JiraIntegration
 from .redis_client import RedisClient
 
 
@@ -99,6 +99,11 @@ class UserSettingsStorage:
         # Apply updates
         for field, value in updates.items():
             if hasattr(existing, field):
+                # Convert dicts to proper model objects for integration settings
+                if field == 'trello_integration' and isinstance(value, dict):
+                    value = TrelloIntegration(**value)
+                elif field == 'jira_integration' and isinstance(value, dict):
+                    value = JiraIntegration(**value)
                 setattr(existing, field, value)
 
         # Save updated settings

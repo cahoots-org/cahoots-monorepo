@@ -224,7 +224,7 @@ async def get_current_user(
     if token == "dev-bypass-token" and os.getenv("ENVIRONMENT", "development") == "development":
         print("[AUTH DEBUG] Using dev bypass token")
         return {
-            "id": "dev_user",
+            "id": "dev-user-123",
             "email": "dev@localhost"
         }
 

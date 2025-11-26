@@ -33,7 +33,7 @@ async def get_task_stats(
 ) -> Dict[str, Any]:
     """Get task statistics for the current user."""
     user_id = current_user["id"]
-    is_dev_user = user_id == "dev_user"
+    is_dev_user = user_id == "dev-user-123"
 
     # Get all tasks for the user
     if is_dev_user:

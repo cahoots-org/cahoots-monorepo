@@ -53,9 +53,11 @@ export const SettingsProvider = ({ children }) => {
       // Fetch settings from backend API
       console.log('[SettingsContext] Fetching settings from API for user:', userId);
       const response = await apiClient.get('/settings');
+      console.log('[SettingsContext] API response:', response);
 
-      if (response.data && response.data.data) {
-        const backendSettings = response.data.data;
+      // apiClient.get() already unwraps response.data, so response IS the data
+      if (response && response.data) {
+        const backendSettings = response.data;
         console.log('[SettingsContext] Settings loaded from backend:', backendSettings);
 
         // Transform backend format to frontend format
@@ -122,29 +124,31 @@ export const SettingsProvider = ({ children }) => {
     }
   }, [currentUserId, settingsLoaded]);
 
-  // Save settings when they change (only if we have a current user and settings are loaded)
-  useEffect(() => {
-    // Skip saving during initial load
-    if (!currentUserId || !settingsLoaded) {
-      console.log('[SettingsContext] Skipping save - no user or settings not loaded yet');
+  const updateSettings = useCallback((newSettings) => {
+    console.log('[SettingsContext] updateSettings called with:', newSettings);
+    setSettings(newSettings);
+
+    // Save directly to backend when user updates settings
+    if (!currentUserId) {
+      console.log('[SettingsContext] No user, skipping save');
       return;
     }
 
     // Transform frontend format to backend format
     const backendSettings = {
-      dark_mode: settings.darkMode,
-      notifications: settings.notifications,
+      dark_mode: newSettings.darkMode,
+      notifications: newSettings.notifications,
       trello_integration: {
-        enabled: settings.trelloIntegration.enabled,
-        api_key: settings.trelloIntegration.apiKey,
-        token: settings.trelloIntegration.token
+        enabled: newSettings.trelloIntegration.enabled,
+        api_key: newSettings.trelloIntegration.apiKey,
+        token: newSettings.trelloIntegration.token
       },
       jira_integration: {
-        enabled: settings.jiraIntegration.enabled,
-        jira_url: settings.jiraIntegration.jiraUrl,
-        user_email: settings.jiraIntegration.userEmail,
-        api_token: settings.jiraIntegration.apiToken,
-        account_id: settings.jiraIntegration.accountId
+        enabled: newSettings.jiraIntegration.enabled,
+        jira_url: newSettings.jiraIntegration.jiraUrl,
+        user_email: newSettings.jiraIntegration.userEmail,
+        api_token: newSettings.jiraIntegration.apiToken,
+        account_id: newSettings.jiraIntegration.accountId
       }
     };
 
@@ -157,21 +161,16 @@ export const SettingsProvider = ({ children }) => {
 
         // Also save to localStorage as backup
         const userSettingsKey = `userSettings:${currentUserId}`;
-        localStorage.setItem(userSettingsKey, JSON.stringify(settings));
+        localStorage.setItem(userSettingsKey, JSON.stringify(newSettings));
       })
       .catch((error) => {
         console.error('[SettingsContext] Failed to save settings to backend:', error);
 
         // Fallback: save to localStorage only
         const userSettingsKey = `userSettings:${currentUserId}`;
-        localStorage.setItem(userSettingsKey, JSON.stringify(settings));
+        localStorage.setItem(userSettingsKey, JSON.stringify(newSettings));
       });
-  }, [settings, currentUserId, settingsLoaded]);
-
-  const updateSettings = useCallback((newSettings) => {
-    console.log('[SettingsContext] updateSettings called with:', newSettings);
-    setSettings(newSettings);
-  }, []);
+  }, [currentUserId]);
 
   return (
     <SettingsContext.Provider value={{ settings, updateSettings, loadUserSettings, settingsLoaded }}>

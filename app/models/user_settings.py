@@ -79,8 +79,8 @@ class UserSettingsUpdateRequest(BaseModel):
     """Request model for updating user settings"""
     dark_mode: Optional[bool] = None
     notifications: Optional[bool] = None
-    trello_integration: Optional[TrelloIntegration] = None
-    jira_integration: Optional[JiraIntegration] = None
+    trello_integration: Optional[Dict[str, Any]] = None
+    jira_integration: Optional[Dict[str, Any]] = None
     custom_settings: Optional[Dict[str, Any]] = None
 
 
