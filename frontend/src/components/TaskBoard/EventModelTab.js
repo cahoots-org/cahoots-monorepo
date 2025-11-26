@@ -16,6 +16,7 @@ import {
   PlusIcon,
   EditIcon,
   TrashIcon,
+  PlayIcon,
   tokens,
 } from '../../design-system';
 import { useApp } from '../../contexts/AppContext';
@@ -35,6 +36,7 @@ const EventModelTab = ({ task, taskTree }) => {
   const [showSwimlanes, setShowSwimlanes] = useState(false);
   const [addSliceModalOpen, setAddSliceModalOpen] = useState(false);
   const [selectedChapter, setSelectedChapter] = useState(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const isProcessing = task.status === 'processing' || task.status === 'pending';
 
@@ -199,15 +201,51 @@ const EventModelTab = ({ task, taskTree }) => {
     );
   }
 
+  // Handler for generating event model
+  const handleGenerateEventModel = async () => {
+    setIsGenerating(true);
+    try {
+      const result = await unifiedApiClient.post(`/events/generate-model/${task.task_id}`);
+      showSuccess(`Event model generated: ${result.commands_count} commands, ${result.events_count} events, ${result.chapters_count} chapters`);
+
+      // Refresh task data
+      queryClient.invalidateQueries(['tasks', 'detail', task.task_id]);
+      queryClient.invalidateQueries(['tasks', 'tree', task.task_id]);
+    } catch (error) {
+      console.error('Error generating event model:', error);
+      showError(error.response?.data?.detail || 'Failed to generate event model');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   // No slices yet - show empty state
   if (slices.length === 0 && chapters.length === 0) {
     return (
       <div style={styles.emptyStateContainer}>
-        <span style={styles.emptyStateIcon}>🔄</span>
+        <span style={styles.emptyStateIcon}>📊</span>
         <h3 style={styles.emptyStateTitle}>No Event Model</h3>
         <p style={styles.emptyStateDescription}>
           Event model has not been generated yet for this task.
         </p>
+        <Button
+          variant="primary"
+          size="lg"
+          icon={PlayIcon}
+          onClick={handleGenerateEventModel}
+          disabled={isGenerating}
+          style={{ marginTop: tokens.spacing[4] }}
+        >
+          {isGenerating ? 'Generating...' : 'Generate Event Model'}
+        </Button>
+        {isGenerating && (
+          <div style={{ marginTop: tokens.spacing[4], display: 'flex', alignItems: 'center', gap: tokens.spacing[2] }}>
+            <LoadingSpinner size="small" />
+            <Text style={{ color: 'var(--color-text-muted)' }}>
+              Analyzing tasks and building event model... This may take 30-60 seconds.
+            </Text>
+          </div>
+        )}
       </div>
     );
   }

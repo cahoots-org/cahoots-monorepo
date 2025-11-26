@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
-const JiraExportProgress = ({ 
-  isOpen, 
-  onClose, 
+const JiraExportProgress = ({
+  isOpen,
+  onClose,
   exportId,
   onSuccess,
-  onError 
+  onError
 }) => {
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
@@ -14,6 +14,14 @@ const JiraExportProgress = ({
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [resultData, setResultData] = useState(null);
+
+  // Use refs for callbacks to avoid re-triggering the effect
+  const onSuccessRef = useRef(onSuccess);
+  const onErrorRef = useRef(onError);
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+    onErrorRef.current = onError;
+  }, [onSuccess, onError]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -65,16 +73,16 @@ const JiraExportProgress = ({
           setIsComplete(true);
           setProgress(100);
           setCurrentMessage('Export completed successfully!');
-          
-          if (onSuccess) {
-            setTimeout(() => onSuccess(data.payload), 1000);
+
+          if (onSuccessRef.current) {
+            setTimeout(() => onSuccessRef.current(data.payload), 1000);
           }
         } else if (data.type === 'jira.export.error') {
           setHasError(true);
           setErrorMessage(data.payload.message || 'Export failed');
-          
-          if (onError) {
-            onError(data.payload);
+
+          if (onErrorRef.current) {
+            onErrorRef.current(data.payload);
           }
         }
       } catch (error) {
@@ -98,7 +106,7 @@ const JiraExportProgress = ({
         ws.close();
       }
     };
-  }, [isOpen, exportId, onSuccess, onError]);
+  }, [isOpen, exportId]);
 
   const getStepDescription = (step) => {
     switch (step) {
@@ -141,7 +149,7 @@ const JiraExportProgress = ({
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
-            <h2 className="text-lg font-medium">JIRA Export Progress</h2>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">JIRA Export Progress</h2>
             <span className="text-2xl">{getStepIcon(currentStep)}</span>
           </div>
         </div>

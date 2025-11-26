@@ -145,7 +145,7 @@ const TrelloExportProgress = ({
         {/* Header */}
         <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
-            <h2 className="text-lg font-medium">Trello Export Progress</h2>
+            <h2 className="text-lg font-medium text-gray-900 dark:text-white">Trello Export Progress</h2>
             <span className="text-2xl">{getStepIcon(currentStep)}</span>
           </div>
         </div>

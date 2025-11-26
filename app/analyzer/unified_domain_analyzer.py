@@ -1232,6 +1232,11 @@ Return ONLY the JSON, no explanation."""
             # Parse events (they need to be DomainEvent objects)
             fixed_data["events"] = self._parse_events(fixed_data.get("events", []))
 
+            # Preserve fields that weren't sent to the LLM for fixing
+            for key in ["swimlanes", "chapters", "wireframes", "data_flow", "slices", "event_model_validation", "event_model_markdown"]:
+                if key in analysis and key not in fixed_data:
+                    fixed_data[key] = analysis[key]
+
             print(f"[UnifiedDomainAnalyzer] Applied fixes: {len(fixed_data.get('events', []))} events, {len(fixed_data.get('commands', []))} commands")
             return fixed_data
 

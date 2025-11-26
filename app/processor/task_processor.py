@@ -602,65 +602,63 @@ class TaskProcessor:
                 await task_event_emitter.emit_event_modeling_started(root_task, user_id)
 
                 # Publish context data to Context Engine before domain analysis (PASS 2)
+                # These are optional - don't let them break event modeling
                 if self.context_engine_client:
-                    project_id = root_task.id
-                    print(f"[TaskProcessor] DEBUG: context_engine_client exists, project_id={project_id}")
-                    print(f"[TaskProcessor] DEBUG: context={context}")
-                    print(f"[TaskProcessor] DEBUG: root_task.context keys={list(root_task.context.keys()) if root_task.context else None}")
+                    try:
+                        project_id = root_task.id
 
-                    # Publish tech stack from root task context
-                    if context and any(k in context for k in ['tech_stack', 'database', 'framework']):
-                        print(f"[TaskProcessor] DEBUG: Publishing tech_stack...")
-                        await self.context_engine_client.publish_data(
-                            project_id=project_id,
-                            data_key="tech_stack",
-                            data=context
-                        )
-                        print(f"[TaskProcessor] ✓ Published tech_stack to Context Engine")
-                    else:
-                        print(f"[TaskProcessor] DEBUG: NOT publishing tech_stack. context={bool(context)}, has_keys={any(k in context for k in ['tech_stack', 'database', 'framework']) if context else False}")
-
-                    # Publish epics and stories (already stored in root_task.context)
-                    if root_task.context and ('epics' in root_task.context or 'user_stories' in root_task.context):
-                        epics_data = root_task.context.get('epics', [])
-                        stories_data = root_task.context.get('user_stories', [])
-
-                        if epics_data or stories_data:
+                        # Publish tech stack from root task context
+                        if context and any(k in context for k in ['tech_stack', 'database', 'framework']):
                             await self.context_engine_client.publish_data(
                                 project_id=project_id,
-                                data_key="epics_and_stories",
+                                data_key="tech_stack",
+                                data=context
+                            )
+                            print(f"[TaskProcessor] ✓ Published tech_stack to Context Engine")
+
+                        # Publish epics and stories (already stored in root_task.context)
+                        if root_task.context and ('epics' in root_task.context or 'user_stories' in root_task.context):
+                            epics_data = root_task.context.get('epics', [])
+                            stories_data = root_task.context.get('user_stories', [])
+
+                            if epics_data or stories_data:
+                                await self.context_engine_client.publish_data(
+                                    project_id=project_id,
+                                    data_key="epics_and_stories",
+                                    data={
+                                        "epics": epics_data,
+                                        "stories": stories_data,
+                                        "total_epics": len(epics_data),
+                                        "total_stories": len(stories_data)
+                                    }
+                                )
+                                print(f"[TaskProcessor] ✓ Published {len(epics_data)} epics and {len(stories_data)} stories to Context Engine")
+
+                        # Publish decomposed tasks
+                        all_tasks_summary = []
+                        for task in tree.tasks.values():
+                            if task.depth > 0:  # Skip root task
+                                all_tasks_summary.append({
+                                    "id": task.id,
+                                    "description": task.description,
+                                    "depth": task.depth,
+                                    "complexity": task.metadata.get("complexity_score") if hasattr(task, "metadata") else None,
+                                    "parent_id": task.parent_id
+                                })
+
+                        if all_tasks_summary:
+                            await self.context_engine_client.publish_data(
+                                project_id=project_id,
+                                data_key="decomposed_tasks",
                                 data={
-                                    "epics": epics_data,
-                                    "stories": stories_data,
-                                    "total_epics": len(epics_data),
-                                    "total_stories": len(stories_data)
+                                    "tasks": all_tasks_summary,
+                                    "total_tasks": len(all_tasks_summary),
+                                    "max_depth": max(t["depth"] for t in all_tasks_summary) if all_tasks_summary else 0
                                 }
                             )
-                            print(f"[TaskProcessor] ✓ Published {len(epics_data)} epics and {len(stories_data)} stories to Context Engine")
-
-                    # Publish decomposed tasks
-                    all_tasks_summary = []
-                    for task in tree.tasks.values():
-                        if task.depth > 0:  # Skip root task
-                            all_tasks_summary.append({
-                                "id": task.id,
-                                "description": task.description,
-                                "depth": task.depth,
-                                "complexity": task.metadata.get("complexity_score") if hasattr(task, "metadata") else None,
-                                "parent_id": task.parent_id
-                            })
-
-                    if all_tasks_summary:
-                        await self.context_engine_client.publish_data(
-                            project_id=project_id,
-                            data_key="decomposed_tasks",
-                            data={
-                                "tasks": all_tasks_summary,
-                                "total_tasks": len(all_tasks_summary),
-                                "max_depth": max(t["depth"] for t in all_tasks_summary) if all_tasks_summary else 0
-                            }
-                        )
-                        print(f"[TaskProcessor] ✓ Published {len(all_tasks_summary)} decomposed tasks to Context Engine")
+                            print(f"[TaskProcessor] ✓ Published {len(all_tasks_summary)} decomposed tasks to Context Engine")
+                    except Exception as ce_error:
+                        print(f"[TaskProcessor] ⚠ Context Engine publish failed (non-blocking): {ce_error}")
 
                 # Analyze domain from ALL tasks (excluding root)
                 event_modeling_start = datetime.now(timezone.utc)

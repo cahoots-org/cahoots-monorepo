@@ -55,9 +55,12 @@ export const SettingsProvider = ({ children }) => {
       const response = await apiClient.get('/settings');
       console.log('[SettingsContext] API response:', response);
 
-      // apiClient.get() already unwraps response.data, so response IS the data
-      if (response && response.data) {
-        const backendSettings = response.data;
+      // apiClient.get() already unwraps response.data, so response IS { data: {...settings} }
+      // Extract the settings from response.data
+      const backendSettings = response?.data;
+      console.log('[SettingsContext] Backend settings:', backendSettings);
+
+      if (backendSettings && backendSettings.user_id) {
         console.log('[SettingsContext] Settings loaded from backend:', backendSettings);
 
         // Transform backend format to frontend format
