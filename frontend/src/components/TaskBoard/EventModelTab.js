@@ -172,7 +172,7 @@ const EventModelTab = ({ task, taskTree }) => {
           <div style={styles.pulseCircle}>
             <span style={styles.loadingEmoji}>🔄</span>
           </div>
-          <LoadingSpinner size="large" />
+          <LoadingSpinner size="lg" />
         </div>
         <h3 style={styles.emptyStateTitle}>Generating Event Model</h3>
         <p style={styles.emptyStateDescription}>
@@ -231,7 +231,6 @@ const EventModelTab = ({ task, taskTree }) => {
         <Button
           variant="primary"
           size="lg"
-          icon={PlayIcon}
           onClick={handleGenerateEventModel}
           disabled={isGenerating}
           style={{ marginTop: tokens.spacing[4] }}
@@ -239,8 +238,8 @@ const EventModelTab = ({ task, taskTree }) => {
           {isGenerating ? 'Generating...' : 'Generate Event Model'}
         </Button>
         {isGenerating && (
-          <div style={{ marginTop: tokens.spacing[4], display: 'flex', alignItems: 'center', gap: tokens.spacing[2] }}>
-            <LoadingSpinner size="small" />
+          <div style={{ marginTop: tokens.spacing[4], display: 'flex', alignItems: 'center', justifyContent: 'center', gap: tokens.spacing[2] }}>
+            <LoadingSpinner size="sm" />
             <Text style={{ color: 'var(--color-text-muted)' }}>
               Analyzing tasks and building event model... This may take 30-60 seconds.
             </Text>
@@ -403,7 +402,7 @@ const EventModelTab = ({ task, taskTree }) => {
       {isAnalyzing && (
         <Card style={{ marginTop: tokens.spacing[4], border: `2px solid ${tokens.colors.info[300]}` }}>
           <CardContent style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[3], padding: tokens.spacing[4] }}>
-            <LoadingSpinner size="medium" />
+            <LoadingSpinner size="md" />
             <div>
               <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[1] }}>Analyzing Cascade Changes...</Heading3>
               <Text style={{ color: 'var(--color-text-muted)' }}>

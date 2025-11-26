@@ -188,7 +188,7 @@ async def generate_event_model(
         raise HTTPException(status_code=400, detail="No subtasks found to analyze")
 
     # Create analyzers
-    context_engine_client = ContextEngineClient(redis_client)
+    context_engine_client = ContextEngineClient(redis_client=redis_client)
     task_event_emitter = TaskEventEmitter(redis_client)
 
     unified_analyzer = ContextAwareDomainAnalyzer(
