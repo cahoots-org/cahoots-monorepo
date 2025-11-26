@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useSettings } from '../contexts/SettingsContext';
 import apiClient from '../services/unifiedApiClient';
 import { withErrorHandling } from '../services/errorHandler';
@@ -26,6 +27,8 @@ const ExportModal = ({
   const [currentExportId, setCurrentExportId] = useState(null);
   const [currentTrelloExportId, setCurrentTrelloExportId] = useState(null);
   const [exportResult, setExportResult] = useState(null);
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
+  const buttonRef = useRef(null);
   const [jiraConfig, setJiraConfig] = useState({
     projectName: '',
     projectKey: '',
@@ -36,6 +39,28 @@ const ExportModal = ({
     users: [{ username: '', email: '' }]
   });
   const { settings } = useSettings();
+
+  // Update dropdown position when opened
+  useEffect(() => {
+    if (isDropdownOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right
+      });
+    }
+  }, [isDropdownOpen]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isDropdownOpen && buttonRef.current && !buttonRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isDropdownOpen]);
 
   const onTrelloModalOpen = () => {
     // Pre-fill board name from task description
@@ -322,72 +347,76 @@ const ExportModal = ({
   return (
     <>
       {/* Export Dropdown */}
-      <div className="relative inline-block text-left">
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            icon={DocumentDuplicateIcon}
-            onClick={(e) => {
-              e.preventDefault();
-              setIsDropdownOpen(!isDropdownOpen);
-            }}
-            aria-expanded={isDropdownOpen}
-            aria-haspopup="true"
-          >
-            Export
-          </Button>
-        </div>
-        {isDropdownOpen && (
+      <div className="relative inline-block text-left" ref={buttonRef}>
+        <Button
+          variant="outline"
+          size="sm"
+          icon={DocumentDuplicateIcon}
+          onClick={(e) => {
+            e.preventDefault();
+            setIsDropdownOpen(!isDropdownOpen);
+          }}
+          aria-expanded={isDropdownOpen}
+          aria-haspopup="true"
+        >
+          Export
+        </Button>
+        {isDropdownOpen && createPortal(
           <div
-            className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-gray-700 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+            className="fixed w-56 rounded-md shadow-lg bg-white dark:bg-gray-700 ring-1 ring-black ring-opacity-5 focus:outline-none"
+            style={{
+              top: `${dropdownPosition.top}px`,
+              right: `${dropdownPosition.right}px`,
+              zIndex: 99999
+            }}
             role="menu"
             aria-orientation="vertical"
             aria-labelledby="export-menu-button"
             tabIndex="-1"
           >
-          <div className="py-1" role="none">
-            <button
-              className="text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
-              role="menuitem"
-              tabIndex="-1"
-              onClick={() => {
-                handleExportToJson();
-                setIsDropdownOpen(false);
-              }}
-            >
-              Export to JSON
-            </button>
-            <button
-              className={`${!settings.jiraIntegration?.enabled ? 'opacity-50 cursor-not-allowed' : ''} text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600`}
-              role="menuitem"
-              tabIndex="-1"
-              onClick={() => {
-                if (settings.jiraIntegration?.enabled) {
-                  onJiraModalOpen();
+            <div className="py-1" role="none">
+              <button
+                className="text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
+                role="menuitem"
+                tabIndex="-1"
+                onClick={() => {
+                  handleExportToJson();
                   setIsDropdownOpen(false);
-                }
-              }}
-              title={!settings.jiraIntegration?.enabled ? "Enable JIRA integration in Settings" : ""}
-            >
-              Export to JIRA
-            </button>
-            <button
-              className={`${!settings.trelloIntegration?.enabled ? 'opacity-50 cursor-not-allowed' : ''} text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600`}
-              role="menuitem"
-              tabIndex="-1"
-              onClick={() => {
-                if (settings.trelloIntegration?.enabled) {
-                  onTrelloModalOpen();
-                  setIsDropdownOpen(false);
-                }
-              }}
-              title={!settings.trelloIntegration?.enabled ? "Enable Trello integration in Settings" : ""}
-            >
-              Export to Trello
-            </button>
-          </div>
-          </div>
+                }}
+              >
+                Export to JSON
+              </button>
+              <button
+                className={`${!settings.jiraIntegration?.enabled ? 'opacity-50 cursor-not-allowed' : ''} text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600`}
+                role="menuitem"
+                tabIndex="-1"
+                onClick={() => {
+                  if (settings.jiraIntegration?.enabled) {
+                    onJiraModalOpen();
+                    setIsDropdownOpen(false);
+                  }
+                }}
+                title={!settings.jiraIntegration?.enabled ? "Enable JIRA integration in Settings" : ""}
+              >
+                Export to JIRA
+              </button>
+              <button
+                className={`${!settings.trelloIntegration?.enabled ? 'opacity-50 cursor-not-allowed' : ''} text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600`}
+                role="menuitem"
+                tabIndex="-1"
+                onClick={() => {
+                  if (settings.trelloIntegration?.enabled) {
+                    onTrelloModalOpen();
+                    setIsDropdownOpen(false);
+                  }
+                }}
+                title={!settings.trelloIntegration?.enabled ? "Enable Trello integration in Settings" : ""}
+              >
+                Export to Trello
+              </button>
+            </div>
+          </div>,
+          document.body
         )}
       </div>
 
