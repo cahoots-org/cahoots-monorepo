@@ -29,7 +29,7 @@ import unifiedApiClient from '../../services/unifiedApiClient';
 
 const EventModelTab = ({ task, taskTree }) => {
   const queryClient = useQueryClient();
-  const { showError } = useApp();
+  const { showError, showSuccess } = useApp();
   const { subscribe, connected } = useWebSocket();
 
   const [expandedChapters, setExpandedChapters] = useState(new Set());
