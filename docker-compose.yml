@@ -40,6 +40,8 @@ services:
       - COMPLEXITY_THRESHOLD=${COMPLEXITY_THRESHOLD:-0.45}
       - BATCH_SIZE=${BATCH_SIZE:-3}
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      - CONTEXT_ENGINE_URL=http://context-engine:8001
+      - CONTEXT_ENGINE_API_KEY=${CONTEXT_ENGINE_API_KEY:-}
     volumes:
       - ./app:/app/app:ro
     depends_on:
@@ -53,18 +55,45 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  # OpenSearch for vector embeddings and full-text search
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9201:9200"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
   # Contex - Semantic context routing for AI agents
   # Using published image from: https://github.com/cahoots-org/contex
   context-engine:
     image: ghcr.io/cahoots-org/contex:latest
+    platform: linux/amd64
     ports:
-      - "8001:8001"
+      - "8003:8001"
     environment:
       - REDIS_URL=redis://redis:6379
+      - OPENSEARCH_URL=http://opensearch:9200
       - SIMILARITY_THRESHOLD=${SIMILARITY_THRESHOLD:-0.5}
       - MAX_MATCHES=${MAX_MATCHES:-10}
+      - MAX_CONTEXT_SIZE=${MAX_CONTEXT_SIZE:-51200}
+      - HYBRID_SEARCH_ENABLED=true
+      - RRF_K=60
+      - VECTOR_BOOST=1.0
     depends_on:
       redis:
+        condition: service_healthy
+      opensearch:
         condition: service_healthy
     deploy:
       resources:
@@ -167,4 +196,5 @@ services:
 
 volumes:
   redis_data:
+  opensearch_data:
   vllm-cache:

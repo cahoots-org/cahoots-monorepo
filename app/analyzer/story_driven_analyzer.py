@@ -117,7 +117,9 @@ Important:
 - Process ALL stories in one response
 - ALL tasks should be ATOMIC
 - Mark ALL tasks as is_atomic: true
-- Use implementation verbs: Create, Implement, Add, Build, Connect
+- Write task descriptions naturally, as a developer would describe their work
+- VARY your language - don't start every task with "Implement" or "Create"
+- Good examples: "Set up user authentication with JWT tokens", "Wire up the payment form to Stripe API", "Add pagination to the posts feed", "Handle file uploads with size validation", "Connect the notification service to email provider"
 - Maintain consistency across related stories"""
 
         # DEBUG: Log prompts to understand what's being sent
@@ -406,17 +408,20 @@ The event model above defines ALL user actions and system behaviors.
 Generate implementation tasks that cover every command and read model.
 
 **Task Description Guidelines:**
-1. Use clear, implementation-focused language (NOT event modeling jargon)
+1. Use clear, natural language that sounds like how a developer would describe their work
 2. Describe WHAT to build in developer-friendly terms
 3. Include technical details: API endpoints, UI components, database operations
 4. Every command and read model must have corresponding implementation tasks
+5. VARY your phrasing - don't start every task with "Implement" or "Create"
 
-**Task Examples:**
-- "Add like/unlike functionality for posts with real-time counter updates"
-- "Implement friend request acceptance with automatic friend list updates"
-- "Create user profile page with edit and settings capabilities"
-- "Build post sharing feature with privacy controls"
-- "Add notifications for friend requests and post interactions"
+**Task Examples (notice the natural, varied language):**
+- "Add like/unlike buttons to posts with real-time counter updates"
+- "Handle friend request acceptance and update the friends list automatically"
+- "Set up the user profile page with inline editing"
+- "Wire up post sharing with privacy controls"
+- "Display notifications for friend requests and post interactions"
+- "Store user preferences in the database with caching"
+- "Validate form inputs before submitting to the API"
 
 **Coverage Check:**
 - LikePost command → Need task for like/unlike posts
@@ -476,10 +481,11 @@ ALL tasks MUST reference specific files and follow patterns from the existing co
 3. Reference codebase structure appropriately
 4. Let the actual complexity of the feature determine task count
 
-## EXAMPLES:
-- "Implement [service] module in app/[appropriate_dir]/[service].py"
-- "Add API endpoints and business logic for [feature]"
-- "Create frontend components for [feature]"
+## EXAMPLES (notice the natural, varied language):
+- "Set up the [service] module in app/[appropriate_dir]/[service].py"
+- "Wire up API endpoints for [feature] with validation"
+- "Build the frontend components for [feature]"
+- "Handle [feature] logic in the backend service layer"
 
 ## IMPORTANT:
 Balance between avoiding micro-tasks and providing adequate detail.
@@ -492,9 +498,10 @@ Balance between avoiding micro-tasks and providing adequate detail.
 
 1. Every task must directly contribute to fulfilling the user story
 2. Group related acceptance criteria into single tasks
-3. Use implementation-focused language (Create, Implement, Add, Build, Connect)
+3. Write task descriptions naturally, as a developer would describe their work
 4. Include technical details specific to the story requirements
 5. Recognize that multiple acceptance criteria often represent ONE implementation
+6. VARY your language - use phrases like "Set up", "Wire up", "Add", "Handle", "Display", "Store", "Validate" - not just "Implement" or "Create"
 
 ## PATTERN RECOGNITION:
 

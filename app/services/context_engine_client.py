@@ -1,6 +1,6 @@
-"""HTTP client for Context Engine service
+"""Client for Context Engine service using official SDK
 
-This client communicates with the standalone Context Engine service via HTTP API.
+This client communicates with the standalone Context Engine service.
 The Context Engine uses embedding-based semantic matching to automatically provide
 relevant context to agents based on their semantic needs.
 """
@@ -9,14 +9,20 @@ import os
 import json
 import asyncio
 from typing import Optional, Dict, Any, List
-import httpx
 from redis.asyncio import Redis
+
+try:
+    from contex import ContexAsyncClient
+    CONTEX_SDK_AVAILABLE = True
+except ImportError:
+    CONTEX_SDK_AVAILABLE = False
+    ContexAsyncClient = None
 
 
 class ContextEngineClient:
     """
-    HTTP client for Context Engine.
-    
+    Client for Context Engine using the official contex-python SDK.
+
     Features:
     - Agent registration with semantic needs (natural language)
     - Data publishing (any schema)
@@ -25,41 +31,58 @@ class ContextEngineClient:
     - Agent catch-up for missed events
     """
 
-    def __init__(self, base_url: str = None, redis_client: Redis = None):
+    def __init__(self, base_url: str = None, redis_client: Redis = None, api_key: str = None):
         """
-        Initialize Context Engine HTTP client.
-        
+        Initialize Context Engine client.
+
         Args:
             base_url: Context Engine API URL (default: http://context-engine:8001)
             redis_client: Redis client for pub/sub subscriptions (optional)
+            api_key: API key for Context Engine (optional)
         """
         self.base_url = base_url or os.getenv("CONTEXT_ENGINE_URL", "http://context-engine:8001")
+        self.api_key = api_key or os.getenv("CONTEXT_ENGINE_API_KEY", "")
         self.redis = redis_client
         self.registered_agents: Dict[str, str] = {}  # agent_id -> notification_channel
-        self._http_client: Optional[httpx.AsyncClient] = None
-    
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create HTTP client"""
-        if self._http_client is None:
-            self._http_client = httpx.AsyncClient(timeout=30.0)
-        return self._http_client
-    
+        self._client: Optional[ContexAsyncClient] = None
+        self._is_available = False
+
+    async def _get_client(self) -> Optional[ContexAsyncClient]:
+        """Get or create the SDK client"""
+        if not CONTEX_SDK_AVAILABLE:
+            print("[ContextEngine] ⚠ contex-python SDK not installed")
+            return None
+
+        if self._client is None:
+            self._client = ContexAsyncClient(
+                url=self.base_url,
+                api_key=self.api_key if self.api_key else None
+            )
+        return self._client
+
     async def close(self):
-        """Close HTTP client"""
-        if self._http_client:
-            await self._http_client.aclose()
-            self._http_client = None
-    
+        """Close the client"""
+        if self._client:
+            await self._client.__aexit__(None, None, None)
+            self._client = None
+
     async def health_check(self) -> bool:
         """Check if Context Engine is available"""
         try:
             client = await self._get_client()
-            response = await client.get(f"{self.base_url}/")
-            return response.status_code == 200
+            if not client:
+                return False
+
+            # Use the SDK's health method
+            response = await client.health()
+            is_healthy = getattr(response, 'status', '') == 'healthy'
+            self._is_available = is_healthy
+            return is_healthy
         except Exception as e:
             print(f"[ContextEngine] Health check failed: {e}")
+            self._is_available = False
             return False
-    
+
     async def publish_data(
         self,
         project_id: str,
@@ -69,50 +92,41 @@ class ContextEngineClient:
     ) -> str:
         """
         Publish data to Context Engine.
-        
+
         The Context Engine will:
         1. Auto-generate a description of the data
         2. Create embeddings for semantic matching
         3. Store in event log with sequence number
         4. Notify subscribed agents via pub/sub
-        
+
         Args:
             project_id: Project identifier
             data_key: Data identifier (e.g., 'tech_stack', 'event_model')
             data: The actual data (any schema)
             event_type: Optional event type (auto-generated if not provided)
-        
+
         Returns:
             Event sequence number
         """
         client = await self._get_client()
-        
+        if not client:
+            raise RuntimeError("Context Engine SDK not available")
+
         try:
-            response = await client.post(
-                f"{self.base_url}/data/publish",
-                json={
-                    "project_id": project_id,
-                    "data_key": data_key,
-                    "data": data,
-                    "event_type": event_type
-                }
+            response = await client.publish(
+                project_id=project_id,
+                data_key=data_key,
+                data=data
             )
 
-            # Log response for debugging
-            if response.status_code >= 400:
-                print(f"[ContextEngine] ✗ Error response: {response.status_code}")
-                print(f"[ContextEngine] ✗ Response body: {response.text}")
+            sequence = getattr(response, 'sequence', '0')
+            print(f"[ContextEngine] ✓ Published {data_key} for project {project_id} (seq: {sequence})")
+            return str(sequence)
 
-            response.raise_for_status()
-            result = response.json()
-
-            print(f"[ContextEngine] ✓ Published {data_key} for project {project_id} (seq: {result['sequence']})")
-            return result["sequence"]
-
-        except httpx.HTTPError as e:
+        except Exception as e:
             print(f"[ContextEngine] ✗ Failed to publish data: {e}")
             raise
-    
+
     async def register_agent(
         self,
         agent_id: str,
@@ -123,13 +137,13 @@ class ContextEngineClient:
     ) -> Dict[str, Any]:
         """
         Register an agent with semantic data needs.
-        
+
         The Context Engine will:
         1. Match agent needs to available data via semantic similarity
         2. Send initial context for all matches
         3. Catch up agent with missed events
         4. Subscribe agent to real-time updates
-        
+
         Args:
             agent_id: Unique agent identifier
             project_id: Project this agent works on
@@ -140,39 +154,84 @@ class ContextEngineClient:
                 - "completed tasks and patterns"
             last_seen_sequence: Last event sequence processed (for catch-up)
             notification_channel: Redis channel for updates (optional)
-        
+
         Returns:
             Registration response with matched data and catch-up info
         """
         client = await self._get_client()
-        
+        if not client:
+            raise RuntimeError("Context Engine SDK not available")
+
         try:
-            response = await client.post(
-                f"{self.base_url}/agents/register",
-                json={
-                    "agent_id": agent_id,
-                    "project_id": project_id,
-                    "data_needs": data_needs,
-                    "last_seen_sequence": last_seen_sequence,
-                    "notification_channel": notification_channel
-                }
+            response = await client.register_agent(
+                agent_id=agent_id,
+                project_id=project_id,
+                data_needs=data_needs
             )
-            response.raise_for_status()
-            result = response.json()
-            
+
+            # Extract response data
+            matched_data = getattr(response, 'matched_data', [])
+            notification_ch = getattr(response, 'notification_channel', f"agent:{agent_id}")
+
             # Store registration
-            self.registered_agents[agent_id] = result["notification_channel"]
-            
+            self.registered_agents[agent_id] = notification_ch
+
+            matched_count = len(matched_data)
             print(f"[ContextEngine] ✓ Registered agent {agent_id}")
-            print(f"[ContextEngine]   Matched needs: {result['matched_needs']}")
-            print(f"[ContextEngine]   Caught up: {result['caught_up_events']} events")
-            
-            return result
-            
-        except httpx.HTTPError as e:
+            print(f"[ContextEngine]   Matched needs: {matched_count}")
+
+            return {
+                "matched_data": matched_data,
+                "notification_channel": notification_ch,
+                "matched_needs": matched_count,
+                "caught_up_events": 0
+            }
+
+        except Exception as e:
             print(f"[ContextEngine] ✗ Failed to register agent: {e}")
             raise
-    
+
+    async def query(
+        self,
+        project_id: str,
+        query: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Query for data using semantic search.
+
+        Args:
+            project_id: Project identifier
+            query: Natural language query
+            limit: Maximum number of results
+
+        Returns:
+            List of matching data items
+        """
+        client = await self._get_client()
+        if not client:
+            raise RuntimeError("Context Engine SDK not available")
+
+        try:
+            response = await client.query(
+                project_id=project_id,
+                query=query
+            )
+
+            results = getattr(response, 'results', [])
+            return [
+                {
+                    "data_key": getattr(r, 'data_key', ''),
+                    "data": getattr(r, 'data', {}),
+                    "similarity_score": getattr(r, 'similarity_score', 0.0)
+                }
+                for r in results[:limit]
+            ]
+
+        except Exception as e:
+            print(f"[ContextEngine] ✗ Query failed: {e}")
+            raise
+
     async def subscribe_to_updates(
         self,
         agent_id: str,
@@ -180,7 +239,7 @@ class ContextEngineClient:
     ):
         """
         Subscribe to real-time updates for an agent.
-        
+
         Args:
             agent_id: Agent identifier
             callback: Async function to call with updates
@@ -189,17 +248,17 @@ class ContextEngineClient:
         if not self.redis:
             print(f"[ContextEngine] ⚠ Redis client not available, cannot subscribe")
             return
-        
+
         channel = self.registered_agents.get(agent_id)
         if not channel:
             print(f"[ContextEngine] ⚠ Agent {agent_id} not registered")
             return
-        
+
         pubsub = self.redis.pubsub()
         await pubsub.subscribe(channel)
-        
+
         print(f"[ContextEngine] ✓ Subscribed to updates for {agent_id} on {channel}")
-        
+
         try:
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True)
@@ -209,12 +268,12 @@ class ContextEngineClient:
                         await callback(update)
                     except Exception as e:
                         print(f"[ContextEngine] ✗ Error processing update: {e}")
-                
+
                 await asyncio.sleep(0.1)
-                
+
         finally:
             await pubsub.unsubscribe(channel)
-    
+
     async def get_agent_context(
         self,
         agent_id: str,
@@ -222,31 +281,45 @@ class ContextEngineClient:
     ) -> Optional[Dict[str, Any]]:
         """
         Get current context for an agent.
-        
+
         This retrieves the agent's context based on registered needs
         and currently available data.
-        
+
         Args:
             agent_id: Agent identifier
             project_id: Project identifier
-        
+
         Returns:
             Agent context or None if not available
         """
         client = await self._get_client()
-        
+        if not client:
+            return None
+
         try:
-            response = await client.get(
-                f"{self.base_url}/agents/{agent_id}"
+            # Query for all data relevant to this agent
+            response = await client.query(
+                project_id=project_id,
+                query=f"context for agent {agent_id}"
             )
-            
-            if response.status_code == 404:
+
+            results = getattr(response, 'results', [])
+            if not results:
                 return None
-            
-            response.raise_for_status()
-            return response.json()
-            
-        except httpx.HTTPError as e:
+
+            return {
+                "agent_id": agent_id,
+                "project_id": project_id,
+                "context_items": [
+                    {
+                        "data_key": getattr(r, 'data_key', ''),
+                        "data": getattr(r, 'data', {})
+                    }
+                    for r in results
+                ]
+            }
+
+        except Exception as e:
             print(f"[ContextEngine] ✗ Failed to get agent context: {e}")
             return None
 
@@ -263,31 +336,31 @@ def get_context_engine_client() -> Optional[ContextEngineClient]:
 async def initialize_context_engine(redis_client: Redis = None) -> ContextEngineClient:
     """
     Initialize the global Context Engine client.
-    
+
     Args:
         redis_client: Optional Redis client for pub/sub subscriptions
-    
+
     Returns:
         Context Engine client instance
     """
     global _context_engine_client
-    
+
     if _context_engine_client is None:
         _context_engine_client = ContextEngineClient(redis_client=redis_client)
-        
+
         # Check if service is available
         if await _context_engine_client.health_check():
             print("[ContextEngine] ✓ Context Engine is available")
         else:
             print("[ContextEngine] ⚠ Context Engine not available (will retry on use)")
-    
+
     return _context_engine_client
 
 
 async def shutdown_context_engine():
     """Shut down the global Context Engine client."""
     global _context_engine_client
-    
+
     if _context_engine_client:
         await _context_engine_client.close()
         _context_engine_client = None
