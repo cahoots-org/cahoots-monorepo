@@ -141,13 +141,8 @@ Important:
         response = await self.llm.generate_json(
             system_prompt,
             user_prompt,
-<<<<<<< Updated upstream
             temperature=config.task_decomposition_temperature,
             max_tokens=config.max_tokens_task_decomposition
-=======
-            temperature=0.3,
-            max_tokens=32000  # Cerebras max output: 32k (free) / 40k (paid)
->>>>>>> Stashed changes
         )
 
         result = {}
