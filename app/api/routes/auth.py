@@ -35,6 +35,19 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 # ==================== Configuration ====================
 
+# Admin email addresses that should have blog admin access
+ADMIN_EMAILS = [
+    "admin@cahoots.cc",
+]
+
+
+def get_user_role(email: str) -> str:
+    """Determine user role based on email address"""
+    if email and email.lower() in [e.lower() for e in ADMIN_EMAILS]:
+        return "admin"
+    return "user"
+
+
 class OAuthConfig:
     """Centralized OAuth configuration"""
 
@@ -377,6 +390,7 @@ async def google_exchange(
     # Store user in Redis (24 hour TTL)
     user_dict = user.dict()
     user_dict["created_at"] = datetime.utcnow().isoformat()
+    user_dict["role"] = get_user_role(user.email)
 
     try:
         await redis_client.set(
@@ -466,13 +480,18 @@ async def get_current_user(
         user_data = await redis_client.get(f"user:{user_id}")
 
         if user_data:
+            # Ensure role is set (for users created before role was added)
+            if "role" not in user_data and user_data.get("email"):
+                user_data["role"] = get_user_role(user_data["email"])
             return user_data
 
         # If not in Redis, return basic info from token
+        email = payload.get("email")
         return {
             "id": user_id,
-            "email": payload.get("email"),
-            "provider": "google"
+            "email": email,
+            "provider": "google",
+            "role": get_user_role(email) if email else "user"
         }
 
     except jwt.ExpiredSignatureError:
@@ -527,7 +546,8 @@ async def register(
         "picture": None,
         "provider": "local",
         "password_hash": password_hash,
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.utcnow().isoformat(),
+        "role": get_user_role(request.email)
     }
 
     # Store user in Redis
