@@ -3,7 +3,8 @@
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.api.dependencies import get_task_storage, get_current_user
+from app.api.dependencies import get_task_storage
+from app.api.routes.auth import get_current_user
 from app.storage import TaskStorage
 from app.services.context_engine_client import ContextEngineClient
 

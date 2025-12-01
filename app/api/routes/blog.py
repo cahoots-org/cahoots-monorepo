@@ -7,7 +7,8 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel, EmailStr, Field
 
-from app.api.dependencies import get_current_user, get_redis_client
+from app.api.dependencies import get_redis_client
+from app.api.routes.auth import get_current_user
 
 
 # Models

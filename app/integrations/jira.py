@@ -10,7 +10,7 @@ import asyncio
 import uuid
 from datetime import datetime, timezone
 
-from app.api.dependencies import get_current_user
+from app.api.routes.auth import get_current_user
 from app.models.task import Task
 from typing import Dict
 

@@ -11,7 +11,8 @@ from app.models import (
     JiraIntegration
 )
 from app.storage import UserSettingsStorage
-from app.api.dependencies import get_current_user, get_redis_client
+from app.api.dependencies import get_redis_client
+from app.api.routes.auth import get_current_user
 from app.storage.redis_client import RedisClient
 
 

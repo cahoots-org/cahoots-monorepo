@@ -12,7 +12,8 @@ from app.models import (
     Task, TaskStatus, TaskRequest, TaskResponse,
     TaskTreeNode, TaskTreeResponse, TaskListResponse, TaskStats
 )
-from app.api.dependencies import get_task_storage, get_task_processor, get_current_user, get_llm_client, get_context_engine_client
+from app.api.dependencies import get_task_storage, get_task_processor, get_llm_client, get_context_engine_client
+from app.api.routes.auth import get_current_user
 from app.storage import TaskStorage
 from app.processor import TaskProcessor
 from app.websocket.events import task_event_emitter

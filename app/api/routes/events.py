@@ -4,7 +4,8 @@ from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 
-from app.api.dependencies import get_task_storage, get_llm_client, get_current_user, get_redis_client
+from app.api.dependencies import get_task_storage, get_llm_client, get_redis_client
+from app.api.routes.auth import get_current_user
 from app.storage import TaskStorage
 from app.analyzer.llm_client import LLMClient
 from app.analyzer.event_extractor import EventExtractor, DomainEvent, EventType

@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
-from app.api.dependencies import get_current_user
+from app.api.routes.auth import get_current_user
 from app.models.task import Task
 
 router = APIRouter(prefix="/api/trello", tags=["trello"])

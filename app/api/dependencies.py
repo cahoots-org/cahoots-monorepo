@@ -204,56 +204,5 @@ async def cleanup_dependencies():
     _task_processor = None
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    redis_client: RedisClient = Depends(get_redis_client)
-) -> dict:
-    """Get current authenticated user from JWT token."""
-    print(f"[AUTH DEBUG] Credentials: {credentials}")
-    if not credentials:
-        print("[AUTH DEBUG] No credentials provided")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization required"
-        )
-
-    token = credentials.credentials
-    print(f"[AUTH DEBUG] Token: {token[:20]}...")
-
-    # Check for development bypass token
-    if token == "dev-bypass-token" and os.getenv("ENVIRONMENT", "development") == "development":
-        print("[AUTH DEBUG] Using dev bypass token")
-        return {
-            "id": "dev-user-123",
-            "email": "dev@localhost"
-        }
-
-    try:
-        # Import here to avoid circular dependency
-        from app.api.routes.auth import OAuthConfig
-
-        payload = jwt.decode(token, OAuthConfig.get_jwt_secret(), algorithms=["HS256"])
-        user_id = payload.get("sub")
-
-        if not user_id:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-
-        # For integrations, we just need a basic user object
-        return {
-            "id": user_id,
-            "email": payload.get("email")
-        }
-
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token has expired"
-        )
-    except jwt.InvalidTokenError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token"
-        )
+# get_current_user has been moved to app.api.routes.auth
+# Import it from there to avoid duplication
