@@ -586,6 +586,100 @@ async def restart_decomposition(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def _reprocess_task(
+    task_id: str,
+    storage: TaskStorage,
+    processor: TaskProcessor
+):
+    """Background task to reprocess a task."""
+    try:
+        task = await storage.get_task(task_id)
+        if not task:
+            print(f"[Reprocess] Task {task_id} not found")
+            return
+
+        print(f"[Reprocess] Starting reprocess for task {task_id}")
+
+        # Delete existing subtasks
+        tree = await storage.get_task_tree(task_id)
+        if tree:
+            for tid in list(tree.tasks.keys()):
+                if tid != task_id:  # Don't delete root task
+                    await storage.delete_task(tid)
+
+        # Clear subtask references and reset status
+        task.subtasks = []
+        task.status = TaskStatus.PROCESSING
+
+        # Clear event model metadata for regeneration
+        if isinstance(task.metadata, dict):
+            for key in ['extracted_events', 'commands', 'read_models', 'chapters', 'slices', 'swimlanes']:
+                task.metadata.pop(key, None)
+
+        await storage.save_task(task)
+
+        # Reprocess the task
+        await processor.process_task_complete(
+            description=task.description,
+            context=task.context,
+            user_id=task.user_id,
+            max_depth=task.metadata.get('max_depth', 5) if isinstance(task.metadata, dict) else 5
+        )
+
+        print(f"[Reprocess] Completed reprocess for task {task_id}")
+
+    except Exception as e:
+        print(f"[Reprocess] Error reprocessing task {task_id}: {e}")
+        import traceback
+        traceback.print_exc()
+
+        # Mark task as error
+        try:
+            task = await storage.get_task(task_id)
+            if task:
+                task.status = TaskStatus.ERROR
+                await storage.save_task(task)
+        except Exception:
+            pass
+
+
+@router.post("/{task_id}/reprocess")
+async def reprocess_task(
+    task_id: str,
+    background_tasks: BackgroundTasks,
+    storage: TaskStorage = Depends(get_task_storage),
+    processor: TaskProcessor = Depends(get_task_processor),
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Reprocess a task from scratch.
+
+    Deletes all subtasks and regenerates the entire project plan.
+    Returns immediately; progress sent via WebSocket.
+    """
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Verify ownership
+    if task.user_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Add background task
+    background_tasks.add_task(
+        _reprocess_task,
+        task_id,
+        storage,
+        processor
+    )
+
+    return {
+        "message": "Reprocessing started",
+        "task_id": task_id,
+        "status": "processing"
+    }
+
+
 @router.delete("/{task_id}/subtask")
 async def delete_subtask(
     task_id: str,

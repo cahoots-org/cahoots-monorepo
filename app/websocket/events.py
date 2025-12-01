@@ -24,6 +24,7 @@ class TaskEventType(str, Enum):
     EVENT_MODELING_PROGRESS = "event_modeling.progress"
     EVENT_MODELING_COMPLETED = "event_modeling.completed"
     EVENT_MODELING_ERROR = "event_modeling.error"
+    CONTEXT_UPDATED = "context.updated"
 
 
 class TaskEventEmitter:
@@ -264,6 +265,23 @@ class TaskEventEmitter:
 
         # Execute all emissions concurrently
         await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def emit_context_updated(
+        self,
+        task: Task,
+        data_key: str,
+        user_id: Optional[str] = None
+    ):
+        """Emit context updated event when new data is published to Contex."""
+        await self._emit_task_event(
+            TaskEventType.CONTEXT_UPDATED,
+            task,
+            user_id,
+            {
+                "data_key": data_key,
+                "message": f"Context updated: {data_key}"
+            }
+        )
 
     async def emit_event_modeling_started(
         self,

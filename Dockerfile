@@ -1,5 +1,8 @@
-# Multi-stage build for Cahoots Monolith
-FROM python:3.11-slim@sha256:a0939570b38cddeb861b8e75d20b1c8218b21562b18f301171904b544e8cf228 as builder
+# Multi-stage build for Cahoots Monolith using uv
+FROM python:3.11-slim@sha256:a0939570b38cddeb861b8e75d20b1c8218b21562b18f301171904b544e8cf228 AS builder
+
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Set build arguments
 ARG APP_ENV=production
@@ -10,14 +13,18 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Create virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
+# Set uv environment variables
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Copy project files
+WORKDIR /app
+COPY pyproject.toml .
+
+# Install dependencies using uv with CPU-only PyTorch
+RUN uv venv /opt/venv && \
+    UV_EXTRA_INDEX_URL=https://download.pytorch.org/whl/cpu \
+    uv pip install --python /opt/venv/bin/python --no-cache -r pyproject.toml
 
 # Production stage
 FROM python:3.11-slim@sha256:a0939570b38cddeb861b8e75d20b1c8218b21562b18f301171904b544e8cf228
@@ -56,5 +63,4 @@ USER appuser
 EXPOSE 8000
 
 # Command to run the application
-# Use $PORT from Railway or default to 8000
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}

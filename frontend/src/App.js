@@ -13,6 +13,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import TaskBoard from './pages/TaskBoard';
+import ProjectView from './pages/ProjectView';
 import CreateTask from './pages/CreateTask';
 import NotFound from './pages/NotFound';
 import Landing from './pages/Landing';
@@ -105,6 +106,11 @@ function App() {
             <Route path="/tasks/:taskId" element={
               <ProtectedRoute>
                 <TaskBoard />
+              </ProtectedRoute>
+            } />
+            <Route path="/projects/:taskId" element={
+              <ProtectedRoute>
+                <ProjectView />
               </ProtectedRoute>
             } />
             <Route path="/settings" element={

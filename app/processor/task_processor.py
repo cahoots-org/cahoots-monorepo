@@ -230,6 +230,7 @@ class TaskProcessor:
                         data=context
                     )
                     print(f"[TaskProcessor] ✓ Published tech_stack to Context Engine")
+                    await task_event_emitter.emit_context_updated(root_task, "tech_stack", user_id)
 
                 # Publish epics and stories
                 if epics or stories_by_epic:
@@ -266,6 +267,7 @@ class TaskProcessor:
                         }
                     )
                     print(f"[TaskProcessor] ✓ Published {len(epics)} epics and {len(stories_data)} stories to Context Engine")
+                    await task_event_emitter.emit_context_updated(root_task, "epics_and_stories", user_id)
 
                 # Publish decomposed tasks
                 task_summary = []
@@ -290,6 +292,7 @@ class TaskProcessor:
                         }
                     )
                     print(f"[TaskProcessor] ✓ Published {len(task_summary)} decomposed tasks to Context Engine")
+                    await task_event_emitter.emit_context_updated(root_task, "decomposed_tasks", user_id)
 
             # Track event modeling timing
             event_modeling_start = datetime.now(timezone.utc)

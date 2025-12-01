@@ -10,7 +10,7 @@ import {
 } from '../../design-system';
 import { formatDetailedDate } from '../../utils/dateUtils';
 
-const OverviewTab = ({ task, taskTree }) => {
+const OverviewTab = ({ task, taskTree, onNavigateToTab }) => {
   // Calculate statistics
   const epics = task.context?.epics || [];
   const userStories = task.context?.user_stories || [];
@@ -19,9 +19,39 @@ const OverviewTab = ({ task, taskTree }) => {
   const readModels = task.metadata?.read_models || [];
   const interactions = task.metadata?.user_interactions || [];
   const automations = task.metadata?.automations || [];
+  const chapters = task.metadata?.chapters || [];
 
   const techStack = task.context?.tech_stack || {};
   const hasEventModeling = events.length > 0 || commands.length > 0 || readModels.length > 0;
+
+  // Create clickable stat item with hover state
+  const ClickableStatItem = ({ value, label, onClick, disabled }) => {
+    const [isHovered, setIsHovered] = React.useState(false);
+    const isClickable = onClick && !disabled && value > 0;
+
+    return (
+      <div
+        style={{
+          ...styles.statItem,
+          cursor: isClickable ? 'pointer' : 'default',
+          transition: 'all 0.2s ease',
+          transform: isHovered && isClickable ? 'scale(1.05)' : 'scale(1)',
+          boxShadow: isHovered && isClickable ? '0 4px 12px rgba(0,0,0,0.15)' : 'none',
+          border: isClickable ? `1px solid ${tokens.colors.primary[200]}` : '1px solid transparent',
+        }}
+        onClick={isClickable ? onClick : undefined}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        title={isClickable ? `Click to view ${label}` : undefined}
+      >
+        <div style={{
+          ...styles.statValue,
+          color: isClickable ? tokens.colors.primary[600] : 'inherit'
+        }}>{value}</div>
+        <div style={styles.statLabel}>{label}</div>
+      </div>
+    );
+  };
 
   return (
     <div style={styles.overviewGrid}>
@@ -51,24 +81,28 @@ const OverviewTab = ({ task, taskTree }) => {
           <Heading3>🎯 Task Breakdown</Heading3>
         </CardHeader>
         <CardContent style={styles.statsGrid}>
-          <div style={styles.statItem}>
-            <div style={styles.statValue}>{task.children_count || 0}</div>
-            <div style={styles.statLabel}>Total Subtasks</div>
-          </div>
-          <div style={styles.statItem}>
-            <div style={styles.statValue}>{epics.length}</div>
-            <div style={styles.statLabel}>Epics</div>
-          </div>
-          <div style={styles.statItem}>
-            <div style={styles.statValue}>{userStories.length}</div>
-            <div style={styles.statLabel}>User Stories</div>
-          </div>
-          <div style={styles.statItem}>
-            <div style={styles.statValue}>
-              {userStories.reduce((sum, s) => sum + (s.story_points || 0), 0)}
-            </div>
-            <div style={styles.statLabel}>Story Points</div>
-          </div>
+          <ClickableStatItem
+            value={task.children_count || 0}
+            label="Total Subtasks"
+            onClick={() => onNavigateToTab?.('subtasks')}
+            disabled={!task.children_count}
+          />
+          <ClickableStatItem
+            value={epics.length}
+            label="Epics"
+            onClick={() => onNavigateToTab?.('stories')}
+            disabled={!epics.length}
+          />
+          <ClickableStatItem
+            value={userStories.length}
+            label="User Stories"
+            onClick={() => onNavigateToTab?.('stories')}
+            disabled={!userStories.length}
+          />
+          <ClickableStatItem
+            value={userStories.reduce((sum, s) => sum + (s.story_points || 0), 0)}
+            label="Story Points"
+          />
         </CardContent>
       </Card>
 
@@ -79,26 +113,42 @@ const OverviewTab = ({ task, taskTree }) => {
             <Heading3>⚡ Event Modeling</Heading3>
           </CardHeader>
           <CardContent style={styles.statsGrid}>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{events.length}</div>
-              <div style={styles.statLabel}>Domain Events</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{commands.length}</div>
-              <div style={styles.statLabel}>Commands</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{readModels.length}</div>
-              <div style={styles.statLabel}>Read Models</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{interactions.length}</div>
-              <div style={styles.statLabel}>User Interactions</div>
-            </div>
-            <div style={styles.statItem}>
-              <div style={styles.statValue}>{automations.length}</div>
-              <div style={styles.statLabel}>Automations</div>
-            </div>
+            <ClickableStatItem
+              value={chapters.length}
+              label="Chapters"
+              onClick={() => onNavigateToTab?.('event-model')}
+              disabled={!chapters.length}
+            />
+            <ClickableStatItem
+              value={events.length}
+              label="Domain Events"
+              onClick={() => onNavigateToTab?.('event-model')}
+              disabled={!events.length}
+            />
+            <ClickableStatItem
+              value={commands.length}
+              label="Commands"
+              onClick={() => onNavigateToTab?.('event-model')}
+              disabled={!commands.length}
+            />
+            <ClickableStatItem
+              value={readModels.length}
+              label="Read Models"
+              onClick={() => onNavigateToTab?.('event-model')}
+              disabled={!readModels.length}
+            />
+            <ClickableStatItem
+              value={interactions.length}
+              label="User Interactions"
+              onClick={() => onNavigateToTab?.('event-model')}
+              disabled={!interactions.length}
+            />
+            <ClickableStatItem
+              value={automations.length}
+              label="Automations"
+              onClick={() => onNavigateToTab?.('event-model')}
+              disabled={!automations.length}
+            />
           </CardContent>
         </Card>
       )}

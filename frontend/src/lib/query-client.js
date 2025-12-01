@@ -64,14 +64,21 @@ export const queryKeys = {
     tree: (id) => [...queryKeys.tasks.trees(), id],
     stats: () => [...queryKeys.tasks.all, 'stats'],
   },
-  
+
+  // Project context queries (from Contex)
+  projects: {
+    all: ['projects'],
+    contexts: () => [...queryKeys.projects.all, 'context'],
+    context: (id) => [...queryKeys.projects.contexts(), id],
+  },
+
   // User-related queries
   user: {
     all: ['user'],
     profile: () => [...queryKeys.user.all, 'profile'],
     preferences: () => [...queryKeys.user.all, 'preferences'],
   },
-  
+
   // Auth-related queries
   auth: {
     all: ['auth'],
@@ -87,6 +94,10 @@ export const invalidateQueries = {
     detail: (id) => queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(id) }),
     tree: (id) => queryClient.invalidateQueries({ queryKey: queryKeys.tasks.tree(id) }),
     stats: () => queryClient.invalidateQueries({ queryKey: queryKeys.tasks.stats() }),
+  },
+  projects: {
+    all: () => queryClient.invalidateQueries({ queryKey: queryKeys.projects.all }),
+    context: (id) => queryClient.invalidateQueries({ queryKey: queryKeys.projects.context(id) }),
   },
   user: {
     all: () => queryClient.invalidateQueries({ queryKey: queryKeys.user.all }),

@@ -169,22 +169,33 @@ class ContextEngineClient:
                 data_needs=data_needs
             )
 
-            # Extract response data
-            matched_data = getattr(response, 'matched_data', [])
+            # Extract response data - handle both old and new response formats
             notification_ch = getattr(response, 'notification_channel', f"agent:{agent_id}")
+            caught_up = getattr(response, 'caught_up_events', 0)
+
+            # Handle both matched_needs (dict) and matched_data (list) formats
+            matched_needs = getattr(response, 'matched_needs', {})
+            matched_data = getattr(response, 'matched_data', None) or []
+
+            # Calculate total matches
+            if matched_needs and isinstance(matched_needs, dict):
+                matched_count = sum(matched_needs.values())
+            else:
+                matched_count = len(matched_data) if matched_data else 0
 
             # Store registration
             self.registered_agents[agent_id] = notification_ch
 
-            matched_count = len(matched_data)
             print(f"[ContextEngine] ✓ Registered agent {agent_id}")
             print(f"[ContextEngine]   Matched needs: {matched_count}")
+            print(f"[ContextEngine]   Caught up events: {caught_up}")
 
             return {
                 "matched_data": matched_data,
+                "matched_needs": matched_needs,
                 "notification_channel": notification_ch,
-                "matched_needs": matched_count,
-                "caught_up_events": 0
+                "total_matches": matched_count,
+                "caught_up_events": caught_up
             }
 
         except Exception as e:
@@ -273,6 +284,65 @@ class ContextEngineClient:
 
         finally:
             await pubsub.unsubscribe(channel)
+
+    async def get_project_data(
+        self,
+        project_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get all published data for a project.
+
+        Args:
+            project_id: Project identifier
+
+        Returns:
+            All project data or None if not available
+        """
+        import httpx
+
+        # Try SDK method first if available
+        client = await self._get_client()
+        if client:
+            try:
+                # Try different possible SDK method names
+                if hasattr(client, 'get_project_data'):
+                    response = await client.get_project_data(project_id=project_id)
+                elif hasattr(client, 'get_data'):
+                    response = await client.get_data(project_id=project_id)
+                elif hasattr(client, 'project_data'):
+                    response = await client.project_data(project_id=project_id)
+                else:
+                    # Fall through to HTTP request
+                    response = None
+
+                if response is not None:
+                    # Convert response to dict
+                    if hasattr(response, 'data'):
+                        return response.data
+                    elif isinstance(response, dict):
+                        return response
+                    elif hasattr(response, '__dict__'):
+                        return response.__dict__
+                    else:
+                        return response
+            except Exception as e:
+                print(f"[ContextEngine] SDK method failed, trying HTTP: {e}")
+
+        # Fallback to direct HTTP request
+        try:
+            url = f"{self.base_url}/api/v1/projects/{project_id}/data"
+            headers = {}
+            if self.api_key:
+                headers["X-API-Key"] = self.api_key
+
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                response = await http_client.get(url, headers=headers)
+                response.raise_for_status()
+                return response.json()
+
+        except Exception as e:
+            print(f"[ContextEngine] ✗ Failed to get project data: {e}")
+            return None
 
     async def get_agent_context(
         self,

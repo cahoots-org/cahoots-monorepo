@@ -10,6 +10,7 @@ from .regenerate import router as regenerate_router
 from .cascade import router as cascade_router
 from .user_settings import router as user_settings_router
 from .metrics import router as metrics_router
+from .projects import router as projects_router
 
 __all__ = [
     "task_router",
@@ -22,4 +23,5 @@ __all__ = [
     "cascade_router",
     "user_settings_router",
     "metrics_router",
+    "projects_router",
 ]

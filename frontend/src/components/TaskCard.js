@@ -6,14 +6,12 @@ import {
   Badge,
   Button,
   Text,
-  TextSmall,
   Caption,
   getComplexityIcon,
   getStatusIcon,
   getStatusVariant,
   ClockIcon,
   EyeIcon,
-  PencilIcon,
   TrashIcon,
   tokens,
 } from '../design-system';
@@ -45,9 +43,10 @@ const TaskCard = ({
   const handleTaskClick = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (navigateOnClick) {
-      navigate(`/tasks/${task.task_id}`);
+      // Use new ProjectView for better UX
+      navigate(`/projects/${task.task_id}`);
     }
   };
 

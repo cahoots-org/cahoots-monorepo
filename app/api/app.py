@@ -17,7 +17,8 @@ from app.api.routes import (
     events_router,
     cascade_router,
     user_settings_router,
-    metrics_router
+    metrics_router,
+    projects_router
 )
 from app.api.dependencies import cleanup_dependencies
 
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(cascade_router)
     app.include_router(user_settings_router)
     app.include_router(metrics_router)
+    app.include_router(projects_router)
 
     # Include utility routers
     from app.api.routes import regenerate_router
@@ -165,6 +167,14 @@ def create_app() -> FastAPI:
     app.include_router(jira_router)
     app.include_router(trello_router)
     app.include_router(github_router)
+
+    # Include blog routers
+    from app.api.routes.blog import admin_router as blog_admin_router
+    from app.api.routes.blog import public_router as blog_public_router
+    from app.api.routes.blog import upload_router
+    app.include_router(blog_admin_router, prefix="/api")
+    app.include_router(blog_public_router, prefix="/api")
+    app.include_router(upload_router, prefix="/api")
 
     @app.get("/")
     async def root():

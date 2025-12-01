@@ -114,7 +114,8 @@ const TaskBoard = () => {
     queryKey: ['tasks', 'tree', taskId],
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${taskId}/tree`);
-      return response.data;
+      // Backend returns {data: treeData}, extract the inner data
+      return response.data?.data || response.data;
     },
     enabled: !!taskId && isAuthenticated,
   });
@@ -348,7 +349,7 @@ const TaskBoard = () => {
         {/* Tab Content */}
         <div style={styles.tabContent}>
           {activeTab === 'overview' && (
-            <OverviewTab task={task} taskTree={taskTree} />
+            <OverviewTab task={task} taskTree={taskTree} onNavigateToTab={setActiveTab} />
           )}
 
           {activeTab === 'subtasks' && (

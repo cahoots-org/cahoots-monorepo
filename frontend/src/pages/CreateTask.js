@@ -70,7 +70,8 @@ const CreateTask = () => {
         // The response has the structure: { data: { task_id: "...", ... } }
         const taskId = response?.data?.task_id || response?.task_id;
         if (taskId) {
-          navigate(`/tasks/${taskId}`);
+          // Navigate to new ProjectView for better UX
+          navigate(`/projects/${taskId}`);
         } else {
           console.warn('No task_id in response, navigating to dashboard', response);
           // Fallback to dashboard if no task_id
