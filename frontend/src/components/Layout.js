@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
 import NotificationContainer from './NotificationSystem';
 import Footer from './Footer';
+import apiClient from '../services/unifiedApiClient';
 import {
   Button,
   Text,
@@ -18,6 +19,32 @@ import {
 } from '../design-system';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
+// Badge component for notification count
+const NotificationBadge = ({ count }) => {
+  if (!count || count <= 0) return null;
+
+  return (
+    <span style={{
+      position: 'absolute',
+      top: '-4px',
+      right: '-4px',
+      backgroundColor: tokens.colors.red[500],
+      color: 'white',
+      fontSize: '10px',
+      fontWeight: 'bold',
+      minWidth: '16px',
+      height: '16px',
+      borderRadius: '8px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '0 4px',
+    }}>
+      {count > 9 ? '9+' : count}
+    </span>
+  );
+};
+
 const Layout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const { globalLoading } = useApp();
@@ -25,6 +52,7 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [unreadBlogCount, setUnreadBlogCount] = useState(0);
 
   // Check if screen is mobile size
   useEffect(() => {
@@ -35,6 +63,43 @@ const Layout = ({ children }) => {
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  // Fetch unread blog count for authenticated users
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      if (!isAuthenticated()) return;
+
+      try {
+        const response = await apiClient.get('/blog/unread-count');
+        setUnreadBlogCount(response.unread_count || 0);
+      } catch (error) {
+        // Silently fail - not critical
+        console.log('[Layout] Failed to fetch unread blog count');
+      }
+    };
+
+    fetchUnreadCount();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchUnreadCount, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
+
+  // Mark blog as read when visiting blog page
+  useEffect(() => {
+    const markBlogRead = async () => {
+      if (!isAuthenticated() || !location.pathname.startsWith('/blog')) return;
+
+      try {
+        await apiClient.post('/blog/mark-read');
+        setUnreadBlogCount(0);
+      } catch (error) {
+        // Silently fail
+      }
+    };
+
+    markBlogRead();
+  }, [location.pathname, isAuthenticated]);
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -127,12 +192,13 @@ const Layout = ({ children }) => {
                   navigationItems.map(item => {
                     const isActive = location.pathname === item.path;
                     const Icon = item.icon;
-                    
+                    const isBlog = item.path === '/blog';
+
                     return (
                       <Link
                         key={item.path}
                         to={item.path}
-                        style={{ textDecoration: 'none' }}
+                        style={{ textDecoration: 'none', position: 'relative' }}
                       >
                         <Button
                           variant={isActive ? 'primary' : 'ghost'}
@@ -141,6 +207,7 @@ const Layout = ({ children }) => {
                         >
                           {item.label}
                         </Button>
+                        {isBlog && <NotificationBadge count={unreadBlogCount} />}
                       </Link>
                     );
                   })
@@ -289,12 +356,13 @@ const Layout = ({ children }) => {
                 {navigationItems.map(item => {
                   const isActive = location.pathname === item.path;
                   const Icon = item.icon;
-                  
+                  const isBlog = item.path === '/blog';
+
                   return (
                     <Link
                       key={item.path}
                       to={item.path}
-                      style={{ textDecoration: 'none' }}
+                      style={{ textDecoration: 'none', position: 'relative' }}
                     >
                       <Button
                         variant={isActive ? 'primary' : 'ghost'}
@@ -303,6 +371,24 @@ const Layout = ({ children }) => {
                         style={{ width: '100%', justifyContent: 'flex-start' }}
                       >
                         {item.label}
+                        {isBlog && unreadBlogCount > 0 && (
+                          <span style={{
+                            marginLeft: '8px',
+                            backgroundColor: tokens.colors.red[500],
+                            color: 'white',
+                            fontSize: '10px',
+                            fontWeight: 'bold',
+                            minWidth: '16px',
+                            height: '16px',
+                            borderRadius: '8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '0 4px',
+                          }}>
+                            {unreadBlogCount > 9 ? '9+' : unreadBlogCount}
+                          </span>
+                        )}
                       </Button>
                     </Link>
                   );

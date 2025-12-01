@@ -2,13 +2,15 @@
 
 import uuid
 import base64
+import os
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel, EmailStr, Field
 
 from app.api.dependencies import get_redis_client
 from app.api.routes.auth import get_current_user
+from app.services.email_service import get_email_service
 
 
 # Models
@@ -55,6 +57,46 @@ def slugify(text: str) -> str:
     slug = re.sub(r'[^\w\s-]', '', slug)
     slug = re.sub(r'[-\s]+', '-', slug)
     return slug
+
+
+async def send_blog_notifications(redis, post_data: dict):
+    """Send email notifications to all active subscribers."""
+    email_service = get_email_service()
+
+    # Get all active subscribers
+    sub_keys = await redis.keys("blog:subscription:*")
+    active_emails = []
+
+    for key in sub_keys:
+        sub_data = await redis.get(key)
+        if sub_data and sub_data.get("status") == "active":
+            active_emails.append(sub_data.get("email"))
+
+    if not active_emails:
+        print("[Blog] No active subscribers to notify")
+        return
+
+    # Build the post URL
+    base_url = os.getenv("FRONTEND_URL", "https://cahoots.cc")
+    post_url = f"{base_url}/blog/{post_data.get('slug')}"
+
+    # Send notifications
+    sent_count = await email_service.send_blog_notification(
+        to_emails=active_emails,
+        post_title=post_data.get("title", "New Post"),
+        post_excerpt=post_data.get("excerpt", ""),
+        post_url=post_url
+    )
+
+    print(f"[Blog] Sent {sent_count}/{len(active_emails)} email notifications for post: {post_data.get('title')}")
+
+    # Update last_notified_at for all subscribers
+    now = datetime.utcnow().isoformat()
+    for key in sub_keys:
+        sub_data = await redis.get(key)
+        if sub_data and sub_data.get("status") == "active":
+            sub_data["last_notified_at"] = now
+            await redis.set(key, sub_data)
 
 
 # Admin Routes
@@ -128,6 +170,7 @@ async def get_post_admin(
 @admin_router.post("/posts")
 async def create_post(
     post: BlogPostCreate,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     redis = Depends(get_redis_client)
 ):
@@ -160,6 +203,7 @@ async def create_post(
         "meta_keywords": post.meta_keywords or "",
         "created_at": now,
         "updated_at": now,
+        "notifications_sent": False,
     }
 
     if post.status == "published":
@@ -169,6 +213,12 @@ async def create_post(
     await redis.sadd("blog:slugs", slug)
     await redis.sadd("blog:post_ids", post_id)
 
+    # Send notifications if published immediately
+    if post.status == "published":
+        post_data["notifications_sent"] = True
+        await redis.set(f"blog:post:{post_id}", post_data)
+        background_tasks.add_task(send_blog_notifications, redis, post_data)
+
     return {"id": post_id, "slug": slug, "message": "Post created successfully"}
 
 
@@ -176,6 +226,7 @@ async def create_post(
 async def update_post(
     post_id: str,
     post: BlogPostUpdate,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
     redis = Depends(get_redis_client)
 ):
@@ -186,6 +237,9 @@ async def update_post(
     existing = await redis.get(f"blog:post:{post_id}")
     if not existing:
         raise HTTPException(status_code=404, detail="Post not found")
+
+    was_published = existing.get("status") == "published"
+    notifications_sent = existing.get("notifications_sent", False)
 
     now = datetime.utcnow().isoformat()
     existing["updated_at"] = now
@@ -216,7 +270,18 @@ async def update_post(
     if post.meta_keywords is not None:
         existing["meta_keywords"] = post.meta_keywords
 
+    # Check if we need to send notifications (newly published)
+    is_now_published = existing.get("status") == "published"
+    should_notify = is_now_published and not notifications_sent
+
+    if should_notify:
+        existing["notifications_sent"] = True
+
     await redis.set(f"blog:post:{post_id}", existing)
+
+    # Send notifications in background if newly published
+    if should_notify:
+        background_tasks.add_task(send_blog_notifications, redis, existing)
 
     return {"message": "Post updated successfully"}
 
@@ -366,6 +431,51 @@ async def get_post_by_slug(
             }
 
     raise HTTPException(status_code=404, detail="Post not found")
+
+
+@public_router.get("/unread-count")
+async def get_unread_count(
+    current_user: dict = Depends(get_current_user),
+    redis = Depends(get_redis_client)
+):
+    """Get count of unread blog posts for the current user."""
+    user_id = current_user.get("id") or current_user.get("user_id")
+    if not user_id:
+        return {"unread_count": 0}
+
+    # Get user's last read timestamp
+    last_read = await redis.get(f"blog:last_read:{user_id}")
+    last_read_time = last_read.get("timestamp") if last_read else None
+
+    # Count published posts newer than last read
+    post_keys = await redis.keys("blog:post:*")
+    unread_count = 0
+
+    for key in post_keys:
+        post_data = await redis.get(key)
+        if post_data and post_data.get("status") == "published":
+            published_at = post_data.get("published_at")
+            if published_at:
+                if not last_read_time or published_at > last_read_time:
+                    unread_count += 1
+
+    return {"unread_count": unread_count}
+
+
+@public_router.post("/mark-read")
+async def mark_posts_read(
+    current_user: dict = Depends(get_current_user),
+    redis = Depends(get_redis_client)
+):
+    """Mark all blog posts as read for the current user."""
+    user_id = current_user.get("id") or current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    now = datetime.utcnow().isoformat()
+    await redis.set(f"blog:last_read:{user_id}", {"timestamp": now})
+
+    return {"message": "Posts marked as read"}
 
 
 @public_router.post("/subscribe")

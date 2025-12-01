@@ -48,7 +48,7 @@ const TaskBoard = () => {
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated()) {
       navigate('/login');
     }
   }, [isAuthenticated, navigate]);
@@ -56,7 +56,7 @@ const TaskBoard = () => {
   // Connect WebSocket when component mounts
   useEffect(() => {
     // Only connect if authenticated
-    if (!isAuthenticated) {
+    if (!isAuthenticated()) {
       return;
     }
 
@@ -104,9 +104,10 @@ const TaskBoard = () => {
     queryKey: ['tasks', 'detail', taskId],
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${taskId}`);
-      return response.data;
+      // apiClient.get already returns response.data, check if data is nested
+      return response?.data || response;
     },
-    enabled: !!taskId && isAuthenticated,
+    enabled: !!taskId && isAuthenticated(),
   });
 
   // Fetch task tree
@@ -114,10 +115,10 @@ const TaskBoard = () => {
     queryKey: ['tasks', 'tree', taskId],
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${taskId}/tree`);
-      // Backend returns {data: treeData}, extract the inner data
-      return response.data?.data || response.data;
+      // apiClient.get already returns response.data, check if data is nested
+      return response?.data || response;
     },
-    enabled: !!taskId && isAuthenticated,
+    enabled: !!taskId && isAuthenticated(),
   });
 
   // Task mutations

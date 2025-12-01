@@ -45,14 +45,14 @@ const ProjectView = () => {
 
   // Redirect if not authenticated
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated()) {
       navigate('/login');
     }
   }, [isAuthenticated, navigate]);
 
   // Connect WebSocket
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated()) return;
 
     connect().catch(err => {
       console.error('[ProjectView] Failed to connect WebSocket:', err);
@@ -71,9 +71,10 @@ const ProjectView = () => {
     queryKey: ['tasks', 'detail', taskId],
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${taskId}`);
-      return response.data;
+      // apiClient.get already returns response.data, check if data is nested
+      return response?.data || response;
     },
-    enabled: !!taskId && isAuthenticated,
+    enabled: !!taskId && isAuthenticated(),
   });
 
   // Fetch task tree
@@ -81,9 +82,10 @@ const ProjectView = () => {
     queryKey: ['tasks', 'tree', taskId],
     queryFn: async () => {
       const response = await apiClient.get(`/tasks/${taskId}/tree`);
-      return response.data;
+      // apiClient.get already returns response.data, check if data is nested
+      return response?.data || response;
     },
-    enabled: !!taskId && isAuthenticated,
+    enabled: !!taskId && isAuthenticated(),
   });
 
   // Fetch project context from Contex (used by ProjectSummary)

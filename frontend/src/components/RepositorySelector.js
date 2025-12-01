@@ -24,7 +24,7 @@ const RepositorySelector = ({ value, onChange }) => {
   // Check GitHub connection status
   useEffect(() => {
     const checkConnection = async () => {
-      if (!isAuthenticated) return;
+      if (!isAuthenticated()) return;
       
       try {
         const response = await apiClient.get('/github/status');

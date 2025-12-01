@@ -25,7 +25,7 @@ const GitHubIntegration = () => {
 
   // Check if user has a GitHub token stored
   const checkConnection = async () => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated()) return;
     
     setLoading(true);
     try {
@@ -139,7 +139,7 @@ const GitHubIntegration = () => {
           <Button
             type="button"
             onClick={() => setShowModal(true)}
-            disabled={!isAuthenticated || loading}
+            disabled={!isAuthenticated() || loading}
             size="sm"
             style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2] }}
           >
@@ -159,8 +159,8 @@ const GitHubIntegration = () => {
         )}
       </div>
 
-      {!isAuthenticated && (
-        <Card style={{ 
+      {!isAuthenticated() && (
+        <Card style={{
           backgroundColor: tokens.colors.warning[50],
           border: `1px solid ${tokens.colors.warning[200]}`,
           marginBottom: tokens.spacing[4]
