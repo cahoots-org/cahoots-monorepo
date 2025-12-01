@@ -43,9 +43,10 @@ ADMIN_EMAILS = [
 
 def get_user_role(email: str) -> str:
     """Determine user role based on email address"""
-    if email and email.lower() in [e.lower() for e in ADMIN_EMAILS]:
-        return "admin"
-    return "user"
+    is_admin = email and email.lower() in [e.lower() for e in ADMIN_EMAILS]
+    role = "admin" if is_admin else "user"
+    print(f"[AUTH] get_user_role: email={email}, is_admin={is_admin}, role={role}")
+    return role
 
 
 class OAuthConfig:
