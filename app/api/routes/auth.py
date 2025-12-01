@@ -481,7 +481,7 @@ async def get_current_user(
 
         if user_data:
             # Ensure role is set (for users created before role was added)
-            if "role" not in user_data and user_data.get("email"):
+            if not user_data.get("role") and user_data.get("email"):
                 user_data["role"] = get_user_role(user_data["email"])
             return user_data
 
