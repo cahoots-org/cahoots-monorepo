@@ -36,34 +36,6 @@ class BlogPostUpdate(BaseModel):
     meta_keywords: Optional[str] = None
 
 
-class BlogPost(BaseModel):
-    id: str
-    title: str
-    slug: str
-    content: str
-    excerpt: Optional[str] = None
-    featured_image: Optional[str] = None
-    tags: List[str] = []
-    status: str
-    author_id: str
-    author_name: str
-    view_count: int = 0
-    meta_description: Optional[str] = None
-    meta_keywords: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-    published_at: Optional[datetime] = None
-
-
-class BlogSubscription(BaseModel):
-    id: str
-    email: str
-    status: str = "active"
-    frequency: str = "weekly"
-    created_at: datetime
-    last_notified_at: Optional[datetime] = None
-
-
 class SubscribeRequest(BaseModel):
     email: EmailStr
     frequency: str = "weekly"
@@ -99,7 +71,7 @@ async def list_posts(
     posts = []
 
     for key in post_keys:
-        post_data = await redis.hgetall(key)
+        post_data = await redis.get(key)
         if post_data:
             posts.append({
                 "id": post_data.get("id"),
@@ -108,7 +80,7 @@ async def list_posts(
                 "status": post_data.get("status", "draft"),
                 "author_id": post_data.get("author_id"),
                 "author_name": post_data.get("author_name", "Unknown"),
-                "view_count": int(post_data.get("view_count", 0)),
+                "view_count": post_data.get("view_count", 0),
                 "created_at": post_data.get("created_at"),
                 "updated_at": post_data.get("updated_at"),
             })
@@ -129,13 +101,9 @@ async def get_post_admin(
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    post_data = await redis.hgetall(f"blog:post:{post_id}")
+    post_data = await redis.get(f"blog:post:{post_id}")
     if not post_data:
         raise HTTPException(status_code=404, detail="Post not found")
-
-    # Parse tags from JSON string
-    import json
-    tags = json.loads(post_data.get("tags", "[]"))
 
     return {
         "id": post_data.get("id"),
@@ -144,11 +112,11 @@ async def get_post_admin(
         "content": post_data.get("content"),
         "excerpt": post_data.get("excerpt"),
         "featured_image": post_data.get("featured_image"),
-        "tags": tags,
+        "tags": post_data.get("tags", []),
         "status": post_data.get("status", "draft"),
         "author_id": post_data.get("author_id"),
         "author_name": post_data.get("author_name"),
-        "view_count": int(post_data.get("view_count", 0)),
+        "view_count": post_data.get("view_count", 0),
         "meta_description": post_data.get("meta_description"),
         "meta_keywords": post_data.get("meta_keywords"),
         "created_at": post_data.get("created_at"),
@@ -167,8 +135,6 @@ async def create_post(
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    import json
-
     post_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
     slug = post.slug if post.slug else slugify(post.title)
@@ -185,11 +151,11 @@ async def create_post(
         "content": post.content,
         "excerpt": post.excerpt or "",
         "featured_image": post.featured_image or "",
-        "tags": json.dumps(post.tags),
+        "tags": post.tags,
         "status": post.status,
-        "author_id": current_user.get("user_id", ""),
+        "author_id": current_user.get("user_id", current_user.get("id", "")),
         "author_name": current_user.get("name", current_user.get("email", "Admin")),
-        "view_count": "0",
+        "view_count": 0,
         "meta_description": post.meta_description or "",
         "meta_keywords": post.meta_keywords or "",
         "created_at": now,
@@ -199,7 +165,7 @@ async def create_post(
     if post.status == "published":
         post_data["published_at"] = now
 
-    await redis.hset(f"blog:post:{post_id}", mapping=post_data)
+    await redis.set(f"blog:post:{post_id}", post_data)
     await redis.sadd("blog:slugs", slug)
     await redis.sadd("blog:post_ids", post_id)
 
@@ -217,42 +183,40 @@ async def update_post(
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    import json
-
-    existing = await redis.hgetall(f"blog:post:{post_id}")
+    existing = await redis.get(f"blog:post:{post_id}")
     if not existing:
         raise HTTPException(status_code=404, detail="Post not found")
 
     now = datetime.utcnow().isoformat()
-    updates = {"updated_at": now}
+    existing["updated_at"] = now
 
     if post.title is not None:
-        updates["title"] = post.title
+        existing["title"] = post.title
     if post.slug is not None:
         # Remove old slug from set
         old_slug = existing.get("slug")
         if old_slug:
             await redis.srem("blog:slugs", old_slug)
-        updates["slug"] = post.slug
+        existing["slug"] = post.slug
         await redis.sadd("blog:slugs", post.slug)
     if post.content is not None:
-        updates["content"] = post.content
+        existing["content"] = post.content
     if post.excerpt is not None:
-        updates["excerpt"] = post.excerpt
+        existing["excerpt"] = post.excerpt
     if post.featured_image is not None:
-        updates["featured_image"] = post.featured_image
+        existing["featured_image"] = post.featured_image
     if post.tags is not None:
-        updates["tags"] = json.dumps(post.tags)
+        existing["tags"] = post.tags
     if post.status is not None:
-        updates["status"] = post.status
+        existing["status"] = post.status
         if post.status == "published" and not existing.get("published_at"):
-            updates["published_at"] = now
+            existing["published_at"] = now
     if post.meta_description is not None:
-        updates["meta_description"] = post.meta_description
+        existing["meta_description"] = post.meta_description
     if post.meta_keywords is not None:
-        updates["meta_keywords"] = post.meta_keywords
+        existing["meta_keywords"] = post.meta_keywords
 
-    await redis.hset(f"blog:post:{post_id}", mapping=updates)
+    await redis.set(f"blog:post:{post_id}", existing)
 
     return {"message": "Post updated successfully"}
 
@@ -267,7 +231,7 @@ async def delete_post(
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    existing = await redis.hgetall(f"blog:post:{post_id}")
+    existing = await redis.get(f"blog:post:{post_id}")
     if not existing:
         raise HTTPException(status_code=404, detail="Post not found")
 
@@ -295,7 +259,7 @@ async def list_subscriptions(
     subscriptions = []
 
     for key in sub_keys:
-        sub_data = await redis.hgetall(key)
+        sub_data = await redis.get(key)
         if sub_data:
             subscriptions.append({
                 "id": sub_data.get("id"),
@@ -338,15 +302,13 @@ async def list_published_posts(
     redis = Depends(get_redis_client)
 ):
     """List all published blog posts."""
-    import json
-
     post_keys = await redis.keys("blog:post:*")
     posts = []
 
     for key in post_keys:
-        post_data = await redis.hgetall(key)
+        post_data = await redis.get(key)
         if post_data and post_data.get("status") == "published":
-            tags = json.loads(post_data.get("tags", "[]"))
+            tags = post_data.get("tags", [])
 
             # Filter by tag if specified
             if tag and tag not in tags:
@@ -360,7 +322,7 @@ async def list_published_posts(
                 "featured_image": post_data.get("featured_image"),
                 "tags": tags,
                 "author_name": post_data.get("author_name"),
-                "view_count": int(post_data.get("view_count", 0)),
+                "view_count": post_data.get("view_count", 0),
                 "published_at": post_data.get("published_at"),
             })
 
@@ -376,18 +338,17 @@ async def get_post_by_slug(
     redis = Depends(get_redis_client)
 ):
     """Get a published blog post by slug."""
-    import json
-
     # Find post by slug
     post_keys = await redis.keys("blog:post:*")
     for key in post_keys:
-        post_data = await redis.hgetall(key)
+        post_data = await redis.get(key)
         if post_data and post_data.get("slug") == slug:
             if post_data.get("status") != "published":
                 raise HTTPException(status_code=404, detail="Post not found")
 
             # Increment view count
-            await redis.hincrby(key, "view_count", 1)
+            post_data["view_count"] = post_data.get("view_count", 0) + 1
+            await redis.set(key, post_data)
 
             return {
                 "id": post_data.get("id"),
@@ -396,9 +357,9 @@ async def get_post_by_slug(
                 "content": post_data.get("content"),
                 "excerpt": post_data.get("excerpt"),
                 "featured_image": post_data.get("featured_image"),
-                "tags": json.loads(post_data.get("tags", "[]")),
+                "tags": post_data.get("tags", []),
                 "author_name": post_data.get("author_name"),
-                "view_count": int(post_data.get("view_count", 0)) + 1,
+                "view_count": post_data.get("view_count", 0),
                 "meta_description": post_data.get("meta_description"),
                 "meta_keywords": post_data.get("meta_keywords"),
                 "published_at": post_data.get("published_at"),
@@ -416,13 +377,14 @@ async def subscribe(
     # Check if already subscribed
     sub_keys = await redis.keys("blog:subscription:*")
     for key in sub_keys:
-        sub_data = await redis.hgetall(key)
+        sub_data = await redis.get(key)
         if sub_data and sub_data.get("email") == request.email:
             if sub_data.get("status") == "active":
                 return {"message": "Already subscribed"}
             else:
                 # Reactivate subscription
-                await redis.hset(key, "status", "active")
+                sub_data["status"] = "active"
+                await redis.set(key, sub_data)
                 return {"message": "Subscription reactivated"}
 
     sub_id = str(uuid.uuid4())
@@ -436,7 +398,7 @@ async def subscribe(
         "created_at": now,
     }
 
-    await redis.hset(f"blog:subscription:{sub_id}", mapping=sub_data)
+    await redis.set(f"blog:subscription:{sub_id}", sub_data)
 
     return {"message": "Successfully subscribed to blog updates"}
 
@@ -449,9 +411,10 @@ async def unsubscribe(
     """Unsubscribe from blog updates."""
     sub_keys = await redis.keys("blog:subscription:*")
     for key in sub_keys:
-        sub_data = await redis.hgetall(key)
+        sub_data = await redis.get(key)
         if sub_data and sub_data.get("email") == email:
-            await redis.hset(key, "status", "unsubscribed")
+            sub_data["status"] = "unsubscribed"
+            await redis.set(key, sub_data)
             return {"message": "Successfully unsubscribed"}
 
     raise HTTPException(status_code=404, detail="Subscription not found")
@@ -494,7 +457,7 @@ async def upload_blog_image(
         "created_at": datetime.utcnow().isoformat(),
     }
 
-    await redis.hset(f"blog:image:{image_id}", mapping=image_data)
+    await redis.set(f"blog:image:{image_id}", image_data)
 
     # Return URL that will serve the image
     return {"url": f"/api/uploads/images/{image_id}"}
@@ -508,7 +471,7 @@ async def get_image(
     """Serve an uploaded image."""
     from fastapi.responses import Response
 
-    image_data = await redis.hgetall(f"blog:image:{image_id}")
+    image_data = await redis.get(f"blog:image:{image_id}")
     if not image_data:
         raise HTTPException(status_code=404, detail="Image not found")
 
