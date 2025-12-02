@@ -209,8 +209,11 @@ class ContextEngineClient:
                 "caught_up_events": caught_up
             }
 
+        except httpx.HTTPStatusError as e:
+            print(f"[ContextEngine] ✗ Failed to register agent: HTTP {e.response.status_code} - {e.response.text[:200]}")
+            raise
         except Exception as e:
-            print(f"[ContextEngine] ✗ Failed to register agent: {e}")
+            print(f"[ContextEngine] ✗ Failed to register agent: {type(e).__name__}: {e}")
             raise
 
     async def query(
@@ -259,8 +262,11 @@ class ContextEngineClient:
                 for r in results[:limit]
             ]
 
+        except httpx.HTTPStatusError as e:
+            print(f"[ContextEngine] ✗ Query failed: HTTP {e.response.status_code} - {e.response.text[:200]}")
+            raise
         except Exception as e:
-            print(f"[ContextEngine] ✗ Query failed: {e}")
+            print(f"[ContextEngine] ✗ Query failed: {type(e).__name__}: {e}")
             raise
 
     async def subscribe_to_updates(
