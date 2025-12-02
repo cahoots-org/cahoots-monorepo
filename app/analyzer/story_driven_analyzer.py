@@ -62,8 +62,7 @@ class StoryDrivenAnalyzer:
             story_text = f"""Story {i} (ID: {story.id}):
 "As a {story.actor}, I want to {story.action} so that {story.benefit}"
 Acceptance Criteria:
-{chr(10).join(f"- {criterion}" for criterion in story.acceptance_criteria)}
-Story Points: {story.story_points}"""
+{chr(10).join(f"- {criterion}" for criterion in story.acceptance_criteria)}"""
             stories_text.append(story_text)
 
         # Customize user prompt based on repository context
@@ -308,7 +307,6 @@ A task NEEDS DECOMPOSITION when it:
 
 Task: "{task_description}"
 Parent Story: "As a {story.actor}, I want to {story.action}"
-Story Points: {story.story_points}
 
 Is this task atomic and ready for implementation?"""
 

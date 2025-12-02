@@ -304,22 +304,27 @@ class LambdaLLMClient(LLMClient):
         await self.client.aclose()
 
 
-class CerebrasLLMClient(LLMClient):
-    """Cerebras API client implementation."""
+class BedrockLLMClient(LLMClient):
+    """AWS Bedrock API client implementation using bearer token auth."""
 
-    def __init__(self, api_key: str, model: str = "llama3.1-70b"):
-        """Initialize Cerebras client.
+    def __init__(self, api_key: str, model: str, region: str = "us-east-1"):
+        """Initialize Bedrock client.
 
         Args:
-            api_key: Cerebras API key
-            model: Model to use (default: llama3.1-70b)
+            api_key: AWS Bedrock bearer token
+            model: Model ID (e.g., qwen.qwen3-235b-a22b-2507-v1:0)
+            region: AWS region (default: us-east-1)
         """
         self.api_key = api_key
         self.model = model
+        self.region = region
+        self.base_url = f"https://bedrock-runtime.{region}.amazonaws.com"
         self.client = httpx.AsyncClient(
-            base_url="https://api.cerebras.ai/v1",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=60.0
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json"
+            },
+            timeout=120.0
         )
 
     @retry(
@@ -333,7 +338,201 @@ class CerebrasLLMClient(LLMClient):
         max_tokens: int = 2048,
         response_format: Optional[Dict[str, str]] = None
     ) -> Dict[str, Any]:
-        """Call Cerebras API for chat completion."""
+        """Call Bedrock Converse API for chat completion."""
+        # Convert OpenAI message format to Bedrock format
+        bedrock_messages = []
+        system_prompts = []
+
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+
+            if role == "system":
+                # Bedrock handles system prompts separately
+                system_prompts.append({"text": content})
+            else:
+                bedrock_messages.append({
+                    "role": role,
+                    "content": [{"text": content}]
+                })
+
+        payload = {
+            "messages": bedrock_messages,
+            "inferenceConfig": {
+                "temperature": temperature,
+                "maxTokens": max_tokens
+            },
+            "performanceConfig": {
+                "latency": "optimized"
+            }
+        }
+
+        # Add system prompts if any
+        if system_prompts:
+            payload["system"] = system_prompts
+
+        # URL-encode the model ID (contains colon which must be encoded)
+        from urllib.parse import quote
+        encoded_model = quote(self.model, safe='')
+        url = f"{self.base_url}/model/{encoded_model}/converse"
+        response = await self.client.post(url, json=payload)
+
+        if response.status_code != 200:
+            print(f"[Bedrock] API Error: {response.status_code} - {response.text[:500]}")
+
+        response.raise_for_status()
+        result = response.json()
+
+        # Convert Bedrock response to OpenAI format for compatibility
+        output = result.get("output", {})
+        message = output.get("message", {})
+        content_blocks = message.get("content", [])
+
+        # Extract text from content blocks (skip reasoningContent blocks)
+        text_content = ""
+        for block in content_blocks:
+            if "text" in block:
+                text_content += block["text"]
+            # Skip reasoningContent blocks - they contain internal reasoning
+
+        return {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": text_content
+                }
+            }]
+        }
+
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()
+
+
+class FeatherlessLLMClient(LLMClient):
+    """Featherless AI API client implementation (OpenAI-compatible)."""
+
+    def __init__(self, api_key: str, model: str = "meta-llama/Meta-Llama-3.1-8B-Instruct"):
+        """Initialize Featherless client.
+
+        Args:
+            api_key: Featherless API key
+            model: Model to use (default: meta-llama/Meta-Llama-3.1-8B-Instruct)
+        """
+        self.api_key = api_key
+        self.model = model
+        self.client = httpx.AsyncClient(
+            base_url="https://api.featherless.ai/v1",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=120.0  # Longer timeout for larger models
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10)
+    )
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        response_format: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """Call Featherless API for chat completion."""
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
+        # Featherless supports JSON mode via response_format
+        if response_format:
+            payload["response_format"] = response_format
+
+        response = await self.client.post("/chat/completions", json=payload)
+        response.raise_for_status()
+        return response.json()
+
+    async def close(self):
+        """Close the HTTP client."""
+        await self.client.aclose()
+
+
+class CerebrasLLMClient(LLMClient):
+    """Cerebras API client implementation with model rotation for rate limits."""
+
+    def __init__(self, api_key: str, model: str = "llama3.1-70b"):
+        """Initialize Cerebras client.
+
+        Args:
+            api_key: Cerebras API key
+            model: Model or comma-separated list of models for rotation
+                   (e.g., "gpt-oss-120b,llama3.1-70b,llama3.1-8b")
+        """
+        self.api_key = api_key
+        # Parse comma-separated models into a list
+        self.models = [m.strip() for m in model.split(",")]
+        self.current_model_index = 0
+        self.client = httpx.AsyncClient(
+            base_url="https://api.cerebras.ai/v1",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=60.0
+        )
+
+    @property
+    def model(self) -> str:
+        """Get the current model."""
+        return self.models[self.current_model_index]
+
+    def _rotate_model(self) -> bool:
+        """Rotate to the next model. Returns True if rotated, False if exhausted."""
+        if self.current_model_index < len(self.models) - 1:
+            self.current_model_index += 1
+            print(f"[Cerebras] Rotating to model: {self.model}")
+            return True
+        return False
+
+    def _reset_model_index(self):
+        """Reset to the first model."""
+        self.current_model_index = 0
+
+    async def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        response_format: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """Call Cerebras API for chat completion with automatic model rotation on 429 or invalid model."""
+        # Reset to first model at the start of each request
+        self._reset_model_index()
+
+        last_error = None
+
+        while True:
+            try:
+                return await self._make_request(messages, temperature, max_tokens, response_format)
+            except httpx.HTTPStatusError as e:
+                last_error = e
+                # 429 = rate limited, 400/404 = possibly invalid model
+                if e.response.status_code in (429, 400, 404):
+                    print(f"[Cerebras] Error {e.response.status_code} on {self.model}, rotating...")
+                    if not self._rotate_model():
+                        print(f"[Cerebras] All models exhausted")
+                        raise last_error
+                    continue
+                else:
+                    raise
+
+    async def _make_request(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        response_format: Optional[Dict[str, str]]
+    ) -> Dict[str, Any]:
+        """Make a single request to Cerebras API."""
         payload = {
             "model": self.model,
             "messages": messages,
@@ -345,25 +544,16 @@ class CerebrasLLMClient(LLMClient):
         if response_format and response_format.get("type") == "json_object":
             payload["response_format"] = response_format
 
-        # Debug: Print the user message being sent
-        user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
-        print(f"DEBUG CEREBRAS REQUEST: {user_msg[:200]}...")
-
         response = await self.client.post("/chat/completions", json=payload)
 
         # Log error details if request fails
         if response.status_code != 200:
-            print(f"CEREBRAS API ERROR: Status {response.status_code}")
-            print(f"Response: {response.text[:500]}")
+            print(f"[Cerebras] API Error: Status {response.status_code} on model {self.model}")
+            if response.status_code != 429:
+                print(f"[Cerebras] Response: {response.text[:500]}")
 
         response.raise_for_status()
-        result = response.json()
-
-        # Debug: Print what we got back
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-        print(f"DEBUG CEREBRAS RESPONSE: {content[:200]}...")
-
-        return result
+        return response.json()
 
     async def close(self):
         """Close the HTTP client."""

@@ -43,10 +43,6 @@ const ProjectSummary = ({
   const totalChapters = task?.metadata?.chapters?.length || 0;
   const totalStoryPoints = calculateStoryPoints(taskTree);
 
-  // Get tech stack from context or task metadata
-  const techStack = context?.tech_stack || task?.metadata?.tech_stack || {};
-  const technologies = extractTechnologies(techStack);
-
   return (
     <Card style={styles.container}>
       {/* Original Prompt */}
@@ -59,6 +55,7 @@ const ProjectSummary = ({
       {isProcessing && (
         <ProcessingStatus
           task={task}
+          taskTree={taskTree}
           context={projectContext}
           contextLoading={contextLoading}
         />
@@ -76,55 +73,35 @@ const ProjectSummary = ({
               <StatCard
                 value={totalTasks}
                 label="Tasks"
-                icon="🎯"
                 onClick={() => onViewDetails?.('subtasks')}
               />
               <StatCard
                 value={totalChapters}
                 label="Chapters"
-                icon="📖"
                 onClick={() => onViewDetails?.('event-model')}
               />
               <StatCard
                 value={totalEvents}
                 label="Events"
-                icon="⚡"
                 onClick={() => onViewDetails?.('event-model')}
               />
               <StatCard
                 value={totalCommands}
                 label="Commands"
-                icon="📝"
                 onClick={() => onViewDetails?.('event-model')}
               />
               <StatCard
                 value={totalReadModels}
                 label="Read Models"
-                icon="📊"
                 onClick={() => onViewDetails?.('schemas')}
               />
               <StatCard
                 value={totalStoryPoints}
                 label="Story Points"
-                icon="📈"
                 subtitle={estimateSprints(totalStoryPoints)}
               />
             </div>
           </div>
-
-          {/* Tech Stack */}
-          {technologies.length > 0 && (
-            <div style={styles.techSection}>
-              <Text style={styles.techLabel}>Tech Stack:</Text>
-              <div style={styles.techTags}>
-                {technologies.map((tech, i) => (
-                  <Badge key={i} variant="secondary" style={styles.techBadge}>
-                    {tech}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Actions */}
           <div style={styles.actionsSection}>
@@ -153,7 +130,7 @@ const ProjectSummary = ({
 /**
  * Processing status with progress indicators
  */
-const ProcessingStatus = ({ task, context, contextLoading }) => {
+const ProcessingStatus = ({ task, taskTree, context, contextLoading }) => {
   const stages = [
     { key: 'analyzing', label: 'Analyzing', icon: '🔍' },
     { key: 'decomposing', label: 'Decomposing', icon: '🎯' },
@@ -161,9 +138,15 @@ const ProcessingStatus = ({ task, context, contextLoading }) => {
     { key: 'finalizing', label: 'Finalizing', icon: '✨' },
   ];
 
-  // Determine current stage based on context data
-  const currentStage = determineCurrentStage(context);
+  // Determine current stage based on task data (not just context)
+  const currentStage = determineCurrentStage(context, task, taskTree);
   const currentStageIndex = stages.findIndex(s => s.key === currentStage);
+
+  // Calculate progress from taskTree (real-time data)
+  const taskCount = taskTree?.tasks ? Object.keys(taskTree.tasks).length : (task?.children_count || 0);
+  const hasEpics = task?.context?.epics?.length > 0 || task?.metadata?.epics?.length > 0;
+  const hasStories = task?.context?.user_stories?.length > 0 || task?.metadata?.user_stories?.length > 0;
+  const hasEventModel = task?.metadata?.extracted_events?.length > 0 || task?.metadata?.commands?.length > 0;
 
   return (
     <div style={styles.processingSection}>
@@ -200,19 +183,28 @@ const ProcessingStatus = ({ task, context, contextLoading }) => {
         })}
       </div>
 
-      {/* Show what we have so far */}
-      {context?.context && Object.keys(context.context).length > 0 && (
+      {/* Show what we have so far - using task/taskTree data directly */}
+      {(taskCount > 0 || hasEpics || hasEventModel) && (
         <div style={styles.progressPreview}>
           <Text style={styles.progressPreviewLabel}>Found so far:</Text>
           <div style={styles.progressPreviewStats}>
-            {context.stats?.total_tasks > 0 && (
-              <Badge variant="info">{context.stats.total_tasks} tasks</Badge>
+            {taskCount > 0 && (
+              <Badge variant="info">{taskCount} tasks</Badge>
             )}
-            {context.stats?.total_epics > 0 && (
-              <Badge variant="info">{context.stats.total_epics} epics</Badge>
+            {hasEpics && (
+              <Badge variant="info">
+                {task?.context?.epics?.length || task?.metadata?.epics?.length} epics
+              </Badge>
             )}
-            {context.stats?.has_tech_stack && (
-              <Badge variant="success">Tech stack identified</Badge>
+            {hasStories && (
+              <Badge variant="info">
+                {task?.context?.user_stories?.length || task?.metadata?.user_stories?.length} stories
+              </Badge>
+            )}
+            {hasEventModel && (
+              <Badge variant="info">
+                {task?.metadata?.extracted_events?.length || 0} events
+              </Badge>
             )}
           </div>
         </div>
@@ -241,17 +233,29 @@ const StatCard = ({ value, label, icon, subtitle, onClick }) => (
 
 // Helper functions
 function calculateStoryPoints(taskTree) {
-  if (!taskTree?.tasks) return 0;
+  // Recursively calculate story points from nested tree structure
+  const sumPoints = (node) => {
+    if (!node) return 0;
+    let total = 0;
 
-  let total = 0;
-  Object.values(taskTree.tasks).forEach(task => {
-    if (task.story_points) {
-      total += task.story_points;
-    } else if (task.is_atomic) {
+    // Add this node's points
+    if (node.story_points) {
+      total += node.story_points;
+    } else if (node.is_atomic) {
       total += 2; // Default estimate for atomic tasks
     }
-  });
-  return total;
+
+    // Recursively add children's points
+    if (node.children && Array.isArray(node.children)) {
+      node.children.forEach(child => {
+        total += sumPoints(child);
+      });
+    }
+
+    return total;
+  };
+
+  return sumPoints(taskTree);
 }
 
 function estimateSprints(points) {
@@ -260,37 +264,38 @@ function estimateSprints(points) {
   return `~${sprints} sprint${sprints !== 1 ? 's' : ''}`;
 }
 
-function extractTechnologies(techStack) {
-  const techs = [];
+function determineCurrentStage(context, task, taskTree) {
+  // Check task/taskTree data first (more reliable than Context Engine)
+  const hasEventModel = task?.metadata?.extracted_events?.length > 0 ||
+                        task?.metadata?.commands?.length > 0;
+  const hasTasks = taskTree?.tasks ? Object.keys(taskTree.tasks).length > 1 :
+                   (task?.children_count > 0);
+  const hasEpics = task?.context?.epics?.length > 0 || task?.metadata?.epics?.length > 0;
 
-  if (typeof techStack === 'object' && techStack !== null) {
-    Object.entries(techStack).forEach(([category, value]) => {
-      if (typeof value === 'string') {
-        techs.push(value);
-      } else if (typeof value === 'object' && value !== null) {
-        Object.keys(value).forEach(tech => techs.push(tech));
-      }
-    });
-  }
-
-  // Return unique, top 6
-  return [...new Set(techs)].slice(0, 6);
-}
-
-function determineCurrentStage(context) {
-  if (!context?.context) return 'analyzing';
-
-  const data = context.context;
-
-  if (data.event_model || data.commands || data.extracted_events) {
+  if (hasEventModel) {
     return 'finalizing';
   }
-  if (data.decomposed_tasks) {
+  if (hasTasks) {
     return 'event_modeling';
   }
-  if (data.epics_and_stories || data.tech_stack) {
+  if (hasEpics) {
     return 'decomposing';
   }
+
+  // Fall back to context data if available
+  if (context?.context) {
+    const data = context.context;
+    if (data.event_model || data.commands || data.extracted_events) {
+      return 'finalizing';
+    }
+    if (data.decomposed_tasks) {
+      return 'event_modeling';
+    }
+    if (data.epics_and_stories) {
+      return 'decomposing';
+    }
+  }
+
   return 'analyzing';
 }
 
@@ -442,26 +447,6 @@ const styles = {
     fontSize: tokens.typography.fontSize.xs[0],
     color: 'var(--color-text-muted)',
     marginTop: tokens.spacing[1],
-  },
-
-  // Tech section
-  techSection: {
-    marginBottom: tokens.spacing[6],
-    paddingTop: tokens.spacing[4],
-    borderTop: `1px solid var(--color-border)`,
-  },
-  techLabel: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    color: 'var(--color-text-muted)',
-    marginBottom: tokens.spacing[2],
-  },
-  techTags: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: tokens.spacing[2],
-  },
-  techBadge: {
-    fontSize: tokens.typography.fontSize.sm[0],
   },
 
   // Actions section

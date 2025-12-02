@@ -8,7 +8,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.storage import RedisClient, TaskStorage
 from app.analyzer import UnifiedAnalyzer, LLMClient, MockLLMClient
-from app.analyzer.llm_client import OpenAILLMClient, GroqLLMClient, LambdaLLMClient, CerebrasLLMClient, LocalLLMClient
+from app.analyzer.llm_client import OpenAILLMClient, GroqLLMClient, LambdaLLMClient, BedrockLLMClient, FeatherlessLLMClient, CerebrasLLMClient, LocalLLMClient
 from app.analyzer.agentic_analyzer import AgenticAnalyzer
 from app.analyzer.story_driven_analyzer import StoryDrivenAnalyzer
 from app.processor import TaskProcessor
@@ -94,6 +94,30 @@ async def get_llm_client() -> LLMClient:
             _llm_client = LambdaLLMClient(
                 api_key=api_key,
                 model=os.getenv("LAMBDA_MODEL", "hermes-3-llama-3.1-405b-fp8")
+            )
+        elif provider == "bedrock":
+            api_key = os.getenv("AWS_BEARER_TOKEN_BEDROCK")
+            if not api_key:
+                raise ValueError("AWS_BEARER_TOKEN_BEDROCK not set")
+            model = os.getenv("AWS_BEDROCK_MODEL")
+            if not model:
+                raise ValueError("AWS_BEDROCK_MODEL not set")
+            region = os.getenv("AWS_BEDROCK_REGION", "us-east-1")
+            print(f"[LLM] Using AWS Bedrock model: {model} in {region}")
+            _llm_client = BedrockLLMClient(
+                api_key=api_key,
+                model=model,
+                region=region
+            )
+        elif provider == "featherless":
+            api_key = os.getenv("FEATHERLESS_API_KEY")
+            if not api_key:
+                raise ValueError("FEATHERLESS_API_KEY not set")
+            model = os.getenv("FEATHERLESS_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+            print(f"[LLM] Using Featherless model: {model}")
+            _llm_client = FeatherlessLLMClient(
+                api_key=api_key,
+                model=model
             )
         elif provider == "cerebras":
             api_key = os.getenv("CEREBRAS_API_KEY")

@@ -91,7 +91,6 @@ For each story, provide:
 - benefit: Why they want it (business value)
 - acceptance_criteria: 2-4 specific criteria (testable conditions)
 - priority: must_have/should_have/could_have
-- story_points: Estimated points (1,2,3,5,8,13)
 
 Return as JSON with a "stories" array."""
 
@@ -116,7 +115,6 @@ Return as JSON with a "stories" array."""
                     benefit=story_data.get("benefit", ""),
                     acceptance_criteria=story_data.get("acceptance_criteria", []),
                     priority=StoryPriority(story_data.get("priority", "should_have")),
-                    story_points=story_data.get("story_points", 5),
                     status=StoryStatus.READY,
                     discovered_at_depth=0,
                     is_gap_filler=False
@@ -244,7 +242,6 @@ Provide:
 - benefit: Why they want it
 - acceptance_criteria: 2-4 specific criteria
 - priority: must_have/should_have/could_have
-- story_points: 1-13
 
 Return as JSON."""
 
@@ -265,7 +262,6 @@ Return as JSON."""
                 benefit=response.get("benefit", "improved functionality"),
                 acceptance_criteria=response.get("acceptance_criteria", []),
                 priority=StoryPriority(response.get("priority", "should_have")),
-                story_points=response.get("story_points", 5),
                 status=StoryStatus.READY,
                 discovered_at_depth=depth,
                 is_gap_filler=True,
@@ -284,7 +280,6 @@ Return as JSON."""
                 benefit="complete the functionality",
                 acceptance_criteria=[f"Task '{task_description}' is implemented"],
                 priority=StoryPriority.SHOULD_HAVE,
-                story_points=5,
                 discovered_at_depth=depth,
                 is_gap_filler=True
             )

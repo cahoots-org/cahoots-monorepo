@@ -174,7 +174,7 @@ export const WebSocketProvider = ({ children }) => {
         
       case 'error':
         setConnectionState({ connected: false, connecting: false, error: data });
-        showError('WebSocket connection error');
+        // Don't show error toast - the Live indicator shows connection status
         break;
         
       case 'message':

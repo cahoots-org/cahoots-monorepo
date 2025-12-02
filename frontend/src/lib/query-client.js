@@ -6,7 +6,8 @@ const queryConfig = {
   defaultOptions: {
     queries: {
       // Stale time - data is considered fresh for this duration
-      staleTime: 1 * 60 * 1000, // 1 minute
+      // Set to 0 so invalidation always triggers refetch
+      staleTime: 0,
       
       // Cache time - how long to keep unused data in cache
       cacheTime: 5 * 60 * 1000, // 5 minutes

@@ -185,8 +185,13 @@ const TaskBoard = () => {
   };
 
   const handleRefresh = () => {
-    queryClient.invalidateQueries(['task', taskId]);
-    queryClient.invalidateQueries(['taskTree', taskId]);
+    // Reconnect WebSocket if disconnected
+    if (!connected) {
+      connect().catch(err => console.error('Failed to reconnect:', err));
+    }
+    // Refresh data
+    queryClient.invalidateQueries(['tasks', 'detail', taskId]);
+    queryClient.invalidateQueries(['tasks', 'tree', taskId]);
   };
 
   // Loading state
@@ -423,7 +428,7 @@ const ConnectionIndicator = ({ connected }) => (
       backgroundColor: connected ? tokens.colors.success[500] : tokens.colors.error[500],
     }} />
     <Text style={styles.connectionText}>
-      {connected ? 'Connected' : 'Disconnected'}
+      {connected ? 'Live' : 'Offline'}
     </Text>
   </div>
 );

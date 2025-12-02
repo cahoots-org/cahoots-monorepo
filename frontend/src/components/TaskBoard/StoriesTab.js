@@ -128,9 +128,6 @@ const StoriesTab = ({ task }) => {
                             </Text>
                           </div>
                           <div style={styles.storyItemRight}>
-                            {story.story_points && (
-                              <Badge variant="info" size="sm">{story.story_points} pts</Badge>
-                            )}
                             <Badge
                               variant={
                                 story.priority === 'must_have' ? 'error' :

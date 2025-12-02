@@ -1,12 +1,13 @@
 services:
-  # Redis for storage and caching
+  # Redis Stack for storage, caching, and RediSearch (required by Context Engine)
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack-server:latest
     ports:
       - "6380:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    environment:
+      - REDIS_ARGS=--appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -33,6 +34,11 @@ services:
       - LAMBDA_API_KEY=${LAMBDA_API_KEY:-}
       - CEREBRAS_API_KEY=${CEREBRAS_API_KEY:-}
       - CEREBRAS_MODEL=${CEREBRAS_MODEL:-llama3.1-70b}
+      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
+      - FEATHERLESS_MODEL=${FEATHERLESS_MODEL:-moonshotai/Kimi-K2-Instruct}
+      - AWS_BEARER_TOKEN_BEDROCK=${AWS_BEARER_TOKEN_BEDROCK:-}
+      - AWS_BEDROCK_MODEL=${AWS_BEDROCK_MODEL:-}
+      - AWS_BEDROCK_REGION=${AWS_BEDROCK_REGION:-us-east-1}
       - HUGGINGFACE_API_KEY=${HUGGINGFACE_API_KEY:-}
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-http://host.docker.internal:11434/v1}
       - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-llama3.1:70b}

@@ -425,14 +425,18 @@ class TaskProcessor:
                 print(f"[TaskProcessor] Task enrichment complete: {len(enriched_tasks)} new tasks added")
 
             # Mark task as completed after event modeling
+            old_status = root_task.status
             root_task.status = TaskStatus.COMPLETED
             await self.storage.save_task(root_task)
+            await task_event_emitter.emit_task_status_changed(root_task, old_status, user_id)
 
         except Exception as e:
             print(f"[TaskProcessor] Error in event modeling analysis: {e}")
             # Mark as completed even if event modeling fails
+            old_status = root_task.status
             root_task.status = TaskStatus.COMPLETED
             await self.storage.save_task(root_task)
+            await task_event_emitter.emit_task_status_changed(root_task, old_status, user_id)
 
         # Save complete tree
         await self.storage.save_task_tree(tree)
@@ -783,8 +787,11 @@ class TaskProcessor:
             # Mark root task as complete
             if root_task.status != TaskStatus.COMPLETED:
                 print(f"[TaskProcessor] All processing complete, marking root task as complete")
+                old_status = root_task.status
                 root_task.status = TaskStatus.COMPLETED
                 await self.storage.save_task(root_task)
+                # Emit status change event so frontend updates
+                await task_event_emitter.emit_task_status_changed(root_task, old_status, root_task.user_id)
 
             # Save complete tree
             await self.storage.save_task_tree(tree)

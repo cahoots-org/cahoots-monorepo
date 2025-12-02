@@ -65,21 +65,39 @@ const CreateTask = () => {
     createTask(taskData, {
       onSuccess: (response) => {
         console.log('Create task response:', response);
+        console.log('Response type:', typeof response);
+        console.log('Response keys:', response ? Object.keys(response) : 'null');
+
         showSuccess('Task created successfully!');
+
         // Navigate to the created task's detail page
-        // The response has the structure: { data: { task_id: "...", ... } }
-        const taskId = response?.data?.task_id || response?.task_id;
+        // The response structure from apiClient is: { data: { task_id: "...", ... } }
+        // Try multiple paths to find task_id
+        const taskId = response?.data?.task_id
+          || response?.task_id
+          || response?.data?.id
+          || response?.id;
+
+        console.log('Extracted taskId:', taskId);
+
         if (taskId) {
           // Navigate to new ProjectView for better UX
           navigate(`/projects/${taskId}`);
         } else {
           console.warn('No task_id in response, navigating to dashboard', response);
+          console.warn('Full response structure:', JSON.stringify(response, null, 2));
           // Fallback to dashboard if no task_id
           navigate('/dashboard');
         }
       },
       onError: (error) => {
         console.error('Create task error:', error);
+        console.error('Error details:', {
+          message: error?.message,
+          userMessage: error?.userMessage,
+          response: error?.response?.data,
+          status: error?.response?.status
+        });
         showError(error?.userMessage || error?.message || 'Failed to create task');
       }
     });

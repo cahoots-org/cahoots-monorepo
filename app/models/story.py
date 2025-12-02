@@ -44,12 +44,6 @@ class UserStory(BaseModel):
     # Story metadata
     status: StoryStatus = Field(default=StoryStatus.DRAFT)
     priority: StoryPriority = Field(default=StoryPriority.SHOULD_HAVE)
-    story_points: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=21,
-        description="Estimated story points"
-    )
 
     # Task tracking
     task_ids: List[str] = Field(

@@ -67,15 +67,19 @@ class ContextEngineClient:
             self._client = None
 
     async def health_check(self) -> bool:
-        """Check if Context Engine is available"""
-        try:
-            client = await self._get_client()
-            if not client:
-                return False
+        """Check if Context Engine is available and functional"""
+        import httpx
 
-            # Use the SDK's health method
-            response = await client.health()
-            is_healthy = getattr(response, 'status', '') == 'healthy'
+        try:
+            # Use the simple /health endpoint which just checks if service is running
+            # The /api/v1/health is too strict about optional components like RediSearch
+            url = f"{self.base_url}/health"
+            async with httpx.AsyncClient(timeout=10.0) as http_client:
+                response = await http_client.get(url)
+                response.raise_for_status()
+                data = response.json()
+
+            is_healthy = data.get('status') == 'healthy'
             self._is_available = is_healthy
             return is_healthy
         except Exception as e:
@@ -158,24 +162,31 @@ class ContextEngineClient:
         Returns:
             Registration response with matched data and catch-up info
         """
-        client = await self._get_client()
-        if not client:
-            raise RuntimeError("Context Engine SDK not available")
+        import httpx
 
+        # Use direct HTTP to avoid SDK response parsing issues
         try:
-            response = await client.register_agent(
-                agent_id=agent_id,
-                project_id=project_id,
-                data_needs=data_needs
-            )
+            url = f"{self.base_url}/api/v1/agents/register"
+            headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["X-API-Key"] = self.api_key
 
-            # Extract response data - handle both old and new response formats
-            notification_ch = getattr(response, 'notification_channel', f"agent:{agent_id}")
-            caught_up = getattr(response, 'caught_up_events', 0)
+            payload = {
+                "agent_id": agent_id,
+                "project_id": project_id,
+                "data_needs": data_needs
+            }
 
-            # Handle both matched_needs (dict) and matched_data (list) formats
-            matched_needs = getattr(response, 'matched_needs', {})
-            matched_data = getattr(response, 'matched_data', None) or []
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await http_client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+            # Extract response data
+            notification_ch = data.get('notification_channel', f"agent:{agent_id}")
+            caught_up = data.get('caught_up_events', 0)
+            matched_needs = data.get('matched_needs', {})
+            matched_data = data.get('matched_data', [])
 
             # Calculate total matches
             if matched_needs and isinstance(matched_needs, dict):
@@ -219,22 +230,31 @@ class ContextEngineClient:
         Returns:
             List of matching data items
         """
-        client = await self._get_client()
-        if not client:
-            raise RuntimeError("Context Engine SDK not available")
+        import httpx
 
+        # Use direct HTTP with correct endpoint path
         try:
-            response = await client.query(
-                project_id=project_id,
-                query=query
-            )
+            url = f"{self.base_url}/api/v1/projects/{project_id}/query"
+            headers = {"Content-Type": "application/json"}
+            if self.api_key:
+                headers["X-API-Key"] = self.api_key
 
-            results = getattr(response, 'results', [])
+            payload = {
+                "query": query,
+                "limit": limit
+            }
+
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await http_client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+            results = data.get('results', [])
             return [
                 {
-                    "data_key": getattr(r, 'data_key', ''),
-                    "data": getattr(r, 'data', {}),
-                    "similarity_score": getattr(r, 'similarity_score', 0.0)
+                    "data_key": r.get('data_key', ''),
+                    "data": r.get('data', {}),
+                    "similarity_score": r.get('similarity_score', 0.0)
                 }
                 for r in results[:limit]
             ]
@@ -362,18 +382,13 @@ class ContextEngineClient:
         Returns:
             Agent context or None if not available
         """
-        client = await self._get_client()
-        if not client:
-            return None
-
         try:
-            # Query for all data relevant to this agent
-            response = await client.query(
+            # Query for all data relevant to this agent using our HTTP-based query method
+            results = await self.query(
                 project_id=project_id,
                 query=f"context for agent {agent_id}"
             )
 
-            results = getattr(response, 'results', [])
             if not results:
                 return None
 
@@ -382,8 +397,8 @@ class ContextEngineClient:
                 "project_id": project_id,
                 "context_items": [
                     {
-                        "data_key": getattr(r, 'data_key', ''),
-                        "data": getattr(r, 'data', {})
+                        "data_key": r.get('data_key', ''),
+                        "data": r.get('data', {})
                     }
                     for r in results
                 ]

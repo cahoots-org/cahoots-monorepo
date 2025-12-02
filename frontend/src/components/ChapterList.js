@@ -170,9 +170,18 @@ const SliceCard = ({ slice, index, onEdit }) => {
             style={styles.sliceExpandIcon}
           />
           <div style={styles.sliceInfo}>
-            <Text style={styles.sliceName}>{slice.name}</Text>
+            <Text style={styles.sliceName}>
+              {slice.name || slice.command || slice.read_model || `${slice.type} slice`}
+            </Text>
             {slice.user_story && (
               <Text style={styles.sliceStory}>{slice.user_story}</Text>
+            )}
+            {!slice.user_story && slice.type && (
+              <Text style={styles.sliceStory}>
+                {slice.type === 'state_change' ? 'State Change' :
+                 slice.type === 'state_view' ? 'State View' :
+                 slice.type === 'automation' ? 'Automation' : slice.type}
+              </Text>
             )}
           </div>
         </div>
@@ -201,7 +210,9 @@ const SliceCard = ({ slice, index, onEdit }) => {
               <Text style={styles.sectionLabel}>Command</Text>
               <div style={styles.elementCard}>
                 <Badge variant="primary" style={styles.elementBadge}>CMD</Badge>
-                <Text style={styles.elementName}>{slice.command.name}</Text>
+                <Text style={styles.elementName}>
+                  {typeof slice.command === 'string' ? slice.command : slice.command.name}
+                </Text>
               </div>
             </div>
           )}
@@ -229,7 +240,9 @@ const SliceCard = ({ slice, index, onEdit }) => {
               <Text style={styles.sectionLabel}>Read Model</Text>
               <div style={styles.elementCard}>
                 <Badge variant="info" style={styles.elementBadge}>RM</Badge>
-                <Text style={styles.elementName}>{slice.read_model.name}</Text>
+                <Text style={styles.elementName}>
+                  {typeof slice.read_model === 'string' ? slice.read_model : slice.read_model.name}
+                </Text>
               </div>
             </div>
           )}

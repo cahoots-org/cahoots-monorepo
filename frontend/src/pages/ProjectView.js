@@ -28,6 +28,7 @@ import { useProjectContext } from '../hooks/api/useProjectContext';
 
 import ProjectSummary from '../components/ProjectSummary';
 import ChapterList from '../components/ChapterList';
+import StoriesTab from '../components/TaskBoard/StoriesTab';
 import RefineModal from '../components/RefineModal';
 
 import apiClient from '../services/unifiedApiClient';
@@ -106,6 +107,11 @@ const ProjectView = () => {
   }, [connected, subscribe, taskId, queryClient]);
 
   const handleRefresh = () => {
+    // Reconnect WebSocket if disconnected
+    if (!connected) {
+      connect().catch(err => console.error('Failed to reconnect:', err));
+    }
+    // Refresh data
     queryClient.invalidateQueries(['tasks', 'detail', taskId]);
     queryClient.invalidateQueries(['tasks', 'tree', taskId]);
     queryClient.invalidateQueries(['projects', 'context', taskId]);
@@ -119,9 +125,16 @@ const ProjectView = () => {
     handleRefresh();
   };
 
-  // Get chapters and slices from task metadata
+  // Get chapters from task metadata
   const chapters = task?.metadata?.chapters || [];
-  const slices = task?.metadata?.slices || [];
+
+  // Slices are nested inside chapters - flatten them with chapter reference
+  const slices = chapters.flatMap(chapter =>
+    (chapter.slices || []).map(slice => ({
+      ...slice,
+      chapter: chapter.name
+    }))
+  );
 
   const isProcessing = task?.status === 'pending' || task?.status === 'processing';
 
@@ -196,6 +209,13 @@ const ProjectView = () => {
             Summary
           </Button>
           <Button
+            variant={activeView === 'stories' ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => setActiveView('stories')}
+          >
+            Epics & Stories
+          </Button>
+          <Button
             variant={activeView === 'chapters' ? 'primary' : 'ghost'}
             size="sm"
             onClick={() => setActiveView('chapters')}
@@ -213,6 +233,14 @@ const ProjectView = () => {
       )}
 
       {/* Content based on active view */}
+      {!isProcessing && activeView === 'summary' && (
+        <SummaryView task={task} taskTree={taskTree} />
+      )}
+
+      {!isProcessing && activeView === 'stories' && (
+        <StoriesTab task={task} />
+      )}
+
       {!isProcessing && activeView === 'chapters' && (
         <ChapterList
           chapters={chapters}
@@ -242,17 +270,32 @@ const ProjectView = () => {
  * Simple task list for "All Tasks" view
  */
 const TaskList = ({ taskTree }) => {
-  if (!taskTree?.tasks) {
+  // Flatten the tree structure into a list
+  const flattenTree = (node, depth = 0) => {
+    if (!node) return [];
+    const tasks = [];
+    // Add the current node (skip root at depth 0)
+    if (depth > 0) {
+      tasks.push({ ...node, depth });
+    }
+    // Recursively add children
+    if (node.children && Array.isArray(node.children)) {
+      node.children.forEach(child => {
+        tasks.push(...flattenTree(child, depth + 1));
+      });
+    }
+    return tasks;
+  };
+
+  const tasks = flattenTree(taskTree);
+
+  if (tasks.length === 0) {
     return (
       <Card style={styles.emptyCard}>
         <Text style={styles.emptyText}>No tasks yet</Text>
       </Card>
     );
   }
-
-  const tasks = Object.values(taskTree.tasks)
-    .filter(t => t.depth > 0)
-    .sort((a, b) => a.depth - b.depth);
 
   return (
     <Card style={styles.taskListCard}>
@@ -288,6 +331,133 @@ const TaskList = ({ taskTree }) => {
         ))}
       </div>
     </Card>
+  );
+};
+
+/**
+ * Summary view showing event model overview
+ */
+const SummaryView = ({ task, taskTree }) => {
+  const events = task?.metadata?.extracted_events || [];
+  const commands = task?.metadata?.commands || [];
+  const readModels = task?.metadata?.read_models || [];
+  const swimlanes = task?.metadata?.swimlanes || [];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: tokens.spacing[5] }}>
+      {/* Swimlanes Overview */}
+      {swimlanes.length > 0 && (
+        <Card style={{ padding: tokens.spacing[5] }}>
+          <Text size="lg" weight="semibold" style={{ marginBottom: tokens.spacing[4] }}>
+            System Components
+          </Text>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: tokens.spacing[3],
+          }}>
+            {swimlanes.map((swimlane, i) => (
+              <div key={i} style={{
+                padding: tokens.spacing[4],
+                backgroundColor: 'var(--color-bg-secondary)',
+                borderRadius: tokens.borderRadius.md,
+              }}>
+                <Text weight="semibold" style={{ marginBottom: tokens.spacing[1] }}>
+                  {swimlane.name}
+                </Text>
+                <Text size="sm" style={{ color: 'var(--color-text-muted)', marginBottom: tokens.spacing[3] }}>
+                  {swimlane.description}
+                </Text>
+                <div style={{ display: 'flex', gap: tokens.spacing[2], flexWrap: 'wrap' }}>
+                  <Badge variant="warning" size="sm">{swimlane.events?.length || 0} events</Badge>
+                  <Badge variant="primary" size="sm">{swimlane.commands?.length || 0} commands</Badge>
+                  <Badge variant="info" size="sm">{swimlane.read_models?.length || 0} views</Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Event Model Elements */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+        gap: tokens.spacing[4],
+      }}>
+        {/* Events */}
+        {events.length > 0 && (
+          <Card style={{ padding: tokens.spacing[5] }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: tokens.spacing[3] }}>
+              <Text size="lg" weight="semibold">Events</Text>
+              <Badge variant="warning">{events.length}</Badge>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: tokens.spacing[2] }}>
+              {events.slice(0, 15).map((event, i) => (
+                <Badge key={i} variant="warning">
+                  {typeof event === 'string' ? event : event.name}
+                </Badge>
+              ))}
+              {events.length > 15 && (
+                <Badge variant="secondary">+{events.length - 15} more</Badge>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* Commands */}
+        {commands.length > 0 && (
+          <Card style={{ padding: tokens.spacing[5] }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: tokens.spacing[3] }}>
+              <Text size="lg" weight="semibold">Commands</Text>
+              <Badge variant="primary">{commands.length}</Badge>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: tokens.spacing[2] }}>
+              {commands.slice(0, 15).map((cmd, i) => (
+                <Badge key={i} variant="primary">
+                  {typeof cmd === 'string' ? cmd : cmd.name}
+                </Badge>
+              ))}
+              {commands.length > 15 && (
+                <Badge variant="secondary">+{commands.length - 15} more</Badge>
+              )}
+            </div>
+          </Card>
+        )}
+
+        {/* Read Models */}
+        {readModels.length > 0 && (
+          <Card style={{ padding: tokens.spacing[5] }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: tokens.spacing[3] }}>
+              <Text size="lg" weight="semibold">Read Models</Text>
+              <Badge variant="info">{readModels.length}</Badge>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: tokens.spacing[2] }}>
+              {readModels.slice(0, 15).map((rm, i) => (
+                <Badge key={i} variant="info">
+                  {typeof rm === 'string' ? rm : rm.name}
+                </Badge>
+              ))}
+              {readModels.length > 15 && (
+                <Badge variant="secondary">+{readModels.length - 15} more</Badge>
+              )}
+            </div>
+          </Card>
+        )}
+      </div>
+
+      {/* Empty state */}
+      {events.length === 0 && commands.length === 0 && readModels.length === 0 && swimlanes.length === 0 && (
+        <Card style={{ textAlign: 'center', padding: tokens.spacing[10] }}>
+          <Text size="lg" weight="medium" style={{ marginBottom: tokens.spacing[2] }}>
+            No event model data yet
+          </Text>
+          <Text style={{ color: 'var(--color-text-muted)' }}>
+            Check the Chapters tab for the task breakdown, or wait for processing to complete.
+          </Text>
+        </Card>
+      )}
+    </div>
   );
 };
 
