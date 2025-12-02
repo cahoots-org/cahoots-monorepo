@@ -1,67 +1,106 @@
 /**
- * RefineModal - Modal for refining/regenerating the project plan
+ * RefineModal - Smart refinement modal for project plans
  *
- * Allows users to:
- * - Edit the original prompt
- * - Add additional context/requirements
- * - Choose what to regenerate (full, chapters only, event model only)
+ * Provides multiple ways to give feedback:
+ * - Quick feedback chips for common refinements
+ * - Free-form feedback text
+ * - Specific element targeting (chapters, slices, tasks)
+ *
+ * Uses contextual LLM refinement instead of full regeneration
  */
 import React, { useState } from 'react';
 import {
   Modal,
   Button,
   Text,
+  Badge,
+  LoadingSpinner,
   tokens,
 } from '../design-system';
 import { useApp } from '../contexts/AppContext';
 import apiClient from '../services/unifiedApiClient';
 
+// Quick feedback options for common refinements
+const FEEDBACK_CHIPS = [
+  { id: 'more-detail', label: 'More detail needed', icon: '🔍' },
+  { id: 'too-complex', label: 'Too complex', icon: '📉' },
+  { id: 'missing-features', label: 'Missing features', icon: '➕' },
+  { id: 'wrong-tech', label: 'Wrong tech stack', icon: '🔧' },
+  { id: 'scope-too-big', label: 'Scope too big', icon: '✂️' },
+  { id: 'scope-too-small', label: 'Scope too small', icon: '📈' },
+  { id: 'missing-security', label: 'Missing security', icon: '🔒' },
+  { id: 'missing-testing', label: 'Missing testing', icon: '🧪' },
+];
+
 const RefineModal = ({
   isOpen,
   onClose,
   task,
+  taskTree,
   onRefineComplete,
 }) => {
   const { showSuccess, showError } = useApp();
 
-  const [description, setDescription] = useState(task?.description || '');
-  const [additionalContext, setAdditionalContext] = useState('');
-  const [refineMode, setRefineMode] = useState('full');
+  const [selectedChips, setSelectedChips] = useState([]);
+  const [feedback, setFeedback] = useState('');
   const [isRefining, setIsRefining] = useState(false);
+  const [refinementStatus, setRefinementStatus] = useState(null);
+
+  const toggleChip = (chipId) => {
+    setSelectedChips(prev =>
+      prev.includes(chipId)
+        ? prev.filter(id => id !== chipId)
+        : [...prev, chipId]
+    );
+  };
 
   const handleRefine = async () => {
-    if (!description.trim()) {
-      showError('Please enter a description');
+    if (selectedChips.length === 0 && !feedback.trim()) {
+      showError('Please provide some feedback');
       return;
     }
 
     setIsRefining(true);
+    setRefinementStatus('Analyzing your feedback...');
 
     try {
-      // For now, we'll update the task description and trigger regeneration
-      // In the future, this could be more granular
+      // Build the refinement request
+      const chipLabels = selectedChips.map(id =>
+        FEEDBACK_CHIPS.find(c => c.id === id)?.label
+      ).filter(Boolean);
 
-      if (refineMode === 'full') {
-        // Update task description and regenerate everything
-        await apiClient.patch(`/tasks/${task.task_id}`, {
-          description: description.trim(),
-          metadata: {
-            ...task.metadata,
-            additional_context: additionalContext.trim() || undefined,
-            regenerated_at: new Date().toISOString(),
-          },
-        });
+      const refinementRequest = {
+        feedback: feedback.trim(),
+        quick_feedback: chipLabels,
+        // Include current project context for incremental refinement
+        current_context: {
+          description: task?.description,
+          chapters: task?.metadata?.chapters?.map(c => ({
+            name: c.name,
+            description: c.description,
+            slice_count: c.slices?.length || 0,
+          })),
+          event_count: task?.metadata?.extracted_events?.length || 0,
+          command_count: task?.metadata?.commands?.length || 0,
+          task_count: taskTree?.tasks ? Object.keys(taskTree.tasks).length : 0,
+        },
+      };
 
-        // Trigger reprocessing
-        await apiClient.post(`/tasks/${task.task_id}/reprocess`);
+      setRefinementStatus('Refining project plan...');
 
-        showSuccess('Regenerating project plan...');
-      } else if (refineMode === 'event-model') {
-        // Just regenerate the event model
-        await apiClient.post(`/events/generate-model/${task.task_id}`);
-        showSuccess('Regenerating event model...');
-      }
+      // Call the new refinement endpoint
+      const response = await apiClient.post(
+        `/tasks/${task.task_id}/refine`,
+        refinementRequest
+      );
 
+      setRefinementStatus('Applying changes...');
+
+      // The response contains what was changed
+      const data = response.data || response;
+      const summary = data.summary || 'Project plan refined successfully';
+
+      showSuccess(summary);
       onRefineComplete?.();
       onClose();
     } catch (error) {
@@ -69,23 +108,39 @@ const RefineModal = ({
       showError(error.response?.data?.detail || 'Failed to refine project');
     } finally {
       setIsRefining(false);
+      setRefinementStatus(null);
     }
   };
 
-  const refineModes = [
-    {
-      id: 'full',
-      label: 'Full Regeneration',
-      description: 'Regenerate everything from scratch with the new description',
-      icon: '🔄',
-    },
-    {
-      id: 'event-model',
-      label: 'Event Model Only',
-      description: 'Keep tasks, regenerate commands, events, and read models',
-      icon: '⚡',
-    },
-  ];
+  const handleStartOver = async () => {
+    if (!window.confirm('This will regenerate everything from scratch. Are you sure?')) {
+      return;
+    }
+
+    setIsRefining(true);
+    setRefinementStatus('Regenerating project plan...');
+
+    try {
+      await apiClient.post(`/tasks/${task.task_id}/reprocess`);
+      showSuccess('Regenerating project plan from scratch...');
+      onRefineComplete?.();
+      onClose();
+    } catch (error) {
+      console.error('Reprocess error:', error);
+      showError(error.response?.data?.detail || 'Failed to regenerate project');
+    } finally {
+      setIsRefining(false);
+      setRefinementStatus(null);
+    }
+  };
+
+  // Get summary of current project for context
+  const chapterCount = task?.metadata?.chapters?.length || 0;
+  const eventCount = task?.metadata?.extracted_events?.length || 0;
+  const commandCount = task?.metadata?.commands?.length || 0;
+  const taskCount = taskTree?.tasks ? Object.keys(taskTree.tasks).length - 1 : 0; // -1 to exclude root
+  const storyCount = task?.context?.user_stories?.length || task?.metadata?.user_stories?.length || 0;
+  const epicCount = task?.context?.epics?.length || task?.metadata?.epics?.length || 0;
 
   return (
     <Modal
@@ -95,74 +150,67 @@ const RefineModal = ({
       size="lg"
     >
       <div style={styles.content}>
-        {/* Description Editor */}
-        <div style={styles.section}>
-          <label style={styles.label}>Project Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what you want to build..."
-            style={styles.textarea}
-            rows={4}
-          />
-          <Text style={styles.hint}>
-            Edit your original description to refine the generated plan
-          </Text>
+        {/* Current Plan Summary */}
+        <div style={styles.summarySection}>
+          <Text style={styles.summaryLabel}>Current Plan</Text>
+          <div style={styles.summaryStats}>
+            <Badge variant="default">{epicCount} epics</Badge>
+            <Badge variant="default">{storyCount} stories</Badge>
+            <Badge variant="default">{taskCount} tasks</Badge>
+            <Badge variant="default">{chapterCount} chapters</Badge>
+            <Badge variant="default">{commandCount} commands</Badge>
+            <Badge variant="default">{eventCount} events</Badge>
+          </div>
         </div>
 
-        {/* Additional Context */}
+        {/* Quick Feedback Chips */}
         <div style={styles.section}>
-          <label style={styles.label}>Additional Context (Optional)</label>
-          <textarea
-            value={additionalContext}
-            onChange={(e) => setAdditionalContext(e.target.value)}
-            placeholder="Add any additional requirements, constraints, or preferences..."
-            style={styles.textarea}
-            rows={3}
-          />
-          <Text style={styles.hint}>
-            Add details like: preferred technologies, must-have features, timeline constraints
-          </Text>
-        </div>
-
-        {/* Refine Mode */}
-        <div style={styles.section}>
-          <label style={styles.label}>What to Regenerate</label>
-          <div style={styles.modeGrid}>
-            {refineModes.map((mode) => (
-              <div
-                key={mode.id}
+          <label style={styles.label}>What needs improvement?</label>
+          <div style={styles.chipGrid}>
+            {FEEDBACK_CHIPS.map((chip) => (
+              <button
+                key={chip.id}
                 style={{
-                  ...styles.modeCard,
-                  ...(refineMode === mode.id && styles.modeCardSelected),
+                  ...styles.chip,
+                  ...(selectedChips.includes(chip.id) && styles.chipSelected),
                 }}
-                onClick={() => setRefineMode(mode.id)}
+                onClick={() => toggleChip(chip.id)}
+                disabled={isRefining}
               >
-                <div style={styles.modeIcon}>{mode.icon}</div>
-                <div style={styles.modeInfo}>
-                  <Text style={styles.modeLabel}>{mode.label}</Text>
-                  <Text style={styles.modeDescription}>{mode.description}</Text>
-                </div>
-                <div style={styles.modeRadio}>
-                  <div style={{
-                    ...styles.radioOuter,
-                    ...(refineMode === mode.id && styles.radioOuterSelected),
-                  }}>
-                    {refineMode === mode.id && <div style={styles.radioInner} />}
-                  </div>
-                </div>
-              </div>
+                <span style={styles.chipIcon}>{chip.icon}</span>
+                <span style={styles.chipLabel}>{chip.label}</span>
+              </button>
             ))}
           </div>
         </div>
 
-        {/* Warning */}
-        {refineMode === 'full' && (
-          <div style={styles.warning}>
-            <Text style={styles.warningText}>
-              Full regeneration will replace all current tasks, chapters, and event model data.
-              This action cannot be undone.
-            </Text>
+        {/* Free-form Feedback */}
+        <div style={styles.section}>
+          <label style={styles.label}>Additional feedback</label>
+          <textarea
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder="Describe what you'd like to change...
+
+Examples:
+- Add user authentication with OAuth
+- Split the 'User Management' chapter into separate admin and user flows
+- Remove the mobile app features, focus on web only
+- Add more detail to the payment processing tasks"
+            style={styles.textarea}
+            rows={5}
+            disabled={isRefining}
+          />
+          <Text style={styles.hint}>
+            Be specific about what to add, remove, or change. The AI will make targeted updates.
+          </Text>
+        </div>
+
+        {/* Refinement Status */}
+        {isRefining && (
+          <div style={styles.statusSection}>
+            <LoadingSpinner size="sm" />
+            <Text style={styles.statusText}>{refinementStatus}</Text>
           </div>
         )}
 
@@ -170,18 +218,29 @@ const RefineModal = ({
         <div style={styles.actions}>
           <Button
             variant="ghost"
-            onClick={onClose}
+            onClick={handleStartOver}
             disabled={isRefining}
+            style={styles.startOverButton}
           >
-            Cancel
+            Start Over
           </Button>
-          <Button
-            variant="primary"
-            onClick={handleRefine}
-            loading={isRefining}
-          >
-            {isRefining ? 'Refining...' : 'Refine Plan'}
-          </Button>
+          <div style={styles.primaryActions}>
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              disabled={isRefining}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleRefine}
+              loading={isRefining}
+              disabled={selectedChips.length === 0 && !feedback.trim()}
+            >
+              {isRefining ? 'Refining...' : 'Apply Changes'}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -193,6 +252,23 @@ const styles = {
     padding: tokens.spacing[2],
   },
 
+  summarySection: {
+    backgroundColor: 'var(--color-bg-secondary)',
+    padding: tokens.spacing[4],
+    borderRadius: tokens.borderRadius.lg,
+    marginBottom: tokens.spacing[6],
+  },
+  summaryLabel: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text-muted)',
+    marginBottom: tokens.spacing[2],
+  },
+  summaryStats: {
+    display: 'flex',
+    gap: tokens.spacing[2],
+    flexWrap: 'wrap',
+  },
+
   section: {
     marginBottom: tokens.spacing[6],
   },
@@ -200,9 +276,39 @@ const styles = {
   label: {
     display: 'block',
     fontSize: tokens.typography.fontSize.sm[0],
-    fontWeight: tokens.typography.fontWeight.semibold,
+    fontWeight: tokens.typography.fontWeight.medium,
     color: 'var(--color-text)',
-    marginBottom: tokens.spacing[2],
+    marginBottom: tokens.spacing[3],
+  },
+
+  chipGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: tokens.spacing[2],
+  },
+
+  chip: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[2],
+    padding: `${tokens.spacing[2]} ${tokens.spacing[3]}`,
+    backgroundColor: 'var(--color-bg-secondary)',
+    border: '1px solid var(--color-border)',
+    borderRadius: tokens.borderRadius.full,
+    cursor: 'pointer',
+    transition: 'all 0.15s ease',
+    fontSize: tokens.typography.fontSize.sm[0],
+  },
+  chipSelected: {
+    backgroundColor: tokens.colors.primary[500],
+    borderColor: tokens.colors.primary[500],
+    color: 'white',
+  },
+  chipIcon: {
+    fontSize: '14px',
+  },
+  chipLabel: {
+    fontWeight: tokens.typography.fontWeight.medium,
   },
 
   textarea: {
@@ -210,107 +316,47 @@ const styles = {
     padding: tokens.spacing[3],
     fontSize: tokens.typography.fontSize.base[0],
     fontFamily: 'inherit',
-    borderRadius: tokens.borderRadius.md,
-    border: `1px solid var(--color-border)`,
+    border: '1px solid var(--color-border)',
+    borderRadius: tokens.borderRadius.lg,
     backgroundColor: 'var(--color-bg)',
     color: 'var(--color-text)',
     resize: 'vertical',
-    outline: 'none',
-    transition: 'border-color 0.2s ease',
+    lineHeight: 1.5,
   },
 
   hint: {
     fontSize: tokens.typography.fontSize.xs[0],
     color: 'var(--color-text-muted)',
-    marginTop: tokens.spacing[1],
+    marginTop: tokens.spacing[2],
   },
 
-  modeGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: tokens.spacing[3],
-  },
-
-  modeCard: {
+  statusSection: {
     display: 'flex',
     alignItems: 'center',
     gap: tokens.spacing[3],
     padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-bg-secondary)',
     borderRadius: tokens.borderRadius.lg,
-    border: `2px solid var(--color-border)`,
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
+    marginBottom: tokens.spacing[4],
   },
-
-  modeCardSelected: {
-    borderColor: tokens.colors.primary[500],
-    backgroundColor: `${tokens.colors.primary[500]}10`,
-  },
-
-  modeIcon: {
-    fontSize: '24px',
-    width: '40px',
-    textAlign: 'center',
-  },
-
-  modeInfo: {
-    flex: 1,
-  },
-
-  modeLabel: {
-    fontWeight: tokens.typography.fontWeight.medium,
-    marginBottom: tokens.spacing[1],
-  },
-
-  modeDescription: {
+  statusText: {
     fontSize: tokens.typography.fontSize.sm[0],
-    color: 'var(--color-text-muted)',
-  },
-
-  modeRadio: {
-    flexShrink: 0,
-  },
-
-  radioOuter: {
-    width: '20px',
-    height: '20px',
-    borderRadius: tokens.borderRadius.full,
-    border: `2px solid var(--color-border)`,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s ease',
-  },
-
-  radioOuterSelected: {
-    borderColor: tokens.colors.primary[500],
-  },
-
-  radioInner: {
-    width: '10px',
-    height: '10px',
-    borderRadius: tokens.borderRadius.full,
-    backgroundColor: tokens.colors.primary[500],
-  },
-
-  warning: {
-    padding: tokens.spacing[4],
-    backgroundColor: `${tokens.colors.warning[500]}15`,
-    borderRadius: tokens.borderRadius.md,
-    marginBottom: tokens.spacing[6],
-  },
-
-  warningText: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    color: tokens.colors.warning[700],
+    color: 'var(--color-text)',
   },
 
   actions: {
     display: 'flex',
-    justifyContent: 'flex-end',
-    gap: tokens.spacing[3],
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: tokens.spacing[4],
-    borderTop: `1px solid var(--color-border)`,
+    borderTop: '1px solid var(--color-border)',
+  },
+  startOverButton: {
+    color: 'var(--color-text-muted)',
+  },
+  primaryActions: {
+    display: 'flex',
+    gap: tokens.spacing[3],
   },
 };
 

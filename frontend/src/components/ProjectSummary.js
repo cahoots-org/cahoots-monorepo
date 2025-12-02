@@ -26,12 +26,13 @@ const ProjectSummary = ({
   task,
   taskTree,
   onRefine,
-  onViewDetails
+  onViewDetails,
+  onResume
 }) => {
   const { showError, showSuccess } = useApp();
   const { data: projectContext, isLoading: contextLoading } = useProjectContext(task?.task_id);
 
-  const isProcessing = task?.status === 'pending' || task?.status === 'processing';
+  const isProcessing = task?.status === 'submitted' || task?.status === 'processing';
   const stats = projectContext?.stats || {};
   const context = projectContext?.context || {};
 
@@ -58,6 +59,7 @@ const ProjectSummary = ({
           taskTree={taskTree}
           context={projectContext}
           contextLoading={contextLoading}
+          onResume={onResume}
         />
       )}
 
@@ -130,7 +132,7 @@ const ProjectSummary = ({
 /**
  * Processing status with progress indicators
  */
-const ProcessingStatus = ({ task, taskTree, context, contextLoading }) => {
+const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume }) => {
   const stages = [
     { key: 'analyzing', label: 'Analyzing', icon: '🔍' },
     { key: 'decomposing', label: 'Decomposing', icon: '🎯' },
@@ -147,6 +149,32 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading }) => {
   const hasEpics = task?.context?.epics?.length > 0 || task?.metadata?.epics?.length > 0;
   const hasStories = task?.context?.user_stories?.length > 0 || task?.metadata?.user_stories?.length > 0;
   const hasEventModel = task?.metadata?.extracted_events?.length > 0 || task?.metadata?.commands?.length > 0;
+
+  // Detect if processing was interrupted (status is submitted but has partial data)
+  const isInterrupted = task?.status === 'submitted' && (taskCount > 1 || hasEpics);
+
+  if (isInterrupted) {
+    return (
+      <div style={styles.processingSection}>
+        <div style={styles.interruptedHeader}>
+          <Text style={styles.interruptedIcon}>⚠️</Text>
+          <Text style={styles.processingText}>Processing was interrupted</Text>
+        </div>
+        <Text style={styles.interruptedMessage}>
+          This project was partially processed but didn't complete. You can resume processing to finish generating the event model.
+        </Text>
+        {onResume && (
+          <Button
+            variant="primary"
+            onClick={onResume}
+            style={{ marginTop: tokens.spacing[4] }}
+          >
+            Resume Processing
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={styles.processingSection}>
@@ -317,10 +345,14 @@ const styles = {
     marginBottom: tokens.spacing[2],
   },
   promptText: {
-    fontSize: tokens.typography.fontSize.xl[0],
-    fontWeight: tokens.typography.fontWeight.medium,
+    fontSize: tokens.typography.fontSize.sm[0],
+    fontWeight: tokens.typography.fontWeight.normal,
     fontStyle: 'italic',
     color: 'var(--color-text)',
+    whiteSpace: 'pre-wrap',
+    maxHeight: '200px',
+    overflowY: 'auto',
+    padding: tokens.spacing[2],
   },
 
   // Processing section
@@ -338,6 +370,20 @@ const styles = {
   processingText: {
     fontSize: tokens.typography.fontSize.lg[0],
     fontWeight: tokens.typography.fontWeight.medium,
+  },
+  interruptedHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[3],
+    marginBottom: tokens.spacing[3],
+  },
+  interruptedIcon: {
+    fontSize: '24px',
+  },
+  interruptedMessage: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text-muted)',
+    lineHeight: 1.5,
   },
   stagesContainer: {
     display: 'flex',

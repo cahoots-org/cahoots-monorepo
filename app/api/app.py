@@ -23,6 +23,45 @@ from app.api.routes import (
 from app.api.dependencies import cleanup_dependencies
 
 
+async def recover_stale_tasks():
+    """Mark stale 'processing' tasks as 'pending' so they can be retried."""
+    try:
+        from app.api.dependencies import get_redis_client
+        import json
+
+        redis = await get_redis_client()
+
+        # Find all task keys
+        task_keys = await redis.keys("task:*")
+        stale_count = 0
+
+        for key in task_keys:
+            try:
+                data = await redis.get(key)
+                if data:
+                    task_data = json.loads(data) if isinstance(data, str) else data
+                    # Check if task is stuck in processing
+                    if task_data.get("status") == "processing":
+                        # Check if it's a root task (depth 0 or no parent)
+                        if task_data.get("depth", 0) == 0 or not task_data.get("parent_id"):
+                            task_id = task_data.get("id") or key.split(":")[-1]
+                            print(f"[Recovery] Found stale processing task: {task_id}")
+                            # Mark as submitted so it shows "Resume" option
+                            task_data["status"] = "submitted"
+                            await redis.set(key, task_data)
+                            stale_count += 1
+            except Exception as e:
+                print(f"[Recovery] Error checking task {key}: {e}")
+
+        if stale_count > 0:
+            print(f"[Recovery] Reset {stale_count} stale processing tasks to pending")
+        else:
+            print("[Recovery] No stale processing tasks found")
+
+    except Exception as e:
+        print(f"[Recovery] Failed to recover stale tasks: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """Application lifespan manager."""
@@ -39,6 +78,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
         except Exception as e:
             print(f"⚠ Context Engine initialization failed: {e}")
             print("  Continuing without Context Engine...")
+
+    # Recover any tasks that were stuck in "processing" when the server restarted
+    await recover_stale_tasks()
 
     yield
 

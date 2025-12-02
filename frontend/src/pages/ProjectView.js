@@ -125,6 +125,16 @@ const ProjectView = () => {
     handleRefresh();
   };
 
+  const handleResume = async () => {
+    try {
+      await apiClient.post(`/tasks/${taskId}/reprocess`);
+      // Refresh to see the new processing status
+      handleRefresh();
+    } catch (error) {
+      console.error('Failed to resume processing:', error);
+    }
+  };
+
   // Get chapters from task metadata
   const chapters = task?.metadata?.chapters || [];
 
@@ -136,7 +146,7 @@ const ProjectView = () => {
     }))
   );
 
-  const isProcessing = task?.status === 'pending' || task?.status === 'processing';
+  const isProcessing = task?.status === 'submitted' || task?.status === 'processing';
 
   // Loading state
   if (taskLoading) {
@@ -196,6 +206,7 @@ const ProjectView = () => {
         taskTree={taskTree}
         onRefine={() => setShowRefineModal(true)}
         onViewDetails={handleViewDetails}
+        onResume={handleResume}
       />
 
       {/* View Toggle (only show when not processing) */}
@@ -260,6 +271,7 @@ const ProjectView = () => {
         isOpen={showRefineModal}
         onClose={() => setShowRefineModal(false)}
         task={task}
+        taskTree={taskTree}
         onRefineComplete={handleRefineComplete}
       />
     </div>

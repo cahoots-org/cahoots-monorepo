@@ -681,6 +681,171 @@ async def reprocess_task(
     }
 
 
+from pydantic import BaseModel, Field
+
+class RefinementRequest(BaseModel):
+    """Request for contextual refinement of a project plan."""
+    feedback: str = Field(default="", description="Free-form feedback text")
+    quick_feedback: List[str] = Field(default_factory=list, description="Selected quick feedback options")
+    current_context: Optional[Dict[str, Any]] = Field(default=None, description="Current project context")
+
+
+@router.post("/{task_id}/refine")
+async def refine_task(
+    task_id: str,
+    request: RefinementRequest,
+    background_tasks: BackgroundTasks,
+    storage: TaskStorage = Depends(get_task_storage),
+    llm: LLMClient = Depends(get_llm_client),
+    current_user: dict = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Refine a task's project plan based on user feedback.
+
+    Uses the LLM to make targeted updates to the existing plan rather than
+    regenerating from scratch. Returns a summary of changes made.
+    """
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Verify ownership
+    if task.user_id != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Combine feedback
+    all_feedback = []
+    if request.quick_feedback:
+        all_feedback.extend(request.quick_feedback)
+    if request.feedback:
+        all_feedback.append(request.feedback)
+
+    if not all_feedback:
+        raise HTTPException(status_code=400, detail="No feedback provided")
+
+    feedback_text = "\n- ".join([""] + all_feedback)
+
+    # Build context for the LLM
+    current_chapters = task.metadata.get("chapters", []) if isinstance(task.metadata, dict) else []
+    current_events = task.metadata.get("extracted_events", []) if isinstance(task.metadata, dict) else []
+    current_commands = task.metadata.get("commands", []) if isinstance(task.metadata, dict) else []
+
+    # Create a refinement prompt
+    prompt = f"""You are refining an existing project plan based on user feedback.
+
+## Original Project Description
+{task.description}
+
+## Current Plan Summary
+- {len(current_chapters)} chapters: {', '.join(c.get('name', 'Unnamed') for c in current_chapters[:5])}{'...' if len(current_chapters) > 5 else ''}
+- {len(current_commands)} commands
+- {len(current_events)} events
+
+## Current Chapters Detail
+{_format_chapters_for_prompt(current_chapters)}
+
+## User Feedback
+The user wants the following changes:{feedback_text}
+
+## Your Task
+Based on the feedback, determine what specific changes should be made to the project plan.
+Return a JSON object with:
+1. "changes" - array of changes to make, each with:
+   - "type": "add_chapter" | "remove_chapter" | "modify_chapter" | "add_slice" | "remove_slice" | "modify_slice" | "add_event" | "add_command" | "general"
+   - "target": name of the chapter/slice/element being changed (if applicable)
+   - "description": what change to make
+2. "summary" - a brief 1-2 sentence summary of what was changed for the user
+3. "updated_chapters" - the complete updated chapters array with all changes applied (same structure as input)
+
+Focus on making targeted, specific changes rather than rewriting everything.
+If the feedback asks for things already in the plan, note that no changes are needed.
+
+Return ONLY valid JSON, no markdown formatting."""
+
+    try:
+        # Call LLM for refinement analysis
+        response = await llm.chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=4000,
+            temperature=0.3  # Lower temperature for more consistent changes
+        )
+
+        # Parse the response
+        import json
+        content = response["choices"][0]["message"]["content"].strip()
+
+        # Clean up markdown if present
+        if content.startswith("```"):
+            content = content.split("```")[1]
+            if content.startswith("json"):
+                content = content[4:]
+
+        refinement_result = json.loads(content)
+
+        changes = refinement_result.get("changes", [])
+        summary = refinement_result.get("summary", "Project plan updated based on your feedback")
+        updated_chapters = refinement_result.get("updated_chapters")
+
+        # Apply changes to task metadata
+        if updated_chapters and isinstance(task.metadata, dict):
+            task.metadata["chapters"] = updated_chapters
+            task.metadata["last_refined_at"] = datetime.now(timezone.utc).isoformat()
+            task.metadata["refinement_history"] = task.metadata.get("refinement_history", [])
+            task.metadata["refinement_history"].append({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "feedback": all_feedback,
+                "changes_count": len(changes),
+                "summary": summary
+            })
+
+            await storage.save_task(task)
+
+            # Emit update event
+            await task_event_emitter.emit_task_updated(task, current_user["id"])
+
+        return {
+            "success": True,
+            "changes_made": changes,
+            "summary": summary,
+            "chapters_updated": len(updated_chapters) if updated_chapters else 0
+        }
+
+    except json.JSONDecodeError as e:
+        print(f"[Refine] Failed to parse LLM response: {e}")
+        raise HTTPException(status_code=500, detail="Failed to parse refinement response")
+    except Exception as e:
+        print(f"[Refine] Error during refinement: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Refinement failed: {str(e)}")
+
+
+def _format_chapters_for_prompt(chapters: List[Dict]) -> str:
+    """Format chapters for the refinement prompt."""
+    if not chapters:
+        return "No chapters yet"
+
+    lines = []
+    for chapter in chapters:
+        name = chapter.get("name", "Unnamed")
+        description = chapter.get("description", "No description")
+        slices = chapter.get("slices", [])
+
+        lines.append(f"### {name}")
+        lines.append(f"{description}")
+
+        if slices:
+            lines.append("Slices:")
+            for slice_item in slices[:5]:  # Limit to avoid token overflow
+                slice_name = slice_item.get("name", "Unnamed slice")
+                lines.append(f"  - {slice_name}")
+            if len(slices) > 5:
+                lines.append(f"  ... and {len(slices) - 5} more slices")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 @router.delete("/{task_id}/subtask")
 async def delete_subtask(
     task_id: str,

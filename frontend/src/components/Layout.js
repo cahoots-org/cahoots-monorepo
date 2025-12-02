@@ -28,7 +28,7 @@ const NotificationBadge = ({ count }) => {
       position: 'absolute',
       top: '-4px',
       right: '-4px',
-      backgroundColor: tokens.colors.red[500],
+      backgroundColor: tokens.colors.error[500],
       color: 'white',
       fontSize: '10px',
       fontWeight: 'bold',

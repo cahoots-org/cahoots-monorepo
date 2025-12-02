@@ -10,7 +10,7 @@ anthropic==0.8.1
 groq==0.4.1
 
 # Contex SDK
-contex-python==0.1.7
+contex-python==0.1.9
 
 # Utilities
 python-dotenv==1.0.0
