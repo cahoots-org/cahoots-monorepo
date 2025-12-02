@@ -374,7 +374,7 @@ const Layout = ({ children }) => {
                         {isBlog && unreadBlogCount > 0 && (
                           <span style={{
                             marginLeft: '8px',
-                            backgroundColor: tokens.colors.red[500],
+                            backgroundColor: tokens.colors.error[500],
                             color: 'white',
                             fontSize: '10px',
                             fontWeight: 'bold',

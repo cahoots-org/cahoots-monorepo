@@ -162,37 +162,24 @@ class ContextEngineClient:
         Returns:
             Registration response with matched data and catch-up info
         """
-        import httpx
+        client = await self._get_client()
+        if not client:
+            raise RuntimeError("Context Engine SDK not available")
 
-        # Use direct HTTP to avoid SDK response parsing issues
         try:
-            url = f"{self.base_url}/api/v1/agents/register"
-            headers = {"Content-Type": "application/json"}
-            if self.api_key:
-                headers["X-API-Key"] = self.api_key
+            response = await client.register_agent(
+                agent_id=agent_id,
+                project_id=project_id,
+                data_needs=data_needs
+            )
 
-            payload = {
-                "agent_id": agent_id,
-                "project_id": project_id,
-                "data_needs": data_needs
-            }
-
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
-                response = await http_client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-
-            # Extract response data
-            notification_ch = data.get('notification_channel', f"agent:{agent_id}")
-            caught_up = data.get('caught_up_events', 0)
-            matched_needs = data.get('matched_needs', {})
-            matched_data = data.get('matched_data', [])
+            # Extract response data from SDK response object
+            notification_ch = getattr(response, 'notification_channel', f"agent:{agent_id}")
+            caught_up = getattr(response, 'caught_up_events', 0)
+            matched_needs = getattr(response, 'matched_needs', {})
 
             # Calculate total matches
-            if matched_needs and isinstance(matched_needs, dict):
-                matched_count = sum(matched_needs.values())
-            else:
-                matched_count = len(matched_data) if matched_data else 0
+            matched_count = sum(matched_needs.values()) if matched_needs else 0
 
             # Store registration
             self.registered_agents[agent_id] = notification_ch
@@ -202,18 +189,14 @@ class ContextEngineClient:
             print(f"[ContextEngine]   Caught up events: {caught_up}")
 
             return {
-                "matched_data": matched_data,
                 "matched_needs": matched_needs,
                 "notification_channel": notification_ch,
                 "total_matches": matched_count,
                 "caught_up_events": caught_up
             }
 
-        except httpx.HTTPStatusError as e:
-            print(f"[ContextEngine] ✗ Failed to register agent: HTTP {e.response.status_code} - {e.response.text[:200]}")
-            raise
         except Exception as e:
-            print(f"[ContextEngine] ✗ Failed to register agent: {type(e).__name__}: {e}")
+            print(f"[ContextEngine] ✗ Failed to register agent: {e}")
             raise
 
     async def query(
@@ -233,40 +216,30 @@ class ContextEngineClient:
         Returns:
             List of matching data items
         """
-        import httpx
+        client = await self._get_client()
+        if not client:
+            raise RuntimeError("Context Engine SDK not available")
 
-        # Use direct HTTP with correct endpoint path
         try:
-            url = f"{self.base_url}/api/v1/projects/{project_id}/query"
-            headers = {"Content-Type": "application/json"}
-            if self.api_key:
-                headers["X-API-Key"] = self.api_key
+            response = await client.query(
+                project_id=project_id,
+                query=query,
+                max_results=limit
+            )
 
-            payload = {
-                "query": query,
-                "limit": limit
-            }
-
-            async with httpx.AsyncClient(timeout=30.0) as http_client:
-                response = await http_client.post(url, json=payload, headers=headers)
-                response.raise_for_status()
-                data = response.json()
-
-            results = data.get('results', [])
+            # Extract results from SDK response - server returns 'matches' field
+            matches = getattr(response, 'matches', [])
             return [
                 {
-                    "data_key": r.get('data_key', ''),
-                    "data": r.get('data', {}),
-                    "similarity_score": r.get('similarity_score', 0.0)
+                    "data_key": getattr(m, 'data_key', ''),
+                    "data": getattr(m, 'data', {}),
+                    "similarity_score": getattr(m, 'similarity', 0.0)
                 }
-                for r in results[:limit]
+                for m in matches[:limit]
             ]
 
-        except httpx.HTTPStatusError as e:
-            print(f"[ContextEngine] ✗ Query failed: HTTP {e.response.status_code} - {e.response.text[:200]}")
-            raise
         except Exception as e:
-            print(f"[ContextEngine] ✗ Query failed: {type(e).__name__}: {e}")
+            print(f"[ContextEngine] ✗ Query failed: {e}")
             raise
 
     async def subscribe_to_updates(

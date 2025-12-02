@@ -18,7 +18,7 @@ dependencies = [
     "groq==0.4.1",
 
     # Contex SDK
-    "contex-python==0.1.6",
+    "contex-python==0.1.8",
 
     # Utilities
     "python-dotenv==1.0.0",
