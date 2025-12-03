@@ -8,10 +8,11 @@ import {
   Badge,
   ChevronDownIcon,
   ChevronRightIcon,
+  EditIcon,
   tokens,
 } from '../../design-system';
 
-const StoriesTab = ({ task }) => {
+const StoriesTab = ({ task, onEditEpic, onEditStory }) => {
   const [selectedStory, setSelectedStory] = useState(null);
   const [expandedEpics, setExpandedEpics] = useState(new Set());
 
@@ -102,6 +103,17 @@ const StoriesTab = ({ task }) => {
                   <Badge variant={epic.priority <= 2 ? 'error' : epic.priority <= 3 ? 'warning' : 'info'}>
                     Priority {epic.priority}
                   </Badge>
+                  {onEditEpic && (
+                    <IconButton
+                      icon={EditIcon}
+                      size="sm"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditEpic(epic);
+                      }}
+                    />
+                  )}
                 </div>
               </div>
 
@@ -138,6 +150,17 @@ const StoriesTab = ({ task }) => {
                             >
                               {story.priority?.replace('_', ' ')}
                             </Badge>
+                            {onEditStory && (
+                              <IconButton
+                                icon={EditIcon}
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onEditStory(story, epic.title || epic.name);
+                                }}
+                              />
+                            )}
                           </div>
                         </div>
 

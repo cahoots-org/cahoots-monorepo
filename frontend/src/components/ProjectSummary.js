@@ -13,36 +13,21 @@ import {
   Card,
   Button,
   Text,
-  Heading3,
-  Badge,
   LoadingSpinner,
   tokens,
 } from '../design-system';
 import { useProjectContext } from '../hooks/api/useProjectContext';
-import ExportModal from './ExportModal';
-import { useApp } from '../contexts/AppContext';
+import LiveActivityFeed from './LiveActivityFeed';
 
 const ProjectSummary = ({
   task,
   taskTree,
   onRefine,
-  onViewDetails,
+  onExport,
   onResume
 }) => {
-  const { showError, showSuccess } = useApp();
   const { data: projectContext, isLoading: contextLoading } = useProjectContext(task?.task_id);
-
   const isProcessing = task?.status === 'submitted' || task?.status === 'processing';
-  const stats = projectContext?.stats || {};
-  const context = projectContext?.context || {};
-
-  // Calculate totals from various sources
-  const totalTasks = stats.total_tasks || taskTree?.tasks?.length || task?.children_count || 0;
-  const totalEvents = stats.total_events || task?.metadata?.extracted_events?.length || 0;
-  const totalCommands = stats.total_commands || task?.metadata?.commands?.length || 0;
-  const totalReadModels = stats.total_read_models || task?.metadata?.read_models?.length || 0;
-  const totalChapters = task?.metadata?.chapters?.length || 0;
-  const totalStoryPoints = calculateStoryPoints(taskTree);
 
   return (
     <Card style={styles.container}>
@@ -63,67 +48,24 @@ const ProjectSummary = ({
         />
       )}
 
-      {/* Generated Summary */}
+      {/* Actions (when not processing) */}
       {!isProcessing && (
-        <>
-          <div style={styles.summarySection}>
-            <div style={styles.summaryHeader}>
-              <Heading3 style={styles.summaryTitle}>We generated:</Heading3>
-            </div>
-
-            <div style={styles.statsGrid}>
-              <StatCard
-                value={totalTasks}
-                label="Tasks"
-                onClick={() => onViewDetails?.('subtasks')}
-              />
-              <StatCard
-                value={totalChapters}
-                label="Chapters"
-                onClick={() => onViewDetails?.('event-model')}
-              />
-              <StatCard
-                value={totalEvents}
-                label="Events"
-                onClick={() => onViewDetails?.('event-model')}
-              />
-              <StatCard
-                value={totalCommands}
-                label="Commands"
-                onClick={() => onViewDetails?.('event-model')}
-              />
-              <StatCard
-                value={totalReadModels}
-                label="Read Models"
-                onClick={() => onViewDetails?.('schemas')}
-              />
-              <StatCard
-                value={totalStoryPoints}
-                label="Story Points"
-                subtitle={estimateSprints(totalStoryPoints)}
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div style={styles.actionsSection}>
-            <ExportModal
-              task={task}
-              localTaskTree={taskTree}
-              onShowToast={(message, type) => {
-                if (type === 'success') showSuccess(message);
-                else showError(message);
-              }}
-            />
-            <Button
-              variant="outline"
-              size="md"
-              onClick={onRefine}
-            >
-              Refine Plan
-            </Button>
-          </div>
-        </>
+        <div style={styles.actionsRow}>
+          <Button
+            variant="outline"
+            size="md"
+            onClick={onExport}
+          >
+            Export
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            onClick={onRefine}
+          >
+            Refine Plan
+          </Button>
+        </div>
       )}
     </Card>
   );
@@ -147,8 +89,6 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume })
   // Calculate progress from taskTree (real-time data)
   const taskCount = taskTree?.tasks ? Object.keys(taskTree.tasks).length : (task?.children_count || 0);
   const hasEpics = task?.context?.epics?.length > 0 || task?.metadata?.epics?.length > 0;
-  const hasStories = task?.context?.user_stories?.length > 0 || task?.metadata?.user_stories?.length > 0;
-  const hasEventModel = task?.metadata?.extracted_events?.length > 0 || task?.metadata?.commands?.length > 0;
 
   // Detect if processing was interrupted (status is submitted but has partial data)
   const isInterrupted = task?.status === 'submitted' && (taskCount > 1 || hasEpics);
@@ -178,11 +118,18 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume })
 
   return (
     <div style={styles.processingSection}>
+      {/* Progress Header */}
       <div style={styles.processingHeader}>
-        <LoadingSpinner size="sm" />
-        <Text style={styles.processingText}>Building your project plan...</Text>
+        <div style={styles.processingTitleRow}>
+          <LoadingSpinner size="sm" />
+          <Text style={styles.processingText}>Building your project plan...</Text>
+        </div>
+        <Text style={styles.processingSubtext}>
+          This usually takes 1-2 minutes depending on complexity
+        </Text>
       </div>
 
+      {/* Stage Progress Bar */}
       <div style={styles.stagesContainer}>
         {stages.map((stage, index) => {
           const isComplete = index < currentStageIndex;
@@ -211,87 +158,39 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume })
         })}
       </div>
 
-      {/* Show what we have so far - using task/taskTree data directly */}
-      {(taskCount > 0 || hasEpics || hasEventModel) && (
-        <div style={styles.progressPreview}>
-          <Text style={styles.progressPreviewLabel}>Found so far:</Text>
-          <div style={styles.progressPreviewStats}>
-            {taskCount > 0 && (
-              <Badge variant="info">{taskCount} tasks</Badge>
-            )}
-            {hasEpics && (
-              <Badge variant="info">
-                {task?.context?.epics?.length || task?.metadata?.epics?.length} epics
-              </Badge>
-            )}
-            {hasStories && (
-              <Badge variant="info">
-                {task?.context?.user_stories?.length || task?.metadata?.user_stories?.length} stories
-              </Badge>
-            )}
-            {hasEventModel && (
-              <Badge variant="info">
-                {task?.metadata?.extracted_events?.length || 0} events
-              </Badge>
-            )}
-          </div>
+      {/* Live Stats - what we've found so far */}
+      <div style={styles.liveStatsContainer}>
+        <div style={styles.liveStat}>
+          <Text style={styles.liveStatValue}>{taskCount}</Text>
+          <Text style={styles.liveStatLabel}>tasks</Text>
         </div>
-      )}
+        <div style={styles.liveStat}>
+          <Text style={styles.liveStatValue}>
+            {task?.context?.epics?.length || task?.metadata?.epics?.length || 0}
+          </Text>
+          <Text style={styles.liveStatLabel}>epics</Text>
+        </div>
+        <div style={styles.liveStat}>
+          <Text style={styles.liveStatValue}>
+            {task?.context?.user_stories?.length || task?.metadata?.user_stories?.length || 0}
+          </Text>
+          <Text style={styles.liveStatLabel}>stories</Text>
+        </div>
+        <div style={styles.liveStat}>
+          <Text style={styles.liveStatValue}>
+            {task?.metadata?.extracted_events?.length || 0}
+          </Text>
+          <Text style={styles.liveStatLabel}>events</Text>
+        </div>
+      </div>
+
+      {/* Live Activity Feed */}
+      <LiveActivityFeed taskId={task?.task_id} />
     </div>
   );
 };
 
-/**
- * Individual stat card
- */
-const StatCard = ({ value, label, icon, subtitle, onClick }) => (
-  <div
-    style={{
-      ...styles.statCard,
-      ...(onClick && styles.statCardClickable),
-    }}
-    onClick={onClick}
-  >
-    <div style={styles.statIcon}>{icon}</div>
-    <div style={styles.statValue}>{value}</div>
-    <div style={styles.statLabel}>{label}</div>
-    {subtitle && <div style={styles.statSubtitle}>{subtitle}</div>}
-  </div>
-);
-
-// Helper functions
-function calculateStoryPoints(taskTree) {
-  // Recursively calculate story points from nested tree structure
-  const sumPoints = (node) => {
-    if (!node) return 0;
-    let total = 0;
-
-    // Add this node's points
-    if (node.story_points) {
-      total += node.story_points;
-    } else if (node.is_atomic) {
-      total += 2; // Default estimate for atomic tasks
-    }
-
-    // Recursively add children's points
-    if (node.children && Array.isArray(node.children)) {
-      node.children.forEach(child => {
-        total += sumPoints(child);
-      });
-    }
-
-    return total;
-  };
-
-  return sumPoints(taskTree);
-}
-
-function estimateSprints(points) {
-  if (!points) return '';
-  const sprints = Math.ceil(points / 20); // Assume 20 points per sprint
-  return `~${sprints} sprint${sprints !== 1 ? 's' : ''}`;
-}
-
+// Helper function to determine current processing stage
 function determineCurrentStage(context, task, taskTree) {
   // Check task/taskTree data first (more reliable than Context Engine)
   const hasEventModel = task?.metadata?.extracted_events?.length > 0 ||
@@ -367,9 +266,43 @@ const styles = {
     gap: tokens.spacing[3],
     marginBottom: tokens.spacing[6],
   },
+  processingTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[3],
+  },
   processingText: {
     fontSize: tokens.typography.fontSize.lg[0],
     fontWeight: tokens.typography.fontWeight.medium,
+  },
+  processingSubtext: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text-muted)',
+    marginTop: tokens.spacing[1],
+  },
+  liveStatsContainer: {
+    display: 'flex',
+    gap: tokens.spacing[6],
+    marginBottom: tokens.spacing[6],
+    padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-bg)',
+    borderRadius: tokens.borderRadius.lg,
+  },
+  liveStat: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+  },
+  liveStatValue: {
+    fontSize: tokens.typography.fontSize['2xl'][0],
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: 'var(--color-text)',
+    lineHeight: 1,
+  },
+  liveStatLabel: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    color: 'var(--color-text-muted)',
+    marginTop: tokens.spacing[1],
   },
   interruptedHeader: {
     display: 'flex',
@@ -430,80 +363,11 @@ const styles = {
   stageLabelPending: {
     color: 'var(--color-text-muted)',
   },
-  progressPreview: {
-    marginTop: tokens.spacing[4],
-    paddingTop: tokens.spacing[4],
-    borderTop: `1px solid var(--color-border)`,
-  },
-  progressPreviewLabel: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    color: 'var(--color-text-muted)',
-    marginBottom: tokens.spacing[2],
-  },
-  progressPreviewStats: {
-    display: 'flex',
-    gap: tokens.spacing[2],
-    flexWrap: 'wrap',
-  },
-
-  // Summary section
-  summarySection: {
-    marginBottom: tokens.spacing[6],
-  },
-  summaryHeader: {
-    marginBottom: tokens.spacing[4],
-  },
-  summaryTitle: {
-    margin: 0,
-    color: 'var(--color-text)',
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-    gap: tokens.spacing[4],
-  },
-  statCard: {
-    padding: tokens.spacing[4],
-    backgroundColor: 'var(--color-bg-secondary)',
-    borderRadius: tokens.borderRadius.lg,
-    textAlign: 'center',
-    transition: 'all 0.2s ease',
-  },
-  statCardClickable: {
-    cursor: 'pointer',
-    '&:hover': {
-      backgroundColor: 'var(--color-bg-tertiary)',
-      transform: 'translateY(-2px)',
-    },
-  },
-  statIcon: {
-    fontSize: '24px',
-    marginBottom: tokens.spacing[2],
-  },
-  statValue: {
-    fontSize: tokens.typography.fontSize['2xl'][0],
-    fontWeight: tokens.typography.fontWeight.bold,
-    color: tokens.colors.primary[500],
-  },
-  statLabel: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    color: 'var(--color-text-muted)',
-  },
-  statSubtitle: {
-    fontSize: tokens.typography.fontSize.xs[0],
-    color: 'var(--color-text-muted)',
-    marginTop: tokens.spacing[1],
-  },
-
   // Actions section
-  actionsSection: {
+  actionsRow: {
     display: 'flex',
     gap: tokens.spacing[3],
-    paddingTop: tokens.spacing[6],
-    borderTop: `1px solid var(--color-border)`,
-  },
-  exportButton: {
-    flex: 1,
+    justifyContent: 'flex-start',
   },
 };
 

@@ -128,7 +128,7 @@ const ChapterList = ({
                         key={slice.name || sliceIndex}
                         slice={slice}
                         index={sliceIndex}
-                        onEdit={() => onEditSlice?.(slice)}
+                        onEdit={() => onEditSlice?.(slice, chapter.name)}
                       />
                     ))}
                     <Button

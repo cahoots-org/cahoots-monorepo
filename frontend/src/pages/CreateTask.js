@@ -5,14 +5,15 @@ import Button from '../design-system/components/Button';
 import { Heading1, Text } from '../design-system/components/Typography';
 import Card from '../design-system/components/Card';
 import { tokens } from '../design-system/tokens';
-import { useCreateTask } from '../hooks/api/useTasks';
+// Removed useCreateTask - using direct API call for immediate navigation
 import { useApp } from '../contexts/AppContext';
 import apiClient from '../services/unifiedApiClient';
 
 const CreateTask = () => {
   const navigate = useNavigate();
   const { showSuccess, showError } = useApp();
-  const { mutate: createTask, isPending: isCreating } = useCreateTask();
+  // Using direct API call instead of mutation for immediate navigation
+  // const { mutate: createTask, isPending: isCreating } = useCreateTask();
 
   const [description, setDescription] = useState('');
   const [githubRepo, setGithubRepo] = useState('');
@@ -36,71 +37,49 @@ const CreateTask = () => {
     checkGitHubStatus();
   }, []);
 
-  const handleSubmit = () => {
-    console.log('handleSubmit called');
-    console.log('Description:', description);
-    console.log('isCreating:', isCreating);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const handleSubmit = async () => {
     if (!description.trim()) {
       showError('Please enter a task description');
       return;
     }
 
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     const taskData = {
       description: description.trim(),
-      // Use sensible defaults - no user configuration needed
       max_depth: 4,
       max_subtasks: 7,
       complexity_threshold: 0.7,
       use_context: true,
       requires_approval: false,
-      // Include GitHub repo URL if provided (backend expects github_repo_url at top level)
       ...(githubRepo.trim() && {
         github_repo_url: githubRepo.trim()
       })
     };
 
-    console.log('Calling createTask with data:', taskData);
+    try {
+      // Make API call directly for immediate response
+      const response = await apiClient.post('/tasks', taskData);
 
-    createTask(taskData, {
-      onSuccess: (response) => {
-        console.log('Create task response:', response);
-        console.log('Response type:', typeof response);
-        console.log('Response keys:', response ? Object.keys(response) : 'null');
+      const taskId = response?.data?.task_id
+        || response?.task_id
+        || response?.data?.id
+        || response?.id;
 
-        showSuccess('Task created successfully!');
-
-        // Navigate to the created task's detail page
-        // The response structure from apiClient is: { data: { task_id: "...", ... } }
-        // Try multiple paths to find task_id
-        const taskId = response?.data?.task_id
-          || response?.task_id
-          || response?.data?.id
-          || response?.id;
-
-        console.log('Extracted taskId:', taskId);
-
-        if (taskId) {
-          // Navigate to new ProjectView for better UX
-          navigate(`/projects/${taskId}`);
-        } else {
-          console.warn('No task_id in response, navigating to dashboard', response);
-          console.warn('Full response structure:', JSON.stringify(response, null, 2));
-          // Fallback to dashboard if no task_id
-          navigate('/dashboard');
-        }
-      },
-      onError: (error) => {
-        console.error('Create task error:', error);
-        console.error('Error details:', {
-          message: error?.message,
-          userMessage: error?.userMessage,
-          response: error?.response?.data,
-          status: error?.response?.status
-        });
-        showError(error?.userMessage || error?.message || 'Failed to create task');
+      if (taskId) {
+        // Navigate immediately to project view - processing happens in background
+        navigate(`/projects/${taskId}`);
+      } else {
+        throw new Error('No task ID returned');
       }
-    });
+    } catch (error) {
+      console.error('Create task error:', error);
+      showError(error?.userMessage || error?.message || 'Failed to create task');
+      setIsSubmitting(false);
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -303,7 +282,7 @@ const CreateTask = () => {
             variant="secondary"
             size="md"
             onClick={() => navigate('/dashboard')}
-            disabled={isCreating}
+            disabled={isSubmitting}
           >
             Cancel
           </Button>
@@ -311,10 +290,10 @@ const CreateTask = () => {
             variant="primary"
             size="md"
             onClick={handleSubmit}
-            disabled={!description.trim() || isCreating}
+            disabled={!description.trim() || isSubmitting}
             icon={SparklesIcon}
           >
-            {isCreating ? 'Creating...' : 'Create Task'}
+            {isSubmitting ? 'Creating...' : 'Create Task'}
           </Button>
         </div>
 

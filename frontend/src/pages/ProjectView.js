@@ -30,6 +30,12 @@ import ProjectSummary from '../components/ProjectSummary';
 import ChapterList from '../components/ChapterList';
 import StoriesTab from '../components/TaskBoard/StoriesTab';
 import RefineModal from '../components/RefineModal';
+import ExportModal from '../components/ExportModal';
+import EditChapterModal from '../components/EditChapterModal';
+import EditSliceModal from '../components/EditSliceModal';
+import EditEpicModal from '../components/EditEpicModal';
+import EditStoryModal from '../components/EditStoryModal';
+import { useApp } from '../contexts/AppContext';
 
 import apiClient from '../services/unifiedApiClient';
 
@@ -39,10 +45,21 @@ const ProjectView = () => {
   const { isAuthenticated } = useAuth();
   const { connected, connect, disconnect, subscribe } = useWebSocket();
   const queryClient = useQueryClient();
+  const { showSuccess, showError } = useApp();
 
   // UI State
   const [showRefineModal, setShowRefineModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [activeView, setActiveView] = useState('summary'); // summary, chapters, tasks
+
+  // Edit modal state
+  const [editChapter, setEditChapter] = useState(null);
+  const [editSlice, setEditSlice] = useState(null);
+  const [editSliceChapter, setEditSliceChapter] = useState(null);
+  const [editEpic, setEditEpic] = useState(null);
+  const [editStory, setEditStory] = useState(null);
+  const [editStoryEpic, setEditStoryEpic] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -135,6 +152,129 @@ const ProjectView = () => {
     }
   };
 
+  // Save chapter edits
+  const handleSaveChapter = async (updatedChapter) => {
+    setIsSaving(true);
+    try {
+      // Update the chapter in the chapters array
+      const updatedChapters = (task?.metadata?.chapters || []).map(ch =>
+        ch.name === editChapter.name ? updatedChapter : ch
+      );
+
+      await apiClient.patch(`/tasks/${taskId}`, {
+        metadata: {
+          ...task.metadata,
+          chapters: updatedChapters,
+        },
+      });
+
+      showSuccess('Chapter updated successfully');
+      setEditChapter(null);
+      handleRefresh();
+    } catch (error) {
+      console.error('Failed to save chapter:', error);
+      showError('Failed to save chapter');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save slice edits
+  const handleSaveSlice = async (updatedSlice, chapterName) => {
+    setIsSaving(true);
+    try {
+      // Find the chapter and update the slice within it
+      const updatedChapters = (task?.metadata?.chapters || []).map(chapter => {
+        if (chapter.name !== chapterName) return chapter;
+
+        const updatedSlices = (chapter.slices || []).map(slice => {
+          // Match by command or read_model name
+          const sliceKey = slice.command || slice.read_model;
+          const editKey = editSlice.command || editSlice.read_model;
+          return sliceKey === editKey ? updatedSlice : slice;
+        });
+
+        return { ...chapter, slices: updatedSlices };
+      });
+
+      await apiClient.patch(`/tasks/${taskId}`, {
+        metadata: {
+          ...task.metadata,
+          chapters: updatedChapters,
+        },
+      });
+
+      showSuccess('Slice updated successfully');
+      setEditSlice(null);
+      setEditSliceChapter(null);
+      handleRefresh();
+    } catch (error) {
+      console.error('Failed to save slice:', error);
+      showError('Failed to save slice');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save epic edits
+  const handleSaveEpic = async (updatedEpic) => {
+    setIsSaving(true);
+    try {
+      const epics = task?.metadata?.epics || task?.context?.epics || [];
+      const updatedEpics = epics.map(epic => {
+        const epicId = epic.id || epic.name || epic.title;
+        const editId = editEpic.id || editEpic.name || editEpic.title;
+        return epicId === editId ? updatedEpic : epic;
+      });
+
+      await apiClient.patch(`/tasks/${taskId}`, {
+        metadata: {
+          ...task.metadata,
+          epics: updatedEpics,
+        },
+      });
+
+      showSuccess('Epic updated successfully');
+      setEditEpic(null);
+      handleRefresh();
+    } catch (error) {
+      console.error('Failed to save epic:', error);
+      showError('Failed to save epic');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Save story edits
+  const handleSaveStory = async (updatedStory) => {
+    setIsSaving(true);
+    try {
+      const stories = task?.metadata?.user_stories || task?.context?.user_stories || [];
+      const updatedStories = stories.map(story => {
+        const storyId = story.id || story.title || story.name;
+        const editId = editStory.id || editStory.title || editStory.name;
+        return storyId === editId ? updatedStory : story;
+      });
+
+      await apiClient.patch(`/tasks/${taskId}`, {
+        metadata: {
+          ...task.metadata,
+          user_stories: updatedStories,
+        },
+      });
+
+      showSuccess('Story updated successfully');
+      setEditStory(null);
+      setEditStoryEpic(null);
+      handleRefresh();
+    } catch (error) {
+      console.error('Failed to save story:', error);
+      showError('Failed to save story');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Get chapters from task metadata
   const chapters = task?.metadata?.chapters || [];
 
@@ -205,7 +345,7 @@ const ProjectView = () => {
         task={task}
         taskTree={taskTree}
         onRefine={() => setShowRefineModal(true)}
-        onViewDetails={handleViewDetails}
+        onExport={() => setShowExportModal(true)}
         onResume={handleResume}
       />
 
@@ -249,15 +389,25 @@ const ProjectView = () => {
       )}
 
       {!isProcessing && activeView === 'stories' && (
-        <StoriesTab task={task} />
+        <StoriesTab
+          task={task}
+          onEditEpic={(epic) => setEditEpic(epic)}
+          onEditStory={(story, epicName) => {
+            setEditStory(story);
+            setEditStoryEpic(epicName);
+          }}
+        />
       )}
 
       {!isProcessing && activeView === 'chapters' && (
         <ChapterList
           chapters={chapters}
           slices={slices}
-          onEditChapter={(chapter) => console.log('Edit chapter:', chapter)}
-          onEditSlice={(slice) => console.log('Edit slice:', slice)}
+          onEditChapter={(chapter) => setEditChapter(chapter)}
+          onEditSlice={(slice, chapterName) => {
+            setEditSlice(slice);
+            setEditSliceChapter(chapterName);
+          }}
           onAddSlice={(chapterName) => console.log('Add slice to:', chapterName)}
         />
       )}
@@ -267,12 +417,63 @@ const ProjectView = () => {
       )}
 
       {/* Modals */}
+      <ExportModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        task={task}
+        localTaskTree={taskTree}
+        onShowToast={(message, type) => {
+          if (type === 'success') showSuccess(message);
+          else showError(message);
+        }}
+      />
+
       <RefineModal
         isOpen={showRefineModal}
         onClose={() => setShowRefineModal(false)}
         task={task}
         taskTree={taskTree}
         onRefineComplete={handleRefineComplete}
+      />
+
+      <EditChapterModal
+        isOpen={!!editChapter}
+        onClose={() => setEditChapter(null)}
+        chapter={editChapter}
+        onSave={handleSaveChapter}
+        isLoading={isSaving}
+      />
+
+      <EditSliceModal
+        isOpen={!!editSlice}
+        onClose={() => {
+          setEditSlice(null);
+          setEditSliceChapter(null);
+        }}
+        slice={editSlice}
+        chapterName={editSliceChapter}
+        onSave={handleSaveSlice}
+        isLoading={isSaving}
+      />
+
+      <EditEpicModal
+        isOpen={!!editEpic}
+        onClose={() => setEditEpic(null)}
+        epic={editEpic}
+        onSave={handleSaveEpic}
+        isLoading={isSaving}
+      />
+
+      <EditStoryModal
+        isOpen={!!editStory}
+        onClose={() => {
+          setEditStory(null);
+          setEditStoryEpic(null);
+        }}
+        story={editStory}
+        epicName={editStoryEpic}
+        onSave={handleSaveStory}
+        isLoading={isSaving}
       />
     </div>
   );

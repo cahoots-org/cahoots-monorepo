@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard';
 import TaskBoard from './pages/TaskBoard';
 import ProjectView from './pages/ProjectView';
 import CreateTask from './pages/CreateTask';
+import CreatingProject from './pages/CreatingProject';
 import NotFound from './pages/NotFound';
 import Landing from './pages/Landing';
 import About from './pages/About';
@@ -106,6 +107,11 @@ function App() {
             <Route path="/tasks/:taskId" element={
               <ProtectedRoute>
                 <TaskBoard />
+              </ProtectedRoute>
+            } />
+            <Route path="/projects/creating" element={
+              <ProtectedRoute>
+                <CreatingProject />
               </ProtectedRoute>
             } />
             <Route path="/projects/:taskId" element={

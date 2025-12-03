@@ -1,34 +1,29 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import apiClient from '../services/unifiedApiClient';
-import { withErrorHandling } from '../services/errorHandler';
-import { LoadingTypes } from '../services/loadingService';
 import JiraExportProgress from './JiraExportProgress';
 import TrelloExportProgress from './TrelloExportProgress';
-import { Button, DocumentDuplicateIcon } from '../design-system';
+import { Modal, tokens } from '../design-system';
 
 // Constants for export functionality
 const EXPORT_FILENAME_MAX_LENGTH = 30;
 const BOARD_NAME_MAX_LENGTH = 30;
 
-const ExportModal = ({ 
-  task, 
-  localTaskTree, 
-  onShowToast 
+const ExportModal = ({
+  isOpen,
+  onClose,
+  task,
+  localTaskTree,
+  onShowToast
 }) => {
   const [isTrelloModalOpen, setIsTrelloModalOpen] = useState(false);
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
   const [isJiraProgressOpen, setIsJiraProgressOpen] = useState(false);
   const [isTrelloProgressOpen, setIsTrelloProgressOpen] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [boardName, setBoardName] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [currentExportId, setCurrentExportId] = useState(null);
   const [currentTrelloExportId, setCurrentTrelloExportId] = useState(null);
-  const [exportResult, setExportResult] = useState(null);
-  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, right: 0 });
-  const buttonRef = useRef(null);
   const [jiraConfig, setJiraConfig] = useState({
     projectName: '',
     projectKey: '',
@@ -39,33 +34,6 @@ const ExportModal = ({
     users: [{ username: '', email: '' }]
   });
   const { settings } = useSettings();
-
-  // Update dropdown position when opened
-  useEffect(() => {
-    if (isDropdownOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setDropdownPosition({
-        top: rect.bottom + 8,
-        right: window.innerWidth - rect.right
-      });
-    }
-  }, [isDropdownOpen]);
-
-  // Close dropdown when clicking outside
-  const dropdownRef = useRef(null);
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      // Check if click is inside the button or dropdown - if so, don't close
-      const isInsideButton = buttonRef.current?.contains(event.target);
-      const isInsideDropdown = dropdownRef.current?.contains(event.target);
-
-      if (isDropdownOpen && !isInsideButton && !isInsideDropdown) {
-        setIsDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isDropdownOpen]);
 
   const onTrelloModalOpen = () => {
     // Pre-fill board name from task description
@@ -351,80 +319,73 @@ const ExportModal = ({
 
   return (
     <>
-      {/* Export Dropdown */}
-      <div className="relative inline-block text-left" ref={buttonRef}>
-        <Button
-          variant="outline"
-          size="sm"
-          icon={DocumentDuplicateIcon}
-          onClick={(e) => {
-            e.preventDefault();
-            setIsDropdownOpen(!isDropdownOpen);
-          }}
-          aria-expanded={isDropdownOpen}
-          aria-haspopup="true"
-        >
-          Export
-        </Button>
-        {isDropdownOpen && createPortal(
-          <div
-            ref={dropdownRef}
-            className="fixed w-56 rounded-md shadow-lg bg-white dark:bg-gray-700 ring-1 ring-black ring-opacity-5 focus:outline-none"
-            style={{
-              top: `${dropdownPosition.top}px`,
-              right: `${dropdownPosition.right}px`,
-              zIndex: 99999
+      {/* Export Options Modal */}
+      <Modal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Export Project"
+        size="sm"
+      >
+        <div style={styles.exportOptions}>
+          <button
+            style={styles.exportOption}
+            onClick={() => {
+              handleExportToJson();
+              onClose();
             }}
-            role="menu"
-            aria-orientation="vertical"
-            aria-labelledby="export-menu-button"
-            tabIndex="-1"
           >
-            <div className="py-1" role="none">
-              <button
-                className="text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600"
-                role="menuitem"
-                tabIndex="-1"
-                onClick={() => {
-                  handleExportToJson();
-                  setIsDropdownOpen(false);
-                }}
-              >
-                Export to JSON
-              </button>
-              <button
-                className={`${!settings.jiraIntegration?.enabled ? 'opacity-50 cursor-not-allowed' : ''} text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600`}
-                role="menuitem"
-                tabIndex="-1"
-                onClick={() => {
-                  if (settings.jiraIntegration?.enabled) {
-                    onJiraModalOpen();
-                    setIsDropdownOpen(false);
-                  }
-                }}
-                title={!settings.jiraIntegration?.enabled ? "Enable JIRA integration in Settings" : ""}
-              >
-                Export to JIRA
-              </button>
-              <button
-                className={`${!settings.trelloIntegration?.enabled ? 'opacity-50 cursor-not-allowed' : ''} text-gray-700 dark:text-gray-200 block w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600`}
-                role="menuitem"
-                tabIndex="-1"
-                onClick={() => {
-                  if (settings.trelloIntegration?.enabled) {
-                    onTrelloModalOpen();
-                    setIsDropdownOpen(false);
-                  }
-                }}
-                title={!settings.trelloIntegration?.enabled ? "Enable Trello integration in Settings" : ""}
-              >
-                Export to Trello
-              </button>
+            <span style={styles.exportIcon}>📄</span>
+            <div style={styles.exportOptionText}>
+              <span style={styles.exportOptionTitle}>Export to JSON</span>
+              <span style={styles.exportOptionDesc}>Download as JSON file</span>
             </div>
-          </div>,
-          document.body
-        )}
-      </div>
+          </button>
+
+          <button
+            style={{
+              ...styles.exportOption,
+              ...(settings.jiraIntegration?.enabled ? {} : styles.exportOptionDisabled)
+            }}
+            onClick={() => {
+              if (settings.jiraIntegration?.enabled) {
+                onJiraModalOpen();
+                onClose();
+              }
+            }}
+            title={!settings.jiraIntegration?.enabled ? "Enable JIRA integration in Settings" : ""}
+          >
+            <span style={styles.exportIcon}>🔷</span>
+            <div style={styles.exportOptionText}>
+              <span style={styles.exportOptionTitle}>Export to JIRA</span>
+              <span style={styles.exportOptionDesc}>
+                {settings.jiraIntegration?.enabled ? "Create JIRA project" : "Enable in Settings first"}
+              </span>
+            </div>
+          </button>
+
+          <button
+            style={{
+              ...styles.exportOption,
+              ...(settings.trelloIntegration?.enabled ? {} : styles.exportOptionDisabled)
+            }}
+            onClick={() => {
+              if (settings.trelloIntegration?.enabled) {
+                onTrelloModalOpen();
+                onClose();
+              }
+            }}
+            title={!settings.trelloIntegration?.enabled ? "Enable Trello integration in Settings" : ""}
+          >
+            <span style={styles.exportIcon}>📋</span>
+            <div style={styles.exportOptionText}>
+              <span style={styles.exportOptionTitle}>Export to Trello</span>
+              <span style={styles.exportOptionDesc}>
+                {settings.trelloIntegration?.enabled ? "Create Trello board" : "Enable in Settings first"}
+              </span>
+            </div>
+          </button>
+        </div>
+      </Modal>
 
       {/* Export to Trello Modal */}
       {isTrelloModalOpen && (
@@ -722,6 +683,49 @@ const ExportModal = ({
       />
     </>
   );
+};
+
+const styles = {
+  exportOptions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[2],
+    padding: tokens.spacing[2],
+  },
+  exportOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[3],
+    padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-bg-secondary)',
+    border: '1px solid var(--color-border)',
+    borderRadius: tokens.borderRadius.lg,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    textAlign: 'left',
+    width: '100%',
+  },
+  exportOptionDisabled: {
+    opacity: 0.5,
+    cursor: 'not-allowed',
+  },
+  exportIcon: {
+    fontSize: '24px',
+  },
+  exportOptionText: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[1],
+  },
+  exportOptionTitle: {
+    fontSize: tokens.typography.fontSize.base[0],
+    fontWeight: tokens.typography.fontWeight.medium,
+    color: 'var(--color-text)',
+  },
+  exportOptionDesc: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text-muted)',
+  },
 };
 
 export default ExportModal;

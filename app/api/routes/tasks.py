@@ -741,7 +741,7 @@ async def refine_task(
 - {len(current_commands)} commands
 - {len(current_events)} events
 
-## Current Chapters Detail
+## Current Chapters (JSON - PRESERVE EXISTING SLICES)
 {_format_chapters_for_prompt(current_chapters)}
 
 ## User Feedback
@@ -749,16 +749,26 @@ The user wants the following changes:{feedback_text}
 
 ## Your Task
 Based on the feedback, determine what specific changes should be made to the project plan.
-Return a JSON object with:
-1. "changes" - array of changes to make, each with:
-   - "type": "add_chapter" | "remove_chapter" | "modify_chapter" | "add_slice" | "remove_slice" | "modify_slice" | "add_event" | "add_command" | "general"
-   - "target": name of the chapter/slice/element being changed (if applicable)
-   - "description": what change to make
-2. "summary" - a brief 1-2 sentence summary of what was changed for the user
-3. "updated_chapters" - the complete updated chapters array with all changes applied (same structure as input)
 
-Focus on making targeted, specific changes rather than rewriting everything.
-If the feedback asks for things already in the plan, note that no changes are needed.
+CRITICAL RULES:
+1. PRESERVE all existing slices that are not being modified - copy them exactly as shown above
+2. Only ADD new slices or MODIFY existing ones based on user feedback
+3. Use meaningful, domain-specific names for any NEW commands (e.g., "CreateUser", "ProcessPayment", NOT "PlaceholderCommand1")
+4. Do NOT create generic placeholder slices - every slice must have a real, meaningful purpose
+
+Return a JSON object with:
+1. "changes" - array of changes made, each with:
+   - "type": "add_chapter" | "remove_chapter" | "modify_chapter" | "add_slice" | "remove_slice" | "modify_slice" | "general"
+   - "target": name of the chapter/slice being changed
+   - "description": what was changed
+2. "summary" - a brief 1-2 sentence summary of changes for the user
+3. "updated_chapters" - the complete chapters array with changes applied (PRESERVE unchanged slices exactly)
+
+Slice structure for state changes:
+{{"type": "state_change", "command": "CommandName", "events": ["EventName"], "gwt_scenarios": []}}
+
+Slice structure for read models:
+{{"type": "state_view", "read_model": "ReadModelName", "events": ["EventName"], "gwt_scenarios": []}}
 
 Return ONLY valid JSON, no markdown formatting."""
 
@@ -785,6 +795,10 @@ Return ONLY valid JSON, no markdown formatting."""
         changes = refinement_result.get("changes", [])
         summary = refinement_result.get("summary", "Project plan updated based on your feedback")
         updated_chapters = refinement_result.get("updated_chapters")
+
+        # Normalize chapters and slices to ensure proper structure
+        if updated_chapters:
+            updated_chapters = _normalize_chapters(updated_chapters)
 
         # Apply changes to task metadata
         if updated_chapters and isinstance(task.metadata, dict):
@@ -821,29 +835,85 @@ Return ONLY valid JSON, no markdown formatting."""
 
 
 def _format_chapters_for_prompt(chapters: List[Dict]) -> str:
-    """Format chapters for the refinement prompt."""
+    """Format chapters for the refinement prompt as JSON for accurate preservation."""
     if not chapters:
         return "No chapters yet"
 
-    lines = []
+    import json
+    # Return the full JSON so LLM can preserve existing slice structures
+    # Limit slices per chapter to avoid token overflow
+    limited_chapters = []
     for chapter in chapters:
-        name = chapter.get("name", "Unnamed")
-        description = chapter.get("description", "No description")
+        limited_chapter = {
+            "name": chapter.get("name", "Unnamed"),
+            "description": chapter.get("description", ""),
+            "slices": chapter.get("slices", [])[:10]  # Limit to 10 slices per chapter
+        }
+        limited_chapters.append(limited_chapter)
+
+    return json.dumps(limited_chapters, indent=2)
+
+
+def _normalize_chapters(chapters: List[Dict]) -> List[Dict]:
+    """Normalize chapters and slices to ensure proper structure."""
+    if not chapters:
+        return []
+
+    normalized = []
+    for chapter in chapters:
+        if not isinstance(chapter, dict):
+            continue
+
+        norm_chapter = {
+            "name": chapter.get("name", "Unnamed Chapter"),
+            "description": chapter.get("description", ""),
+            "slices": []
+        }
+
+        # Normalize slices
         slices = chapter.get("slices", [])
+        for slice_item in slices:
+            norm_slice = _normalize_slice(slice_item)
+            if norm_slice:
+                norm_chapter["slices"].append(norm_slice)
 
-        lines.append(f"### {name}")
-        lines.append(f"{description}")
+        normalized.append(norm_chapter)
 
-        if slices:
-            lines.append("Slices:")
-            for slice_item in slices[:5]:  # Limit to avoid token overflow
-                slice_name = slice_item.get("name", "Unnamed slice")
-                lines.append(f"  - {slice_name}")
-            if len(slices) > 5:
-                lines.append(f"  ... and {len(slices) - 5} more slices")
-        lines.append("")
+    return normalized
 
-    return "\n".join(lines)
+
+def _normalize_slice(slice_item) -> Dict:
+    """Normalize a single slice to ensure proper structure."""
+    # If it's a string, convert to a basic slice
+    if isinstance(slice_item, str):
+        return {
+            "type": "state_change",
+            "command": slice_item,
+            "events": [f"{slice_item}Completed"],
+            "gwt_scenarios": []
+        }
+
+    if not isinstance(slice_item, dict):
+        return None
+
+    slice_type = slice_item.get("type", "state_change")
+
+    if slice_type == "state_view":
+        return {
+            "type": "state_view",
+            "read_model": slice_item.get("read_model") or slice_item.get("name", "UnnamedReadModel"),
+            "events": slice_item.get("events", []),
+            "gwt_scenarios": slice_item.get("gwt_scenarios", [])
+        }
+    else:
+        # Default to state_change
+        command = slice_item.get("command") or slice_item.get("name", "UnnamedCommand")
+        return {
+            "type": "state_change",
+            "command": command,
+            "events": slice_item.get("events", [f"{command}Completed"]),
+            "gwt_scenarios": slice_item.get("gwt_scenarios", [])
+        }
 
 
 @router.delete("/{task_id}/subtask")
