@@ -52,12 +52,12 @@ const EventModelTab = ({ task, taskTree }) => {
       switch (data.type) {
         case 'event_modeling.started':
           setIsGenerating(true);
-          setGenerationStatus('Starting event model analysis...');
+          setGenerationStatus('Starting system blueprint design...');
           break;
 
         case 'event_modeling.progress':
           setGenerationStatus(
-            `Found ${data.events || 0} events, ${data.commands || 0} commands...`
+            `Found ${data.events || 0} system events, ${data.commands || 0} user actions...`
           );
           break;
 
@@ -203,14 +203,14 @@ const EventModelTab = ({ task, taskTree }) => {
       // Call backend to add slice with LLM analysis
       const response = await unifiedApiClient.post(`/tasks/${task.task_id}/slices`, sliceData);
 
-      showSuccess('Slice created and analyzed successfully!');
+      showSuccess('Feature created and analyzed successfully!');
 
       // Invalidate queries to refresh task data
       queryClient.invalidateQueries(['tasks', 'detail', task.task_id]);
       queryClient.invalidateQueries(['tasks', 'tree', task.task_id]);
     } catch (error) {
       console.error('Error creating slice:', error);
-      showError(error.response?.data?.detail || 'Failed to create slice');
+      showError(error.response?.data?.detail || 'Failed to create feature');
       throw error;
     }
   };
@@ -225,27 +225,28 @@ const EventModelTab = ({ task, taskTree }) => {
           </div>
           <LoadingSpinner size="lg" />
         </div>
-        <h3 style={styles.emptyStateTitle}>Generating Event Model</h3>
+        <h3 style={styles.emptyStateTitle}>Designing Your System</h3>
         <p style={styles.emptyStateDescription}>
-          Our AI is analyzing your task to extract events, commands, and read models.
+          We're mapping out how your application will work - what users can do,
+          what happens in response, and what they'll see on screen.
           This usually takes 20-30 seconds...
         </p>
         <div style={styles.loadingSteps}>
           <div style={styles.loadingStep}>
             <div style={styles.stepDot} />
-            <Text style={styles.stepText}>Identifying domain events</Text>
+            <Text style={styles.stepText}>Finding key system events</Text>
           </div>
           <div style={styles.loadingStep}>
             <div style={styles.stepDot} />
-            <Text style={styles.stepText}>Extracting commands and interactions</Text>
+            <Text style={styles.stepText}>Mapping user actions</Text>
           </div>
           <div style={styles.loadingStep}>
             <div style={styles.stepDot} />
-            <Text style={styles.stepText}>Building read models</Text>
+            <Text style={styles.stepText}>Designing screens and views</Text>
           </div>
           <div style={styles.loadingStep}>
             <div style={styles.stepDot} />
-            <Text style={styles.stepText}>Organizing into chapters and swimlanes</Text>
+            <Text style={styles.stepText}>Organizing into modules</Text>
           </div>
         </div>
       </div>
@@ -262,7 +263,7 @@ const EventModelTab = ({ task, taskTree }) => {
       // Success/error notifications and query invalidation handled by WebSocket events
     } catch (error) {
       console.error('Error starting event model generation:', error);
-      showError(error.response?.data?.detail || 'Failed to start event model generation');
+      showError(error.response?.data?.detail || 'Failed to start system blueprint creation');
       setIsGenerating(false);
       setGenerationStatus(null);
     }
@@ -273,9 +274,10 @@ const EventModelTab = ({ task, taskTree }) => {
     return (
       <div style={styles.emptyStateContainer}>
         <span style={styles.emptyStateIcon}>📊</span>
-        <h3 style={styles.emptyStateTitle}>No Event Model</h3>
+        <h3 style={styles.emptyStateTitle}>No System Blueprint Yet</h3>
         <p style={styles.emptyStateDescription}>
-          Event model has not been generated yet for this task.
+          We haven't mapped out your system's architecture yet. This blueprint shows
+          how users interact with your app and what happens behind the scenes.
         </p>
         <Button
           variant="primary"
@@ -284,13 +286,13 @@ const EventModelTab = ({ task, taskTree }) => {
           disabled={isGenerating}
           style={{ marginTop: tokens.spacing[4] }}
         >
-          {isGenerating ? 'Generating...' : 'Generate Event Model'}
+          {isGenerating ? 'Creating...' : 'Create System Blueprint'}
         </Button>
         {isGenerating && (
           <div style={{ marginTop: tokens.spacing[4], display: 'flex', alignItems: 'center', justifyContent: 'center', gap: tokens.spacing[2] }}>
             <LoadingSpinner size="sm" />
             <Text style={{ color: 'var(--color-text-muted)' }}>
-              {generationStatus || 'Analyzing tasks and building event model...'}
+              {generationStatus || 'Analyzing your project and building system blueprint...'}
             </Text>
           </div>
         )}
@@ -319,14 +321,14 @@ const EventModelTab = ({ task, taskTree }) => {
                 />
                 <div>
                   <div style={styles.chapterTitle}>
-                    <span style={styles.chapterIcon}>📖</span>
-                    <Heading2 style={{ margin: 0 }}>Chapter: {chapter.name}</Heading2>
+                    <span style={styles.chapterIcon}>📦</span>
+                    <Heading2 style={{ margin: 0 }}>Module: {chapter.name}</Heading2>
                   </div>
                   <Text style={styles.chapterDescription}>{chapter.description}</Text>
                 </div>
               </div>
               <div style={styles.chapterActions}>
-                <Badge variant="info">{chapterSlices.length} slices</Badge>
+                <Badge variant="info">{chapterSlices.length} {chapterSlices.length === 1 ? 'feature' : 'features'}</Badge>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -336,7 +338,7 @@ const EventModelTab = ({ task, taskTree }) => {
                     handleAddSliceClick(chapter.name);
                   }}
                 >
-                  Add Slice
+                  Add Feature
                 </Button>
               </div>
             </div>
@@ -344,7 +346,7 @@ const EventModelTab = ({ task, taskTree }) => {
             {isChapterExpanded && (
               <CardContent style={styles.chapterContent}>
                 {chapterSlices.length === 0 ? (
-                  <Text style={styles.noSlicesText}>No slices in this chapter yet</Text>
+                  <Text style={styles.noSlicesText}>No features in this module yet</Text>
                 ) : (
                   chapterSlices.map((slice) => (
                     <SliceCard
@@ -367,18 +369,18 @@ const EventModelTab = ({ task, taskTree }) => {
         );
       })}
 
-      {/* Orphaned slices (not in any chapter) */}
+      {/* Orphaned features (not in any module) */}
       {slices.filter(s => !s.chapter || !chapters.find(c => c.name === s.chapter)).length > 0 && (
         <Card style={styles.chapterCard}>
           <div style={styles.chapterHeader}>
             <div style={styles.chapterHeaderLeft}>
               <div>
-                <Heading2 style={{ margin: 0 }}>Unassigned Slices</Heading2>
-                <Text style={styles.chapterDescription}>Slices not assigned to a chapter</Text>
+                <Heading2 style={{ margin: 0 }}>Unassigned Features</Heading2>
+                <Text style={styles.chapterDescription}>Features not assigned to a module</Text>
               </div>
             </div>
             <Badge variant="warning">
-              {slices.filter(s => !s.chapter || !chapters.find(c => c.name === s.chapter)).length} slices
+              {slices.filter(s => !s.chapter || !chapters.find(c => c.name === s.chapter)).length} features
             </Badge>
           </div>
           <CardContent style={styles.chapterContent}>
@@ -404,7 +406,7 @@ const EventModelTab = ({ task, taskTree }) => {
 
       {/* Data Flow Section - REMOVED: Data flow now shown in context with wireframes per slice */}
 
-      {/* Swimlanes Section */}
+      {/* Business Areas Section */}
       <Card style={styles.swimlanesCard}>
         <div
           style={styles.swimlanesHeader}
@@ -417,13 +419,13 @@ const EventModelTab = ({ task, taskTree }) => {
               variant="ghost"
             />
             <div>
-              <Heading2 style={{ margin: 0 }}>🏊 Swimlanes & Organization</Heading2>
+              <Heading2 style={{ margin: 0 }}>🏢 Business Areas</Heading2>
               <Text style={styles.swimlanesDescription}>
-                Business capabilities that group related functionality
+                Categories that group related functionality (like "User Management" or "Payments")
               </Text>
             </div>
           </div>
-          <Badge variant="secondary">{swimlanes.length} swimlanes</Badge>
+          <Badge variant="secondary">{swimlanes.length} {swimlanes.length === 1 ? 'area' : 'areas'}</Badge>
         </div>
 
         {showSwimlanes && (
@@ -435,9 +437,9 @@ const EventModelTab = ({ task, taskTree }) => {
                     <Heading3 style={styles.swimlaneName}>{swimlane.name}</Heading3>
                     <Text style={styles.swimlaneDescription}>{swimlane.description}</Text>
                     <div style={styles.swimlaneStats}>
-                      <Badge variant="info" size="sm">{swimlane.commands?.length || 0} commands</Badge>
+                      <Badge variant="info" size="sm">{swimlane.commands?.length || 0} actions</Badge>
                       <Badge variant="secondary" size="sm">{swimlane.events?.length || 0} events</Badge>
-                      <Badge variant="success" size="sm">{swimlane.read_models?.length || 0} read models</Badge>
+                      <Badge variant="success" size="sm">{swimlane.read_models?.length || 0} screens</Badge>
                     </div>
                   </CardContent>
                 </Card>
@@ -453,9 +455,9 @@ const EventModelTab = ({ task, taskTree }) => {
           <CardContent style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[3], padding: tokens.spacing[4] }}>
             <LoadingSpinner size="md" />
             <div>
-              <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[1] }}>Analyzing Cascade Changes...</Heading3>
+              <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[1] }}>Analyzing Related Changes...</Heading3>
               <Text style={{ color: 'var(--color-text-muted)' }}>
-                The AI is analyzing how this change affects the rest of your Event Model.
+                The AI is figuring out how this change affects other parts of your system.
               </Text>
             </div>
           </CardContent>
@@ -467,7 +469,7 @@ const EventModelTab = ({ task, taskTree }) => {
         <Card style={{ marginTop: tokens.spacing[4], border: `2px solid ${tokens.colors.error[300]}` }}>
           <CardContent style={{ padding: tokens.spacing[4] }}>
             <Heading3 style={{ margin: 0, marginBottom: tokens.spacing[2], color: tokens.colors.error[700] }}>
-              Cascade Analysis Failed
+              Analysis Failed
             </Heading3>
             <Text>{cascadeError}</Text>
           </CardContent>
@@ -528,7 +530,7 @@ const SliceCard = ({
           <div>
             <div style={styles.sliceTitle}>
               <span style={styles.sliceIcon}>🎯</span>
-              <Heading3 style={{ margin: 0 }}>Slice: {slice.name}</Heading3>
+              <Heading3 style={{ margin: 0 }}>Feature: {slice.name}</Heading3>
             </div>
             {slice.description && (
               <Text style={styles.sliceDescription}>{slice.description}</Text>
@@ -536,7 +538,7 @@ const SliceCard = ({
           </div>
         </div>
         {slice.swimlane && (
-          <Badge variant="primary" size="sm">🏊 {slice.swimlane}</Badge>
+          <Badge variant="primary" size="sm">🏢 {slice.swimlane}</Badge>
         )}
       </div>
 
@@ -547,7 +549,7 @@ const SliceCard = ({
             <div style={styles.automationFlow}>
               <div style={styles.automationHeader}>
                 <span style={styles.automationIcon}>⚙️</span>
-                <Text style={styles.automationTitle}>Automation: {slice.name}</Text>
+                <Text style={styles.automationTitle}>Background Process: {slice.name}</Text>
               </div>
 
               {/* Trigger Events */}
@@ -595,12 +597,12 @@ const SliceCard = ({
           {/* Standard slice rendering (command → event → read model) */}
           {slice.type !== 'automation' && (
             <>
-              {/* Command */}
+              {/* User Action */}
               {command.name && (
                 <SliceElement
                   type="command"
                   icon="🔵"
-                  label="Command"
+                  label="User Action"
                   element={command}
                   elementKey={`${slice.name}-command`}
                   isExpanded={expandedElements.has(`${slice.name}-command`)}
@@ -617,12 +619,12 @@ const SliceCard = ({
                 </div>
               )}
 
-              {/* Event */}
+              {/* System Event */}
               {event.name && (
                 <SliceElement
                   type="event"
                   icon="🟠"
-                  label="Event"
+                  label="System Event"
                   element={event}
                   elementKey={`${slice.name}-event`}
                   isExpanded={expandedElements.has(`${slice.name}-event`)}
@@ -639,12 +641,12 @@ const SliceCard = ({
                 </div>
               )}
 
-              {/* Read Model */}
+              {/* Screen/View */}
               {readModel.name && (
                 <SliceElement
                   type="read_model"
                   icon="🟢"
-                  label="Read Model"
+                  label="Screen/View"
                   element={readModel}
                   elementKey={`${slice.name}-readmodel`}
                   isExpanded={expandedElements.has(`${slice.name}-readmodel`)}
@@ -788,7 +790,7 @@ const SliceElement = ({
         </div>
         <div style={styles.elementHeaderRight}>
           {element.swimlane && (
-            <Badge variant="primary" size="sm">🏊 {element.swimlane}</Badge>
+            <Badge variant="primary" size="sm">🏢 {element.swimlane}</Badge>
           )}
           <IconButton
             icon={isExpanded ? ChevronDownIcon : ChevronRightIcon}
@@ -843,28 +845,28 @@ const SliceElement = ({
 
           {element.swimlane && (
             <div style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Swimlane:</Text>
+              <Text style={styles.detailLabel}>Business Area:</Text>
               <Text style={styles.detailValue}>{element.swimlane}</Text>
             </div>
           )}
 
           {element.triggered_by && (
             <div style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Triggered By:</Text>
+              <Text style={styles.detailLabel}>Started By:</Text>
               <Text style={styles.detailValue}>{element.triggered_by}</Text>
             </div>
           )}
 
           {element.triggers_events && (
             <div style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Triggers Events:</Text>
+              <Text style={styles.detailLabel}>Causes:</Text>
               <Text style={styles.detailValue}>{element.triggers_events.join(', ')}</Text>
             </div>
           )}
 
           {element.data_source && (
             <div style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Data Source:</Text>
+              <Text style={styles.detailLabel}>Gets Data From:</Text>
               <Text style={styles.detailValue}>{element.data_source.join(', ')}</Text>
             </div>
           )}

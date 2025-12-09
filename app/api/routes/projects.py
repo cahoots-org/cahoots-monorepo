@@ -1,5 +1,6 @@
 """Project context API endpoints - proxies to Contex"""
 
+import os
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -9,6 +10,11 @@ from app.storage import TaskStorage
 from app.services.context_engine_client import ContextEngineClient
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+def _is_dev_admin(current_user: Dict) -> bool:
+    """Check if user is admin in development environment only."""
+    is_dev = os.environ.get("ENVIRONMENT", "development") == "development"
+    return is_dev and current_user.get("is_admin", False)
 
 
 async def get_context_engine() -> ContextEngineClient:
@@ -41,7 +47,7 @@ async def get_project_context(
     if not task:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    if task.user_id != current_user["id"]:
+    if not _is_dev_admin(current_user) and task.user_id != current_user["id"]:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     # Get context from Contex

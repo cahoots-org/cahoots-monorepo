@@ -216,28 +216,47 @@ class ContextEngineClient:
         Returns:
             List of matching data items
         """
-        client = await self._get_client()
-        if not client:
-            raise RuntimeError("Context Engine SDK not available")
+        import httpx
+        import yaml
+
+        # Use direct HTTP call to correct endpoint (SDK uses wrong path)
+        url = f"{self.base_url}/api/v1/projects/{project_id}/query"
+        headers = {}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            response = await client.query(
-                project_id=project_id,
-                query=query,
-                max_results=limit
-            )
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await http_client.post(
+                    url,
+                    json={"query": query, "limit": limit},
+                    headers=headers
+                )
+                response.raise_for_status()
 
-            # Extract results from SDK response - server returns 'matches' field
-            matches = getattr(response, 'matches', [])
+                # Context Engine returns YAML format, not JSON
+                data = yaml.safe_load(response.text)
+
+            # Extract results - server returns 'matches[N]' key with list
+            # Find the matches key (format: 'matches[N]' where N is count)
+            matches = []
+            for key in data.keys():
+                if key.startswith('matches'):
+                    matches = data[key] or []
+                    break
+
             return [
                 {
-                    "data_key": getattr(m, 'data_key', ''),
-                    "data": getattr(m, 'data', {}),
-                    "similarity_score": getattr(m, 'similarity', 0.0)
+                    "data_key": m.get('data_key', ''),
+                    "data": m.get('data', {}),
+                    "similarity_score": m.get('similarity', m.get('score', 0.0))
                 }
                 for m in matches[:limit]
             ]
 
+        except httpx.HTTPStatusError as e:
+            print(f"[ContextEngine] ✗ Query failed: HTTP {e.response.status_code}")
+            raise
         except Exception as e:
             print(f"[ContextEngine] ✗ Query failed: {e}")
             raise

@@ -4,18 +4,18 @@
 export const tokens = {
   // Color Palette - Semantic color assignments
   colors: {
-    // Primary Brand Colors - Based on logo palette
+    // Primary Brand Colors - Vibrant Orange
     primary: {
-      50: '#FDF1ED',
-      100: '#FAE0D8',
-      200: '#F4BDB0',
-      300: '#E89A7E',
-      400: '#DC6F51',
-      500: '#D24E26', // Main brand - Cinnabar
-      600: '#B83E1C',
-      700: '#973118',
-      800: '#7B2A19',
-      900: '#652518',
+      50: '#FFF7ED',
+      100: '#FFEDD5',
+      200: '#FED7AA',
+      300: '#FDBA74',
+      400: '#FF8C1A', // Main brand - Vibrant Orange
+      500: '#FF8C1A',
+      600: '#EA580C',
+      700: '#C2410C',
+      800: '#9A3412',
+      900: '#7C2D12',
     },
     
     // Secondary - Verdigris

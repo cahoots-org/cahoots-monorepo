@@ -1,0 +1,26 @@
+# Python Test Runner Image
+# Used by Cloud Run Jobs to execute Python tests
+
+FROM --platform=linux/amd64 python:3.11-slim
+
+# Install git for cloning repos
+RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Install common test tools
+RUN pip install --no-cache-dir \
+    pytest \
+    pytest-asyncio \
+    pytest-json-report \
+    pytest-cov \
+    httpx \
+    fastapi \
+    uvicorn
+
+# Create results directory
+RUN mkdir -p /results
+
+# Default command (overridden at runtime)
+CMD ["sh", "-c", "echo 'Ready to run tests'"]

@@ -1,0 +1,19 @@
+# Node.js Test Runner Image
+# Used by Cloud Run Jobs to execute Node.js/TypeScript tests
+
+FROM --platform=linux/amd64 node:20-alpine
+
+# Install git for cloning repos
+RUN apk add --no-cache git curl bash
+
+# Create workspace directory
+WORKDIR /workspace
+
+# Install common global tools
+RUN npm install -g jest typescript ts-node ts-jest @types/jest
+
+# Create results directory
+RUN mkdir -p /results
+
+# Default command (overridden at runtime)
+CMD ["sh", "-c", "echo 'Ready to run tests'"]

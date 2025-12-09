@@ -60,17 +60,17 @@ const AddSliceModal = ({ isOpen, onClose, onSave, chapterName }) => {
   if (!isOpen) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title={`Add New Slice to ${chapterName}`} size="md">
+    <Modal isOpen={isOpen} onClose={handleClose} title={`Add New Feature to ${chapterName}`} size="md">
       <div style={styles.form}>
         <div style={styles.helpText}>
           <Text style={styles.helpTextContent}>
-            Enter a name for your slice and optionally fill in details. The AI will analyze your input and automatically fill in missing fields, generate events, create GWT scenarios, and ensure consistency with your event model.
+            Enter a name for your feature and optionally add details. The AI will analyze your input and automatically fill in missing fields, generate system events, create test scenarios, and ensure everything fits together.
           </Text>
         </div>
 
         <div style={styles.formGroup}>
           <label style={styles.label}>
-            Slice Name <span style={styles.required}>*</span>
+            Feature Name <span style={styles.required}>*</span>
           </label>
           <input
             type="text"
@@ -83,16 +83,16 @@ const AddSliceModal = ({ isOpen, onClose, onSave, chapterName }) => {
         </div>
 
         <div style={styles.formGroup}>
-          <label style={styles.label}>Slice Type</label>
+          <label style={styles.label}>Feature Type</label>
           <select
             value={sliceType}
             onChange={(e) => setSliceType(e.target.value)}
             style={styles.select}
             disabled={isSubmitting}
           >
-            <option value="state_change">State Change (Command → Event)</option>
-            <option value="state_view">State View (Read Model)</option>
-            <option value="automation">Automation (Event → Event)</option>
+            <option value="state_change">User Action (something the user does)</option>
+            <option value="state_view">Screen/View (what the user sees)</option>
+            <option value="automation">Background Process (runs automatically)</option>
           </select>
         </div>
 
@@ -101,7 +101,7 @@ const AddSliceModal = ({ isOpen, onClose, onSave, chapterName }) => {
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what this slice does..."
+            placeholder="Describe what this feature does..."
             style={styles.textarea}
             rows={3}
             disabled={isSubmitting}
@@ -110,7 +110,7 @@ const AddSliceModal = ({ isOpen, onClose, onSave, chapterName }) => {
 
         {sliceType === 'state_change' && (
           <div style={styles.formGroup}>
-            <label style={styles.label}>Command Name (optional)</label>
+            <label style={styles.label}>Action Name (optional)</label>
             <input
               type="text"
               value={command}
@@ -124,7 +124,7 @@ const AddSliceModal = ({ isOpen, onClose, onSave, chapterName }) => {
 
         {sliceType === 'state_view' && (
           <div style={styles.formGroup}>
-            <label style={styles.label}>Read Model Name (optional)</label>
+            <label style={styles.label}>Screen Name (optional)</label>
             <input
               type="text"
               value={readModel}

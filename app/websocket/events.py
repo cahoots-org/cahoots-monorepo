@@ -25,6 +25,22 @@ class TaskEventType(str, Enum):
     EVENT_MODELING_COMPLETED = "event_modeling.completed"
     EVENT_MODELING_ERROR = "event_modeling.error"
     CONTEXT_UPDATED = "context.updated"
+    # Code generation events
+    CODEGEN_STARTED = "codegen.started"
+    CODEGEN_PROGRESS = "codegen.progress"
+    CODEGEN_SLICE_STARTED = "codegen.slice_started"
+    CODEGEN_SLICE_COMPLETED = "codegen.slice_completed"
+    CODEGEN_SLICE_FAILED = "codegen.slice_failed"
+    CODEGEN_TESTS_GENERATED = "codegen.tests_generated"
+    CODEGEN_CODE_GENERATED = "codegen.code_generated"
+    CODEGEN_TESTS_PASSED = "codegen.tests_passed"
+    CODEGEN_TESTS_FAILED = "codegen.tests_failed"
+    CODEGEN_FIX_APPLIED = "codegen.fix_applied"
+    CODEGEN_INTEGRATION_STARTED = "codegen.integration_started"
+    CODEGEN_INTEGRATION_COMPLETED = "codegen.integration_completed"
+    CODEGEN_COMPLETED = "codegen.completed"
+    CODEGEN_FAILED = "codegen.failed"
+    CODEGEN_CANCELLED = "codegen.cancelled"
 
 
 class TaskEventEmitter:
@@ -364,6 +380,160 @@ class TaskEventEmitter:
                 "error": error_message,
                 "message": f"Event modeling failed: {error_message}"
             }
+        )
+
+    async def emit_custom_event(
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        user_id: Optional[str] = None
+    ):
+        """Emit a custom event (used for code generation and other custom events)."""
+        event_data = {
+            "type": event_type,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            **data
+        }
+
+        if user_id:
+            event_data["user_id"] = user_id
+
+        await self._broadcast_custom_event(event_data, user_id)
+
+    async def _broadcast_custom_event(self, event_data: Dict[str, Any], user_id: Optional[str] = None):
+        """Broadcast custom event to appropriate WebSocket connections."""
+        print(f"[WebSocket] Broadcasting custom event: {event_data.get('type')}")
+        try:
+            # Send to global connections
+            await self.ws_manager.broadcast_global(event_data)
+
+            # Send to specific user connections if user_id is available
+            if user_id:
+                await self.ws_manager.send_to_user(user_id, event_data)
+
+        except Exception as e:
+            print(f"Failed to broadcast custom WebSocket event: {e}")
+
+    # Code generation event helpers
+    async def emit_codegen_started(
+        self,
+        project_id: str,
+        tech_stack: str,
+        total_slices: int,
+        user_id: Optional[str] = None
+    ):
+        """Emit code generation started event."""
+        await self.emit_custom_event(
+            TaskEventType.CODEGEN_STARTED.value,
+            {
+                "project_id": project_id,
+                "tech_stack": tech_stack,
+                "total_slices": total_slices,
+                "message": f"Starting code generation with {tech_stack}"
+            },
+            user_id
+        )
+
+    async def emit_codegen_progress(
+        self,
+        project_id: str,
+        progress_percent: float,
+        completed_slices: int,
+        total_slices: int,
+        current_slice: Optional[str] = None,
+        user_id: Optional[str] = None
+    ):
+        """Emit code generation progress event."""
+        await self.emit_custom_event(
+            TaskEventType.CODEGEN_PROGRESS.value,
+            {
+                "project_id": project_id,
+                "progress_percent": progress_percent,
+                "completed_slices": completed_slices,
+                "total_slices": total_slices,
+                "current_slice": current_slice
+            },
+            user_id
+        )
+
+    async def emit_codegen_slice_started(
+        self,
+        project_id: str,
+        slice_id: str,
+        slice_type: str,
+        slice_name: str,
+        user_id: Optional[str] = None
+    ):
+        """Emit slice generation started event."""
+        await self.emit_custom_event(
+            TaskEventType.CODEGEN_SLICE_STARTED.value,
+            {
+                "project_id": project_id,
+                "slice_id": slice_id,
+                "slice_type": slice_type,
+                "slice_name": slice_name,
+                "message": f"Generating {slice_type}: {slice_name}"
+            },
+            user_id
+        )
+
+    async def emit_codegen_slice_completed(
+        self,
+        project_id: str,
+        slice_id: str,
+        files_created: int = 0,
+        user_id: Optional[str] = None
+    ):
+        """Emit slice generation completed event."""
+        await self.emit_custom_event(
+            TaskEventType.CODEGEN_SLICE_COMPLETED.value,
+            {
+                "project_id": project_id,
+                "slice_id": slice_id,
+                "files_created": files_created,
+                "message": f"Completed slice: {slice_id}"
+            },
+            user_id
+        )
+
+    async def emit_codegen_completed(
+        self,
+        project_id: str,
+        completed_slices: int,
+        failed_slices: int,
+        repo_url: str,
+        user_id: Optional[str] = None
+    ):
+        """Emit code generation completed event."""
+        await self.emit_custom_event(
+            TaskEventType.CODEGEN_COMPLETED.value,
+            {
+                "project_id": project_id,
+                "completed_slices": completed_slices,
+                "failed_slices": failed_slices,
+                "repo_url": repo_url,
+                "message": f"Code generation complete! {completed_slices} slices generated."
+            },
+            user_id
+        )
+
+    async def emit_codegen_failed(
+        self,
+        project_id: str,
+        error: str,
+        failed_slices: int = 0,
+        user_id: Optional[str] = None
+    ):
+        """Emit code generation failed event."""
+        await self.emit_custom_event(
+            TaskEventType.CODEGEN_FAILED.value,
+            {
+                "project_id": project_id,
+                "error": error,
+                "failed_slices": failed_slices,
+                "message": f"Code generation failed: {error}"
+            },
+            user_id
         )
 
 

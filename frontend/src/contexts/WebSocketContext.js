@@ -13,6 +13,7 @@ class WebSocketManager {
   constructor() {
     this.ws = null;
     this.subscribers = new Map();
+    this.messageSubscribers = new Map(); // Separate map for message-only subscribers
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectDelay = 1000; // Start with 1 second
@@ -53,6 +54,8 @@ class WebSocketManager {
             const data = JSON.parse(event.data);
             console.log('[WebSocket] Received message:', data);
             this.notifySubscribers('message', data);
+            // Also notify message-only subscribers directly with parsed data
+            this.notifyMessageSubscribers(data);
           } catch (error) {
             console.error('Failed to parse WebSocket message:', error);
           }
@@ -101,14 +104,27 @@ class WebSocketManager {
       this.ws = null;
     }
     this.subscribers.clear();
+    this.messageSubscribers.clear();
   }
 
   subscribe(id, callback) {
     this.subscribers.set(id, callback);
-    
+
     // Return unsubscribe function
     return () => {
       this.subscribers.delete(id);
+    };
+  }
+
+  // Subscribe to receive only message events (parsed JSON data)
+  subscribeToMessages(id, callback) {
+    console.log('[WebSocketManager] Adding message subscriber:', id);
+    this.messageSubscribers.set(id, callback);
+
+    // Return unsubscribe function
+    return () => {
+      console.log('[WebSocketManager] Removing message subscriber:', id);
+      this.messageSubscribers.delete(id);
     };
   }
 
@@ -118,6 +134,17 @@ class WebSocketManager {
         callback(type, data);
       } catch (error) {
         console.error('Error in WebSocket subscriber:', error);
+      }
+    });
+  }
+
+  notifyMessageSubscribers(data) {
+    console.log('[WebSocketManager] Notifying', this.messageSubscribers.size, 'message subscribers');
+    this.messageSubscribers.forEach(callback => {
+      try {
+        callback(data);
+      } catch (error) {
+        console.error('Error in WebSocket message subscriber:', error);
       }
     });
   }
@@ -461,16 +488,11 @@ export const WebSocketProvider = ({ children }) => {
       }
     },
     
-    // Subscribe to specific message types
-    subscribe: (callback) => wsManager.subscribe(`subscriber-${Date.now()}`, (type, data) => {
-      // For 'message' events, forward the actual message data
-      // For other events (connected, disconnected, error), forward the event info
-      if (type === 'message') {
-        callback(data);
-      } else {
-        callback(type);
-      }
-    }),
+    // Subscribe to receive WebSocket messages (used by LiveActivityFeed, etc.)
+    subscribe: (callback) => {
+      const id = `subscriber-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      return wsManager.subscribeToMessages(id, callback);
+    },
   };
 
   return (

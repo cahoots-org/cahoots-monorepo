@@ -10,6 +10,7 @@ from app.storage import TaskStorage
 from app.analyzer import UnifiedAnalyzer, EpicAnalyzer, StoryAnalyzer, CoverageValidator
 from app.analyzer.agentic_analyzer import AgenticAnalyzer
 from app.analyzer.context_aware_domain_analyzer import ContextAwareDomainAnalyzer
+from app.analyzer.requirements_generator import generate_requirements
 from app.analyzer.state_machine_detector import StateMachineDetector
 from app.analyzer.cqrs_detector import CQRSDetector
 from app.analyzer.schema_generator import SchemaGenerator
@@ -24,6 +25,15 @@ from app.metrics import (
     context_engine_publish_duration,
     epics_generated_total,
     stories_generated_total,
+    projects_created_total,
+    tasks_generated_total,
+    atomic_tasks_total,
+    commands_generated_total,
+    read_models_generated_total,
+    automations_generated_total,
+    chapters_generated_total,
+    events_generated_total,
+    event_model_validations_total,
     get_task_count_bucket
 )
 
@@ -130,6 +140,9 @@ class TaskProcessor:
         tree = TaskTree(root=root_task)
         tree.add_task(root_task)
 
+        # Record project creation metric
+        projects_created_total.labels(source="api").inc()
+
         # Emit task created event
         await task_event_emitter.emit_task_created(root_task, user_id)
 
@@ -179,6 +192,11 @@ class TaskProcessor:
             total_tasks = len(tree.tasks) - 1  # Exclude root task
             task_bucket = get_task_count_bucket(total_tasks)
             story_decomposition_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+
+            # Record tasks generated
+            tasks_generated_total.labels(source="story").inc(total_tasks)
+            atomic_count = len([t for t in tree.tasks.values() if t.is_atomic and t.depth > 0])
+            atomic_tasks_total.inc(atomic_count)
 
             timing_metrics["phases"]["story_decomposition"] = phase_duration
             print(f"[TaskProcessor] ⏱️  Story decomposition took {phase_duration:.2f}s")
@@ -239,8 +257,8 @@ class TaskProcessor:
                             "id": epic.id,
                             "title": epic.title,
                             "description": epic.description,
-                            "user_value": epic.user_value,
-                            "acceptance_criteria": epic.acceptance_criteria
+                            "scope_keywords": epic.scope_keywords,
+                            "priority": epic.priority
                         }
                         for epic in epics
                     ]
@@ -250,8 +268,9 @@ class TaskProcessor:
                         for story in epic_stories:
                             stories_data.append({
                                 "id": story.id,
-                                "title": story.title,
-                                "description": story.user_story,
+                                "actor": story.actor,
+                                "action": story.action,
+                                "benefit": story.benefit,
                                 "acceptance_criteria": story.acceptance_criteria,
                                 "epic_id": story.epic_id
                             })
@@ -302,12 +321,48 @@ class TaskProcessor:
                 self.context_engine_client,
                 task_event_emitter
             )
-            analysis = await unified_analyzer.analyze_domain(
+
+            # Prepare data for requirements generation
+            epics_data = [
+                {"title": e.title, "name": e.title, "description": e.description}
+                for e in epics
+            ] if epics else []
+
+            stories_data = []
+            for epic_stories in stories_by_epic.values():
+                for story in epic_stories:
+                    stories_data.append({
+                        "actor": story.actor,
+                        "action": story.action,
+                        "benefit": story.benefit
+                    })
+
+            tech_stack = context.get("tech_stack", {}) if context else {}
+
+            # Run event modeling AND requirements generation in parallel
+            print(f"[TaskProcessor] Running event modeling and requirements generation in parallel")
+            analysis_task = unified_analyzer.analyze_domain(
                 list(tree.tasks.values()),
                 root_task,
                 user_id,
                 project_id=root_task.id
             )
+            requirements_task = generate_requirements(
+                self.analyzer.llm,
+                root_task.description,
+                epics_data,
+                stories_data,
+                tech_stack
+            )
+
+            analysis, requirements = await asyncio.gather(analysis_task, requirements_task)
+
+            # Store requirements in metadata
+            if requirements:
+                root_task.metadata["requirements"] = requirements
+                fr_count = len(requirements.get("functional_requirements", []))
+                nfr_count = len(requirements.get("non_functional_requirements", []))
+                print(f"[TaskProcessor] Generated {fr_count} functional, {nfr_count} non-functional requirements")
 
             # Record event modeling metrics
             event_modeling_time = (datetime.now(timezone.utc) - event_modeling_start).total_seconds()
@@ -521,6 +576,9 @@ class TaskProcessor:
             tree = TaskTree(root=root_task)
             tree.add_task(root_task)
 
+            # Record project creation metric
+            projects_created_total.labels(source="api").inc()
+
             # STEP 1: Initialize Epics and Stories
             epics = []
             stories_by_epic = {}
@@ -589,6 +647,11 @@ class TaskProcessor:
             total_tasks = len(tree.tasks) - 1  # Exclude root task
             task_bucket = get_task_count_bucket(total_tasks)
             story_decomposition_duration.labels(task_count_bucket=task_bucket).observe(phase_duration)
+
+            # Record tasks generated
+            tasks_generated_total.labels(source="story").inc(total_tasks)
+            atomic_count = len([t for t in tree.tasks.values() if t.is_atomic and t.depth > 0])
+            atomic_tasks_total.inc(atomic_count)
 
             print(f"[TaskProcessor] ⏱️  Story decomposition took {phase_duration:.2f}s (bucket: {task_bucket}, tasks: {total_tasks})")
 
@@ -675,12 +738,40 @@ class TaskProcessor:
                     task_event_emitter
                 )
                 all_tasks = [task for task in tree.tasks.values() if task.depth > 0]
-                event_model_analysis = await unified_analyzer.analyze_domain(
+
+                # Prepare data for requirements generation
+                epics_for_req = root_task.context.get('epics', []) if root_task.context else []
+                stories_for_req = root_task.context.get('user_stories', []) if root_task.context else []
+                tech_stack_for_req = context.get('tech_stack', {}) if context else {}
+
+                # Run event modeling AND requirements generation in parallel
+                print(f"[TaskProcessor] Running event modeling and requirements generation in parallel")
+                event_model_task = unified_analyzer.analyze_domain(
                     all_tasks,
                     root_task,
                     user_id,
                     project_id=root_task.id
                 )
+                requirements_task = generate_requirements(
+                    self.analyzer.llm,
+                    root_task.description,
+                    epics_for_req,
+                    stories_for_req,
+                    tech_stack_for_req
+                )
+
+                event_model_analysis, requirements_result = await asyncio.gather(
+                    event_model_task, requirements_task
+                )
+
+                # Store requirements in metadata
+                if requirements_result:
+                    if not isinstance(root_task.metadata, dict):
+                        root_task.metadata = {}
+                    root_task.metadata["requirements"] = requirements_result
+                    fr_count = len(requirements_result.get("functional_requirements", []))
+                    nfr_count = len(requirements_result.get("non_functional_requirements", []))
+                    print(f"[TaskProcessor] Generated {fr_count} functional, {nfr_count} non-functional requirements")
 
                 # Record event modeling metrics
                 event_modeling_time = (datetime.now(timezone.utc) - event_modeling_start).total_seconds()
@@ -861,7 +952,6 @@ class TaskProcessor:
                 print(f"[TaskProcessor] Retrying task (attempt {retry_count}/{max_retries})...")
 
                 # Wait before retry (exponential backoff)
-                import asyncio
                 await asyncio.sleep(2 ** retry_count)
 
                 # Retry the processing
@@ -1084,8 +1174,13 @@ class TaskProcessor:
         subtask_ids = []
 
         for i, subtask_data in enumerate(decomposition.subtasks):
+            # Use the pre-assigned ID if available (from dependency resolution)
+            subtask_id = subtask_data.get("id") or str(uuid.uuid4())
+            # Don't store full context - it's published to Context Engine
+            # Only store tech_stack reference for quick access
+            minimal_context = {"tech_stack": context.get("tech_stack")} if context and context.get("tech_stack") else None
             subtask = Task(
-                id=str(uuid.uuid4()),
+                id=subtask_id,
                 description=subtask_data["description"],
                 status=TaskStatus.SUBMITTED,
                 depth=parent.depth + 1,
@@ -1093,7 +1188,8 @@ class TaskProcessor:
                 is_atomic=subtask_data.get("is_atomic", False),
                 implementation_details=subtask_data.get("implementation_details"),
                 story_points=subtask_data.get("story_points"),
-                context=context,
+                depends_on=subtask_data.get("depends_on", []),  # Include dependencies!
+                context=minimal_context,
                 user_id=parent.user_id
             )
 
@@ -1212,8 +1308,12 @@ class TaskProcessor:
                     # Atomic tasks with implementation details are completed
                     status = TaskStatus.COMPLETED if (is_atomic and subtask_data.get("implementation_details")) else TaskStatus.SUBMITTED
 
+                    # Use pre-assigned ID if available (from dependency resolution)
+                    task_id = subtask_data.get("id") or str(uuid.uuid4())
+                    # Don't store full context - it's published to Context Engine
+                    minimal_context = {"tech_stack": context.get("tech_stack")} if context and context.get("tech_stack") else None
                     task = Task(
-                        id=str(uuid.uuid4()),
+                        id=task_id,
                         description=subtask_data["description"],
                         status=status,
                         depth=1,  # All story tasks start at depth 1
@@ -1221,9 +1321,10 @@ class TaskProcessor:
                         is_atomic=is_atomic,
                         implementation_details=subtask_data.get("implementation_details"),
                         story_points=subtask_data.get("story_points"),
+                        depends_on=subtask_data.get("depends_on", []),  # Include dependencies!
                         story_ids=[subtask_data.get("story_id")] if subtask_data.get("story_id") else [],
                         epic_ids=[subtask_data.get("epic_id")] if subtask_data.get("epic_id") else [],
-                        context=context,
+                        context=minimal_context,
                         user_id=root_task.user_id
                     )
 
@@ -1323,9 +1424,12 @@ class TaskProcessor:
                     if description_normalized in existing_descriptions:
                         continue
 
-                    # Create new enriched task
+                    # Create new enriched task - use pre-assigned ID if available
+                    task_id = subtask_data.get("id") or str(uuid.uuid4())
+                    # Don't store full enriched_context - it's published to Context Engine
+                    minimal_context = {"tech_stack": enriched_context.get("tech_stack")} if enriched_context and enriched_context.get("tech_stack") else None
                     task = Task(
-                        id=str(uuid.uuid4()),
+                        id=task_id,
                         description=description,
                         status=TaskStatus.COMPLETED,
                         depth=1,
@@ -1333,9 +1437,10 @@ class TaskProcessor:
                         is_atomic=True,
                         implementation_details=subtask_data.get("implementation_details"),
                         story_points=subtask_data.get("story_points"),
+                        depends_on=subtask_data.get("depends_on", []),  # Include dependencies!
                         story_ids=[story.id],
                         epic_ids=[epic.id],
-                        context=enriched_context,
+                        context=minimal_context,
                         user_id=root_task.user_id,
                         metadata={"source": "event_model_enrichment"}  # Mark as enriched
                     )
@@ -1441,15 +1546,20 @@ class TaskProcessor:
                 }
                 for e in analysis["events"]
             ]
+            # Record events by type
+            for event in analysis["events"]:
+                events_generated_total.labels(event_type=event.event_type.value).inc()
             print(f"[TaskProcessor] Extracted {len(analysis['events'])} events")
 
         # Store commands, read models, user interactions, automations
         if analysis.get("commands"):
             root_task.metadata["commands"] = analysis["commands"]
+            commands_generated_total.inc(len(analysis["commands"]))
             print(f"[TaskProcessor] Identified {len(analysis['commands'])} commands")
 
         if analysis.get("read_models"):
             root_task.metadata["read_models"] = analysis["read_models"]
+            read_models_generated_total.inc(len(analysis["read_models"]))
             print(f"[TaskProcessor] Identified {len(analysis['read_models'])} read models")
 
         if analysis.get("user_interactions"):
@@ -1458,6 +1568,7 @@ class TaskProcessor:
 
         if analysis.get("automations"):
             root_task.metadata["automations"] = analysis["automations"]
+            automations_generated_total.inc(len(analysis["automations"]))
             print(f"[TaskProcessor] Identified {len(analysis['automations'])} automations")
 
         # Store swimlanes and chapters
@@ -1467,6 +1578,7 @@ class TaskProcessor:
 
         if analysis.get("chapters"):
             root_task.metadata["chapters"] = analysis["chapters"]
+            chapters_generated_total.inc(len(analysis["chapters"]))
             print(f"[TaskProcessor] Identified {len(analysis['chapters'])} chapters")
 
         # Store wireframes if present
@@ -1483,6 +1595,9 @@ class TaskProcessor:
         print(f"[TaskProcessor] Event model validation: {'PASSED' if is_valid else 'FAILED'}")
         print(f"  - Errors: {validation_summary['errors']}")
         print(f"  - Warnings: {validation_summary['warnings']}")
+
+        # Record validation metrics
+        event_model_validations_total.labels(result="passed" if is_valid else "failed").inc()
 
         # Store validation results
         root_task.metadata["event_model_validation"] = {

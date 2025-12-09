@@ -1,0 +1,92 @@
+# Python CLI Application Tech Stack
+# Command-line tool with Click
+
+name: python-cli
+display_name: "Python CLI"
+description: "Command-line application with Click and Python"
+category: cli
+
+# Project structure
+src_dir: src
+test_dir: tests
+
+# Commands
+install_command: pip install -e .
+test_command: pytest
+build_command: pip install -e .
+start_command: python -m {{project_name}}
+
+# File patterns
+source_pattern: "**/*.py"
+test_pattern: "**/test_*.py"
+
+# Conventions for LLM code generation
+conventions: |
+  Project Structure:
+  - Package: src/{project_name}/ (main package)
+  - Entry point: src/{project_name}/__main__.py (allows python -m)
+  - CLI definition: src/{project_name}/cli.py (Click group and commands)
+  - Commands: src/{project_name}/commands/{name}.py (one file per command)
+  - Utilities: src/{project_name}/utils.py (shared helpers)
+  - Tests: tests/test_{name}.py
+
+  Code Style:
+  - Use Click for CLI framework
+  - Type hints on all functions
+  - Docstrings on public functions
+  - Use Rich for pretty output (tables, progress bars)
+  - Exit codes: 0=success, 1=error, 2=usage error
+
+  Click Patterns:
+  - Main group in cli.py with @click.group()
+  - Commands with @cli.command()
+  - Options with @click.option('--name', help='...')
+  - Arguments with @click.argument('name')
+  - Use click.echo() for output, not print()
+  - Use click.style() for colored output
+
+  Error Handling:
+  - Use click.ClickException for user errors
+  - Use click.Abort() for early termination
+  - Provide helpful error messages with suggestions
+  - Validate inputs in callbacks with click.BadParameter
+
+  Testing:
+  - Use Click's CliRunner for testing
+  - Test exit codes and output
+  - Mock external dependencies (files, network)
+  - Test both success and error paths
+
+# Initial project files
+config_files:
+  pyproject.toml: |
+    [build-system]
+    requires = ["setuptools>=61.0"]
+    build-backend = "setuptools.build_meta"
+
+    [project]
+    name = "{{project_name}}"
+    version = "1.0.0"
+    requires-python = ">=3.11"
+    dependencies = [
+        "click>=8.1.7",
+        "rich>=13.7.0",
+    ]
+
+    [project.scripts]
+    {{project_name}} = "{{project_name}}.cli:cli"
+
+    [project.optional-dependencies]
+    dev = [
+        "pytest>=7.4.4",
+        "pytest-cov>=4.1.0",
+    ]
+
+    [tool.pytest.ini_options]
+    testpaths = ["tests"]
+    python_files = ["test_*.py"]
+
+    [tool.setuptools.packages.find]
+    where = ["src"]
+
+runner_image: python:3.11-slim

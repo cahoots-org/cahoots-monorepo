@@ -14,7 +14,8 @@ const ExportModal = ({
   onClose,
   task,
   localTaskTree,
-  onShowToast
+  onShowToast,
+  inline = false
 }) => {
   const [isTrelloModalOpen, setIsTrelloModalOpen] = useState(false);
   const [isJiraModalOpen, setIsJiraModalOpen] = useState(false);
@@ -317,75 +318,122 @@ const ExportModal = ({
     }
   };
 
+  const exportButtons = (
+    <div style={inline ? styles.exportOptionsInline : styles.exportOptions}>
+      <button
+        style={styles.exportOption}
+        onClick={() => {
+          handleExportToJson();
+          if (!inline) onClose();
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-2px)';
+          e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)';
+          e.currentTarget.style.borderColor = tokens.colors.primary[500];
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'translateY(0)';
+          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+          e.currentTarget.style.borderColor = 'var(--color-border)';
+        }}
+      >
+        <span style={styles.exportIcon}>📄</span>
+        <div style={styles.exportOptionText}>
+          <span style={styles.exportOptionTitle}>JSON</span>
+          <span style={styles.exportOptionDesc}>Download as JSON file</span>
+        </div>
+      </button>
+
+      <button
+        style={{
+          ...styles.exportOption,
+          ...(settings.jiraIntegration?.enabled ? {} : styles.exportOptionDisabled)
+        }}
+        onClick={() => {
+          if (settings.jiraIntegration?.enabled) {
+            onJiraModalOpen();
+            if (!inline) onClose();
+          }
+        }}
+        onMouseEnter={(e) => {
+          if (settings.jiraIntegration?.enabled) {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)';
+            e.currentTarget.style.borderColor = tokens.colors.primary[500];
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (settings.jiraIntegration?.enabled) {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+            e.currentTarget.style.borderColor = 'var(--color-border)';
+          }
+        }}
+        title={!settings.jiraIntegration?.enabled ? "Enable JIRA integration in Settings" : ""}
+      >
+        <span style={styles.exportIcon}>🔷</span>
+        <div style={styles.exportOptionText}>
+          <span style={styles.exportOptionTitle}>JIRA</span>
+          <span style={styles.exportOptionDesc}>
+            {settings.jiraIntegration?.enabled ? "Create JIRA project" : "Enable in Settings first"}
+          </span>
+        </div>
+      </button>
+
+      <button
+        style={{
+          ...styles.exportOption,
+          ...(settings.trelloIntegration?.enabled ? {} : styles.exportOptionDisabled)
+        }}
+        onClick={() => {
+          if (settings.trelloIntegration?.enabled) {
+            onTrelloModalOpen();
+            if (!inline) onClose();
+          }
+        }}
+        onMouseEnter={(e) => {
+          if (settings.trelloIntegration?.enabled) {
+            e.currentTarget.style.transform = 'translateY(-2px)';
+            e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)';
+            e.currentTarget.style.borderColor = tokens.colors.primary[500];
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (settings.trelloIntegration?.enabled) {
+            e.currentTarget.style.transform = 'translateY(0)';
+            e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
+            e.currentTarget.style.borderColor = 'var(--color-border)';
+          }
+        }}
+        title={!settings.trelloIntegration?.enabled ? "Enable Trello integration in Settings" : ""}
+      >
+        <span style={styles.exportIcon}>📋</span>
+        <div style={styles.exportOptionText}>
+          <span style={styles.exportOptionTitle}>Trello</span>
+          <span style={styles.exportOptionDesc}>
+            {settings.trelloIntegration?.enabled ? "Create Trello board" : "Enable in Settings first"}
+          </span>
+        </div>
+      </button>
+    </div>
+  );
+
   return (
     <>
-      {/* Export Options Modal */}
-      <Modal
-        isOpen={isOpen}
-        onClose={onClose}
-        title="Export Project"
-        size="sm"
-      >
-        <div style={styles.exportOptions}>
-          <button
-            style={styles.exportOption}
-            onClick={() => {
-              handleExportToJson();
-              onClose();
-            }}
-          >
-            <span style={styles.exportIcon}>📄</span>
-            <div style={styles.exportOptionText}>
-              <span style={styles.exportOptionTitle}>Export to JSON</span>
-              <span style={styles.exportOptionDesc}>Download as JSON file</span>
-            </div>
-          </button>
+      {/* Inline mode: just render buttons */}
+      {inline && exportButtons}
 
-          <button
-            style={{
-              ...styles.exportOption,
-              ...(settings.jiraIntegration?.enabled ? {} : styles.exportOptionDisabled)
-            }}
-            onClick={() => {
-              if (settings.jiraIntegration?.enabled) {
-                onJiraModalOpen();
-                onClose();
-              }
-            }}
-            title={!settings.jiraIntegration?.enabled ? "Enable JIRA integration in Settings" : ""}
-          >
-            <span style={styles.exportIcon}>🔷</span>
-            <div style={styles.exportOptionText}>
-              <span style={styles.exportOptionTitle}>Export to JIRA</span>
-              <span style={styles.exportOptionDesc}>
-                {settings.jiraIntegration?.enabled ? "Create JIRA project" : "Enable in Settings first"}
-              </span>
-            </div>
-          </button>
-
-          <button
-            style={{
-              ...styles.exportOption,
-              ...(settings.trelloIntegration?.enabled ? {} : styles.exportOptionDisabled)
-            }}
-            onClick={() => {
-              if (settings.trelloIntegration?.enabled) {
-                onTrelloModalOpen();
-                onClose();
-              }
-            }}
-            title={!settings.trelloIntegration?.enabled ? "Enable Trello integration in Settings" : ""}
-          >
-            <span style={styles.exportIcon}>📋</span>
-            <div style={styles.exportOptionText}>
-              <span style={styles.exportOptionTitle}>Export to Trello</span>
-              <span style={styles.exportOptionDesc}>
-                {settings.trelloIntegration?.enabled ? "Create Trello board" : "Enable in Settings first"}
-              </span>
-            </div>
-          </button>
-        </div>
-      </Modal>
+      {/* Modal mode: wrap in Modal */}
+      {!inline && (
+        <Modal
+          isOpen={isOpen}
+          onClose={onClose}
+          title="Export Project"
+          size="sm"
+        >
+          {exportButtons}
+        </Modal>
+      )}
 
       {/* Export to Trello Modal */}
       {isTrelloModalOpen && (
@@ -689,42 +737,52 @@ const styles = {
   exportOptions: {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[2],
-    padding: tokens.spacing[2],
+    gap: tokens.spacing[4],
+    padding: tokens.spacing[4],
+  },
+  exportOptionsInline: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, 1fr)',
+    gap: tokens.spacing[4],
   },
   exportOption: {
     display: 'flex',
     alignItems: 'center',
-    gap: tokens.spacing[3],
-    padding: tokens.spacing[4],
+    gap: tokens.spacing[4],
+    padding: tokens.spacing[6],
     backgroundColor: 'var(--color-bg-secondary)',
-    border: '1px solid var(--color-border)',
-    borderRadius: tokens.borderRadius.lg,
+    border: '2px solid var(--color-border)',
+    borderRadius: tokens.borderRadius.xl,
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
+    transition: 'all 0.3s ease',
     textAlign: 'left',
     width: '100%',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
   },
   exportOptionDisabled: {
-    opacity: 0.5,
+    opacity: 0.4,
     cursor: 'not-allowed',
+    backgroundColor: 'var(--color-neutral-800)',
   },
   exportIcon: {
-    fontSize: '24px',
+    fontSize: '32px',
+    flexShrink: 0,
   },
   exportOptionText: {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[1],
+    gap: tokens.spacing[2],
+    flex: 1,
   },
   exportOptionTitle: {
-    fontSize: tokens.typography.fontSize.base[0],
-    fontWeight: tokens.typography.fontWeight.medium,
+    fontSize: tokens.typography.fontSize.lg[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
     color: 'var(--color-text)',
   },
   exportOptionDesc: {
     fontSize: tokens.typography.fontSize.sm[0],
     color: 'var(--color-text-muted)',
+    lineHeight: tokens.typography.lineHeight.relaxed,
   },
 };
 

@@ -11,9 +11,9 @@ import {
 } from '../design-system';
 
 const SLICE_TYPES = [
-  { value: 'state_change', label: 'State Change', description: 'Command that triggers events' },
-  { value: 'state_view', label: 'State View', description: 'Read model for querying state' },
-  { value: 'automation', label: 'Automation', description: 'Event-triggered background process' },
+  { value: 'state_change', label: 'User Action', description: 'Something the user does that changes data' },
+  { value: 'state_view', label: 'Screen/View', description: 'What the user sees on screen' },
+  { value: 'automation', label: 'Background Process', description: 'Runs automatically behind the scenes' },
 ];
 
 const EditSliceModal = ({
@@ -71,9 +71,9 @@ const EditSliceModal = ({
 
   const getDisplayName = () => {
     if (sliceType === 'state_view') {
-      return readModel || 'Unnamed Read Model';
+      return readModel || 'Unnamed Screen';
     }
-    return command || 'Unnamed Command';
+    return command || 'Unnamed Action';
   };
 
   const isValid = () => {
@@ -87,21 +87,21 @@ const EditSliceModal = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Edit Slice"
+      title="Edit Feature"
       size="lg"
     >
       <div style={styles.content}>
-        {/* Chapter context */}
+        {/* Module context */}
         {chapterName && (
           <div style={styles.contextBadge}>
-            <Text style={styles.contextLabel}>Chapter:</Text>
+            <Text style={styles.contextLabel}>Module:</Text>
             <Badge variant="default">{chapterName}</Badge>
           </div>
         )}
 
-        {/* Slice Type */}
+        {/* Feature Type */}
         <div style={styles.field}>
-          <label style={styles.label}>Slice Type</label>
+          <label style={styles.label}>Feature Type</label>
           <div style={styles.typeGrid}>
             {SLICE_TYPES.map((type) => (
               <button
@@ -119,10 +119,10 @@ const EditSliceModal = ({
           </div>
         </div>
 
-        {/* Command Name (for state_change and automation) */}
+        {/* Action Name (for state_change and automation) */}
         {(sliceType === 'state_change' || sliceType === 'automation') && (
           <div style={styles.field}>
-            <label style={styles.label}>Command Name</label>
+            <label style={styles.label}>Action Name</label>
             <input
               type="text"
               value={command}
@@ -131,15 +131,15 @@ const EditSliceModal = ({
               style={styles.input}
             />
             <Text style={styles.hint}>
-              Use PascalCase for command names (e.g., CreateOrder, UpdateProfile)
+              Use PascalCase for action names (e.g., CreateOrder, UpdateProfile)
             </Text>
           </div>
         )}
 
-        {/* Read Model Name (for state_view) */}
+        {/* Screen Name (for state_view) */}
         {sliceType === 'state_view' && (
           <div style={styles.field}>
-            <label style={styles.label}>Read Model Name</label>
+            <label style={styles.label}>Screen Name</label>
             <input
               type="text"
               value={readModel}
@@ -148,15 +148,15 @@ const EditSliceModal = ({
               style={styles.input}
             />
             <Text style={styles.hint}>
-              Use PascalCase for read model names (e.g., UserDashboard, ProductCatalog)
+              Use PascalCase for screen names (e.g., UserDashboard, ProductCatalog)
             </Text>
           </div>
         )}
 
-        {/* Events */}
+        {/* System Events */}
         <div style={styles.field}>
           <label style={styles.label}>
-            {sliceType === 'state_view' ? 'Events that populate this view' : 'Events triggered'}
+            {sliceType === 'state_view' ? 'Events that update this screen' : 'System events triggered'}
           </label>
           <input
             type="text"
@@ -176,7 +176,7 @@ const EditSliceModal = ({
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what this slice does..."
+            placeholder="Describe what this feature does..."
             style={styles.textarea}
             rows={3}
           />

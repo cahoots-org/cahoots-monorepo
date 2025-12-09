@@ -52,7 +52,7 @@ const ChapterList = ({
     return (
       <div style={styles.emptyState}>
         <Text style={styles.emptyStateText}>
-          No chapters generated yet. Generate an event model to see the project breakdown.
+          No modules generated yet. Create a system blueprint to see the project breakdown.
         </Text>
       </div>
     );
@@ -92,7 +92,7 @@ const ChapterList = ({
 
               <div style={styles.chapterRight}>
                 <div style={styles.chapterStats}>
-                  <Badge variant="info">{chapterSlices.length} slices</Badge>
+                  <Badge variant="info">{chapterSlices.length} {chapterSlices.length === 1 ? 'feature' : 'features'}</Badge>
                   <Badge variant="secondary">{storyPoints} pts</Badge>
                 </div>
                 <IconButton
@@ -112,13 +112,13 @@ const ChapterList = ({
               <div style={styles.chapterContent}>
                 {chapterSlices.length === 0 ? (
                   <div style={styles.noSlices}>
-                    <Text style={styles.noSlicesText}>No slices in this chapter</Text>
+                    <Text style={styles.noSlicesText}>No features in this module</Text>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => onAddSlice?.(chapter.name)}
                     >
-                      Add Slice
+                      Add Feature
                     </Button>
                   </div>
                 ) : (
@@ -137,7 +137,7 @@ const ChapterList = ({
                       onClick={() => onAddSlice?.(chapter.name)}
                       style={styles.addSliceButton}
                     >
-                      + Add Slice
+                      + Add Feature
                     </Button>
                   </div>
                 )}
@@ -171,16 +171,16 @@ const SliceCard = ({ slice, index, onEdit }) => {
           />
           <div style={styles.sliceInfo}>
             <Text style={styles.sliceName}>
-              {slice.name || slice.command || slice.read_model || `${slice.type} slice`}
+              {slice.name || slice.command || slice.read_model || `${slice.type} feature`}
             </Text>
             {slice.user_story && (
               <Text style={styles.sliceStory}>{slice.user_story}</Text>
             )}
             {!slice.user_story && slice.type && (
               <Text style={styles.sliceStory}>
-                {slice.type === 'state_change' ? 'State Change' :
-                 slice.type === 'state_view' ? 'State View' :
-                 slice.type === 'automation' ? 'Automation' : slice.type}
+                {slice.type === 'state_change' ? 'User Action' :
+                 slice.type === 'state_view' ? 'Screen/View' :
+                 slice.type === 'automation' ? 'Background Process' : slice.type}
               </Text>
             )}
           </div>
@@ -204,12 +204,12 @@ const SliceCard = ({ slice, index, onEdit }) => {
 
       {isExpanded && (
         <div style={styles.sliceContent}>
-          {/* Command */}
+          {/* User Action */}
           {slice.command && (
             <div style={styles.sliceSection}>
-              <Text style={styles.sectionLabel}>Command</Text>
+              <Text style={styles.sectionLabel}>User Action</Text>
               <div style={styles.elementCard}>
-                <Badge variant="primary" style={styles.elementBadge}>CMD</Badge>
+                <Badge variant="primary" style={styles.elementBadge}>ACT</Badge>
                 <Text style={styles.elementName}>
                   {typeof slice.command === 'string' ? slice.command : slice.command.name}
                 </Text>
@@ -217,10 +217,10 @@ const SliceCard = ({ slice, index, onEdit }) => {
             </div>
           )}
 
-          {/* Events */}
+          {/* System Events */}
           {slice.events?.length > 0 && (
             <div style={styles.sliceSection}>
-              <Text style={styles.sectionLabel}>Events</Text>
+              <Text style={styles.sectionLabel}>System Events</Text>
               <div style={styles.elementsList}>
                 {slice.events.map((event, i) => (
                   <div key={i} style={styles.elementCard}>
@@ -234,12 +234,12 @@ const SliceCard = ({ slice, index, onEdit }) => {
             </div>
           )}
 
-          {/* Read Model */}
+          {/* Screen/View */}
           {slice.read_model && (
             <div style={styles.sliceSection}>
-              <Text style={styles.sectionLabel}>Read Model</Text>
+              <Text style={styles.sectionLabel}>Screen/View</Text>
               <div style={styles.elementCard}>
-                <Badge variant="info" style={styles.elementBadge}>RM</Badge>
+                <Badge variant="info" style={styles.elementBadge}>VIEW</Badge>
                 <Text style={styles.elementName}>
                   {typeof slice.read_model === 'string' ? slice.read_model : slice.read_model.name}
                 </Text>

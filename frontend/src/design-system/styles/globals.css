@@ -5,12 +5,12 @@
 
 /* CSS Custom Properties from Design Tokens */
 :root {
-  /* Primary Colors */
+  /* Primary Colors - Vibrant Orange */
   --color-primary-50: #FFF7ED;
   --color-primary-100: #FFEDD5;
   --color-primary-200: #FED7AA;
   --color-primary-300: #FDBA74;
-  --color-primary-400: #FB923C;
+  --color-primary-400: #FF8C1A;
   --color-primary-500: #FF8C1A;
   --color-primary-600: #EA580C;
   --color-primary-700: #C2410C;
@@ -211,6 +211,34 @@ input, textarea, select {
   scrollbar-color: var(--color-neutral-600) var(--color-neutral-800);
 }
 
+/* Custom scrollbar for prompt text */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-500);
+  border-radius: var(--radius-lg);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary-400);
+}
+
+/* Button Hover States */
+button:not(:disabled):hover {
+  transform: translateY(-1px);
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+button:not(:disabled):active {
+  transform: translateY(0);
+}
+
 /* Utility Classes */
 .sr-only {
   position: absolute;
@@ -271,6 +299,30 @@ input, textarea, select {
   }
   50% {
     opacity: 0.5;
+  }
+}
+
+/* Stage pulse animation for processing indicator */
+@keyframes stagePulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 4px 16px rgba(255, 140, 26, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(255, 140, 26, 0.6);
+  }
+}
+
+/* Count-up animation for stats */
+@keyframes countUp {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
   }
 }
 

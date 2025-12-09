@@ -18,7 +18,8 @@ from app.api.routes import (
     cascade_router,
     user_settings_router,
     metrics_router,
-    projects_router
+    projects_router,
+    edit_router,
 )
 from app.api.dependencies import cleanup_dependencies
 
@@ -68,8 +69,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # Startup
     print("Starting Cahoots Monolith API...")
 
-    # Initialize Context Engine (only if not disabled)
+    # Initialize telemetry (Traceloop/OpenLLMetry)
     import os
+    try:
+        from app.telemetry import init_telemetry
+        environment = os.getenv("ENVIRONMENT", "development")
+        if init_telemetry(service_name="cahoots-api", environment=environment):
+            print("✓ Telemetry initialized (Traceloop/OpenLLMetry)")
+        else:
+            print("⚠ Telemetry disabled or failed to initialize")
+    except Exception as e:
+        print(f"⚠ Telemetry initialization failed: {e}")
+
+    # Initialize Context Engine (only if not disabled)
     if os.getenv("DISABLE_CONTEXT_ENGINE", "false").lower() != "true":
         try:
             from app.api.dependencies import get_context_engine_client
@@ -199,6 +211,11 @@ def create_app() -> FastAPI:
     app.include_router(user_settings_router)
     app.include_router(metrics_router)
     app.include_router(projects_router)
+    app.include_router(edit_router)
+
+    # Include code generation router
+    from app.api.routes import codegen_router
+    app.include_router(codegen_router)
 
     # Include utility routers
     from app.api.routes import regenerate_router

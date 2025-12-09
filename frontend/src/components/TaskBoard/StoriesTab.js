@@ -79,17 +79,41 @@ const StoriesTab = ({ task, onEditEpic, onEditStory }) => {
           const epicStories = storiesByEpic[epic.id] || [];
 
           return (
-            <Card key={epic.id} style={styles.epicCard}>
+            <Card 
+              key={epic.id} 
+              style={styles.epicCard}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px) scale(1.01)';
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(255, 140, 26, 0.3)';
+                e.currentTarget.style.borderColor = 'rgba(255, 140, 26, 0.5)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(255, 140, 26, 0.2)';
+              }}
+            >
               <div
                 style={styles.epicHeader}
                 onClick={() => toggleEpic(epic.id)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'var(--color-bg-secondary)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
               >
                 <div style={styles.epicHeaderLeft}>
-                  <IconButton
-                    icon={isExpanded ? ChevronDownIcon : ChevronRightIcon}
-                    size="sm"
-                    variant="ghost"
-                  />
+                  <div style={{
+                    transition: 'transform 0.3s ease',
+                    transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)',
+                  }}>
+                    <IconButton
+                      icon={ChevronDownIcon}
+                      size="sm"
+                      variant="ghost"
+                    />
+                  </div>
                   <div>
                     <div style={styles.epicTitle}>
                       <Heading3 style={{ margin: 0 }}>{epic.title}</Heading3>
@@ -100,7 +124,20 @@ const StoriesTab = ({ task, onEditEpic, onEditStory }) => {
                 </div>
                 <div style={styles.epicStats}>
                   <Badge variant="secondary">{epicStories.length} stories</Badge>
-                  <Badge variant={epic.priority <= 2 ? 'error' : epic.priority <= 3 ? 'warning' : 'info'}>
+                  <Badge 
+                    variant={epic.priority === 1 || epic.priority === 2 ? 'error' : epic.priority === 3 ? 'warning' : 'info'}
+                    style={{
+                      backgroundColor: epic.priority === 1 || epic.priority === 2 ? 'rgba(239, 68, 68, 0.15)' : 
+                                      epic.priority === 3 ? 'rgba(245, 158, 11, 0.15)' : 
+                                      'rgba(59, 130, 246, 0.15)',
+                      color: epic.priority === 1 || epic.priority === 2 ? tokens.colors.error[400] : 
+                            epic.priority === 3 ? tokens.colors.warning[400] : 
+                            tokens.colors.info[400],
+                      border: `1px solid ${epic.priority === 1 || epic.priority === 2 ? tokens.colors.error[500] : 
+                                          epic.priority === 3 ? tokens.colors.warning[500] : 
+                                          tokens.colors.info[500]}`,
+                    }}
+                  >
                     Priority {epic.priority}
                   </Badge>
                   {onEditEpic && (
@@ -130,6 +167,18 @@ const StoriesTab = ({ task, onEditEpic, onEditStory }) => {
                           ...(selectedStory?.id === story.id ? styles.selectedStory : {})
                         }}
                         onClick={() => setSelectedStory(story.id === selectedStory?.id ? null : story)}
+                        onMouseEnter={(e) => {
+                          if (selectedStory?.id !== story.id) {
+                            e.currentTarget.style.backgroundColor = 'var(--color-bg-secondary)';
+                            e.currentTarget.style.transform = 'translateX(4px)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (selectedStory?.id !== story.id) {
+                            e.currentTarget.style.backgroundColor = 'var(--color-bg)';
+                            e.currentTarget.style.transform = 'translateX(0)';
+                          }
+                        }}
                       >
                         <div style={styles.storyItemHeader}>
                           <div style={styles.storyItemLeft}>
@@ -147,6 +196,17 @@ const StoriesTab = ({ task, onEditEpic, onEditStory }) => {
                                 'secondary'
                               }
                               size="sm"
+                              style={{
+                                backgroundColor: story.priority === 'must_have' ? 'rgba(239, 68, 68, 0.15)' : 
+                                               story.priority === 'should_have' ? 'rgba(245, 158, 11, 0.15)' : 
+                                               'rgba(59, 130, 246, 0.15)',
+                                color: story.priority === 'must_have' ? tokens.colors.error[400] : 
+                                      story.priority === 'should_have' ? tokens.colors.warning[400] : 
+                                      tokens.colors.info[400],
+                                border: `1px solid ${story.priority === 'must_have' ? tokens.colors.error[500] : 
+                                                    story.priority === 'should_have' ? tokens.colors.warning[500] : 
+                                                    tokens.colors.info[500]}`,
+                              }}
                             >
                               {story.priority?.replace('_', ' ')}
                             </Badge>
@@ -269,15 +329,17 @@ const styles = {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: tokens.spacing[3],
-    backgroundColor: 'var(--color-surface)',
-    borderRadius: tokens.borderRadius.base,
+    padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-bg-secondary)',
+    borderRadius: tokens.borderRadius.lg,
     border: `1px solid var(--color-border)`,
+    marginBottom: tokens.spacing[1],
   },
 
   storiesSummary: {
     display: 'flex',
-    gap: tokens.spacing[2],
+    gap: tokens.spacing[3],
+    alignItems: 'center',
   },
 
   expandControls: {
@@ -293,18 +355,20 @@ const styles = {
 
   epicCard: {
     overflow: 'hidden',
+    boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+    transition: 'all 0.3s ease',
+    border: '2px solid rgba(255, 140, 26, 0.2)',
+    background: 'linear-gradient(135deg, rgba(255, 140, 26, 0.05) 0%, transparent 100%)',
   },
 
   epicHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    padding: tokens.spacing[4],
+    padding: tokens.spacing[6],
     cursor: 'pointer',
-    transition: 'background-color 0.2s',
-    '&:hover': {
-      backgroundColor: 'var(--color-surface-hover)',
-    },
+    transition: 'all 0.3s ease',
+    borderBottom: '2px solid rgba(255, 140, 26, 0.1)',
   },
 
   epicHeaderLeft: {
@@ -337,20 +401,19 @@ const styles = {
   },
 
   storyItem: {
-    padding: tokens.spacing[3],
-    borderRadius: tokens.borderRadius.base,
+    padding: tokens.spacing[4],
+    borderRadius: tokens.borderRadius.md,
     border: `1px solid var(--color-border)`,
-    marginBottom: tokens.spacing[2],
+    marginBottom: tokens.spacing[3],
     cursor: 'pointer',
-    transition: 'all 0.2s',
-    '&:hover': {
-      backgroundColor: 'var(--color-surface)',
-    },
+    transition: 'all 0.3s ease',
+    backgroundColor: 'var(--color-bg)',
   },
 
   selectedStory: {
-    backgroundColor: 'var(--color-surface)',
+    backgroundColor: 'rgba(255, 140, 26, 0.05)',
     borderColor: tokens.colors.primary[500],
+    boxShadow: '0 0 0 1px ' + tokens.colors.primary[500],
   },
 
   storyItemHeader: {
@@ -379,40 +442,53 @@ const styles = {
   },
 
   storyTitle: {
-    fontSize: tokens.typography.fontSize.sm[0],
+    fontSize: tokens.typography.fontSize.base[0],
     lineHeight: tokens.typography.lineHeight.relaxed,
+    color: 'var(--color-text)',
   },
 
   storyDetails: {
-    marginTop: tokens.spacing[3],
-    paddingTop: tokens.spacing[3],
-    borderTop: `1px solid var(--color-border)`,
+    marginTop: tokens.spacing[4],
+    paddingTop: tokens.spacing[4],
+    borderTop: `2px solid var(--color-border)`,
+    animation: 'slideIn 0.3s ease-out',
   },
 
   storyBenefit: {
-    fontSize: tokens.typography.fontSize.sm[0],
-    marginBottom: tokens.spacing[3],
-    color: 'var(--color-text-muted)',
+    fontSize: tokens.typography.fontSize.base[0],
+    marginBottom: tokens.spacing[4],
+    color: 'var(--color-text)',
+    lineHeight: tokens.typography.lineHeight.relaxed,
   },
 
   acceptanceCriteria: {
-    marginTop: tokens.spacing[2],
+    marginTop: tokens.spacing[3],
+    padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-bg-secondary)',
+    borderRadius: tokens.borderRadius.md,
+    border: '1px solid var(--color-border)',
   },
 
   criteriaTitle: {
     fontSize: tokens.typography.fontSize.sm[0],
-    fontWeight: tokens.typography.fontWeight.medium,
-    marginBottom: tokens.spacing[2],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    marginBottom: tokens.spacing[3],
+    color: 'var(--color-text)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
   },
 
   criteriaList: {
-    marginLeft: tokens.spacing[4],
+    marginLeft: tokens.spacing[5],
     marginTop: 0,
+    marginBottom: 0,
   },
 
   criteriaItem: {
     fontSize: tokens.typography.fontSize.sm[0],
-    marginBottom: tokens.spacing[1],
+    marginBottom: tokens.spacing[2],
+    lineHeight: tokens.typography.lineHeight.relaxed,
+    color: 'var(--color-text-muted)',
   },
 
   noStoriesText: {

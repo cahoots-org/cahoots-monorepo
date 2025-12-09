@@ -2,14 +2,36 @@
 
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.metrics import llm_calls_total, llm_call_duration_seconds, llm_tokens_input_total, llm_tokens_output_total
+
 
 class LLMClient(ABC):
     """Abstract base class for LLM clients."""
+
+    # Override in subclass to specify model name for metrics
+    model_name: str = "unknown"
+
+    def _record_llm_metrics(
+        self,
+        operation: str,
+        duration: float,
+        status: str,
+        tokens_in: int = 0,
+        tokens_out: int = 0,
+    ):
+        """Record LLM call metrics."""
+        llm_calls_total.labels(operation=operation, model=self.model_name, status=status).inc()
+        llm_call_duration_seconds.labels(operation=operation, model=self.model_name).observe(duration)
+        if tokens_in > 0:
+            llm_tokens_input_total.labels(operation=operation, model=self.model_name).inc(tokens_in)
+        if tokens_out > 0:
+            llm_tokens_output_total.labels(operation=operation, model=self.model_name).inc(tokens_out)
 
     @abstractmethod
     async def chat_completion(
@@ -37,7 +59,8 @@ class LLMClient(ABC):
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.0,
-        max_tokens: int = 2048
+        max_tokens: int = 2048,
+        operation: str = "generate_json"
     ) -> Dict[str, Any]:
         """Generate a JSON response from the LLM.
 
@@ -46,6 +69,7 @@ class LLMClient(ABC):
             user_prompt: User query
             temperature: Sampling temperature
             max_tokens: Maximum tokens
+            operation: Operation name for metrics
 
         Returns:
             Parsed JSON response
@@ -55,12 +79,28 @@ class LLMClient(ABC):
             {"role": "user", "content": user_prompt}
         ]
 
-        response = await self.chat_completion(
-            messages,
-            temperature,
-            max_tokens,
-            response_format={"type": "json_object"}
-        )
+        start_time = time.time()
+        status = "success"
+        try:
+            response = await self.chat_completion(
+                messages,
+                temperature,
+                max_tokens,
+                response_format={"type": "json_object"}
+            )
+        except Exception as e:
+            status = "error"
+            self._record_llm_metrics(operation, time.time() - start_time, status)
+            raise
+
+        duration = time.time() - start_time
+
+        # Extract token usage if available
+        usage = response.get("usage", {})
+        tokens_in = usage.get("prompt_tokens", 0)
+        tokens_out = usage.get("completion_tokens", 0)
+
+        self._record_llm_metrics(operation, duration, status, tokens_in, tokens_out)
 
         content = response["choices"][0]["message"]["content"]
         return self._parse_json(content)
@@ -327,6 +367,11 @@ class BedrockLLMClient(LLMClient):
             timeout=120.0
         )
 
+    @property
+    def model_name(self) -> str:
+        """Get model name for metrics."""
+        return f"bedrock:{self.model}"
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10)
@@ -479,11 +524,19 @@ class CerebrasLLMClient(LLMClient):
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=60.0
         )
+        # Rate limit retry configuration
+        self.max_rate_limit_retries = 5
+        self.rate_limit_backoff_seconds = 10
 
     @property
     def model(self) -> str:
         """Get the current model."""
         return self.models[self.current_model_index]
+
+    @property
+    def model_name(self) -> str:
+        """Get model name for metrics."""
+        return f"cerebras:{self.model}"
 
     def _rotate_model(self) -> bool:
         """Rotate to the next model. Returns True if rotated, False if exhausted."""
@@ -502,35 +555,52 @@ class CerebrasLLMClient(LLMClient):
         messages: List[Dict[str, str]],
         temperature: float = 0.0,
         max_tokens: int = 2048,
-        response_format: Optional[Dict[str, str]] = None
+        response_format: Optional[Dict[str, str]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
-        """Call Cerebras API for chat completion with automatic model rotation on 429 or invalid model."""
-        # Reset to first model at the start of each request
-        self._reset_model_index()
+        """Call Cerebras API for chat completion with automatic model rotation on 429 or invalid model.
+
+        When all models are rate limited, waits with exponential backoff and retries.
+        """
+        import asyncio
 
         last_error = None
 
-        while True:
-            try:
-                return await self._make_request(messages, temperature, max_tokens, response_format)
-            except httpx.HTTPStatusError as e:
-                last_error = e
-                # 429 = rate limited, 400/404 = possibly invalid model
-                if e.response.status_code in (429, 400, 404):
-                    print(f"[Cerebras] Error {e.response.status_code} on {self.model}, rotating...")
-                    if not self._rotate_model():
-                        print(f"[Cerebras] All models exhausted")
-                        raise last_error
-                    continue
-                else:
-                    raise
+        for retry_attempt in range(self.max_rate_limit_retries):
+            # Reset to first model at the start of each retry cycle
+            self._reset_model_index()
+
+            while True:
+                try:
+                    return await self._make_request(messages, temperature, max_tokens, response_format, tools)
+                except httpx.HTTPStatusError as e:
+                    last_error = e
+                    # 429 = rate limited, 400/404 = possibly invalid model
+                    if e.response.status_code in (429, 400, 404):
+                        print(f"[Cerebras] Error {e.response.status_code} on {self.model}, rotating...")
+                        if not self._rotate_model():
+                            # All models exhausted - wait and retry
+                            break
+                        continue
+                    else:
+                        raise
+
+            # All models exhausted in this cycle - wait with backoff
+            backoff = self.rate_limit_backoff_seconds * (2 ** retry_attempt)
+            print(f"[Cerebras] All models rate limited. Waiting {backoff}s before retry {retry_attempt + 1}/{self.max_rate_limit_retries}...")
+            await asyncio.sleep(backoff)
+
+        # All retries exhausted
+        print(f"[Cerebras] All retries exhausted after {self.max_rate_limit_retries} attempts")
+        raise last_error
 
     async def _make_request(
         self,
         messages: List[Dict[str, str]],
         temperature: float,
         max_tokens: int,
-        response_format: Optional[Dict[str, str]]
+        response_format: Optional[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> Dict[str, Any]:
         """Make a single request to Cerebras API."""
         payload = {
@@ -543,6 +613,10 @@ class CerebrasLLMClient(LLMClient):
         # Cerebras supports JSON mode
         if response_format and response_format.get("type") == "json_object":
             payload["response_format"] = response_format
+
+        # Add tools if provided
+        if tools:
+            payload["tools"] = tools
 
         response = await self.client.post("/chat/completions", json=payload)
 

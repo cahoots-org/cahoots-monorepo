@@ -75,77 +75,77 @@ const OverviewTab = ({ task, taskTree, onNavigateToTab }) => {
         </CardContent>
       </Card>
 
-      {/* Decomposition Statistics */}
+      {/* Project Breakdown */}
       <Card>
         <CardHeader>
-          <Heading3>🎯 Task Breakdown</Heading3>
+          <Heading3>🎯 Project Breakdown</Heading3>
         </CardHeader>
         <CardContent style={styles.statsGrid}>
           <ClickableStatItem
             value={task.children_count || 0}
-            label="Total Subtasks"
+            label="Total Tasks"
             onClick={() => onNavigateToTab?.('subtasks')}
             disabled={!task.children_count}
           />
           <ClickableStatItem
             value={epics.length}
-            label="Epics"
+            label="Major Goals"
             onClick={() => onNavigateToTab?.('stories')}
             disabled={!epics.length}
           />
           <ClickableStatItem
             value={userStories.length}
-            label="User Stories"
+            label="User Needs"
             onClick={() => onNavigateToTab?.('stories')}
             disabled={!userStories.length}
           />
           <ClickableStatItem
             value={userStories.reduce((sum, s) => sum + (s.story_points || 0), 0)}
-            label="Story Points"
+            label="Complexity"
           />
         </CardContent>
       </Card>
 
-      {/* Event Modeling Statistics */}
+      {/* System Blueprint Statistics */}
       {hasEventModeling && (
         <Card>
           <CardHeader>
-            <Heading3>⚡ Event Modeling</Heading3>
+            <Heading3>⚡ System Blueprint</Heading3>
           </CardHeader>
           <CardContent style={styles.statsGrid}>
             <ClickableStatItem
               value={chapters.length}
-              label="Chapters"
+              label="Modules"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!chapters.length}
             />
             <ClickableStatItem
               value={events.length}
-              label="Domain Events"
+              label="System Events"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!events.length}
             />
             <ClickableStatItem
               value={commands.length}
-              label="Commands"
+              label="User Actions"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!commands.length}
             />
             <ClickableStatItem
               value={readModels.length}
-              label="Read Models"
+              label="Screens/Views"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!readModels.length}
             />
             <ClickableStatItem
               value={interactions.length}
-              label="User Interactions"
+              label="User Inputs"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!interactions.length}
             />
             <ClickableStatItem
               value={automations.length}
-              label="Automations"
+              label="Background Tasks"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!automations.length}
             />

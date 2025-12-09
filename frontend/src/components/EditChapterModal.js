@@ -46,18 +46,18 @@ const EditChapterModal = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Edit Chapter"
+      title="Edit Module"
       size="md"
     >
       <div style={styles.content}>
-        {/* Chapter Name */}
+        {/* Module Name */}
         <div style={styles.field}>
-          <label style={styles.label}>Chapter Name</label>
+          <label style={styles.label}>Module Name</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Enter chapter name"
+            placeholder="Enter module name"
             style={styles.input}
             autoFocus
           />
@@ -69,17 +69,17 @@ const EditChapterModal = ({
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe what this chapter covers..."
+            placeholder="Describe what this module covers..."
             style={styles.textarea}
             rows={4}
           />
         </div>
 
-        {/* Slice count info */}
+        {/* Feature count info */}
         {chapter?.slices?.length > 0 && (
           <div style={styles.info}>
             <Text style={styles.infoText}>
-              This chapter contains {chapter.slices.length} slice{chapter.slices.length !== 1 ? 's' : ''}
+              This module contains {chapter.slices.length} feature{chapter.slices.length !== 1 ? 's' : ''}
             </Text>
           </div>
         )}

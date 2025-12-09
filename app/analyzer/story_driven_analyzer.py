@@ -96,16 +96,24 @@ Return as JSON with structure:
     "[story_id]": {{
       "tasks": [
         {{
+          "task_index": 0,
           "description": "Specific implementation task with file paths",
           "is_atomic": true/false,
           "implementation_details": "Technical approach referencing specific files",
           "story_points": 1-8,
-          "dependencies": []
+          "depends_on_indices": []
         }}
       ]
     }}
   }}
 }}
+
+DEPENDENCY RULES:
+- Each task has a unique "task_index" (0, 1, 2, ...)
+- Use "depends_on_indices" to list indices of tasks that MUST complete first
+- Dependencies can cross stories if needed (use format "story_id:index")
+- Example: task_index 2 might have depends_on_indices: [0, 1] if it needs those tasks done first
+- Data model tasks should come first, then API endpoints, then UI components
 
 CRITICAL DECOMPOSITION RULES:
 - Group related acceptance criteria into single tasks when they're part of the same implementation
@@ -120,24 +128,6 @@ Important:
 - VARY your language - don't start every task with "Implement" or "Create"
 - Good examples: "Set up user authentication with JWT tokens", "Wire up the payment form to Stripe API", "Add pagination to the posts feed", "Handle file uploads with size validation", "Connect the notification service to email provider"
 - Maintain consistency across related stories"""
-
-        # DEBUG: Log prompts to understand what's being sent
-        print(f"[StoryAnalyzer] DEBUG: System prompt length: {len(system_prompt)} chars")
-        print(f"[StoryAnalyzer] DEBUG: User prompt length: {len(user_prompt)} chars")
-        print(f"[StoryAnalyzer] DEBUG: System prompt preview: {system_prompt[:500]}")
-        print(f"[StoryAnalyzer] DEBUG: User prompt preview: {user_prompt[:500]}")
-
-        # Save full prompts to /tmp for debugging if needed
-        import os
-        debug_dir = "/tmp/cahoots_prompts"
-        os.makedirs(debug_dir, exist_ok=True)
-        debug_file = f"{debug_dir}/story_decomp_{epic.id[:8]}.txt"
-        with open(debug_file, "w") as f:
-            f.write("=== SYSTEM PROMPT ===\n")
-            f.write(system_prompt)
-            f.write("\n\n=== USER PROMPT ===\n")
-            f.write(user_prompt)
-        print(f"[StoryAnalyzer] Full prompts saved to: {debug_file}")
 
         response = await self.llm.generate_json(
             system_prompt,
@@ -156,6 +146,30 @@ Important:
             print(f"[StoryAnalyzer] Expected stories: {[s.id for s in stories]}")
             raise ValueError("LLM returned empty story_tasks - this is a model/prompt issue")
 
+        # First pass: collect all tasks and assign UUIDs
+        # This maps (story_id, task_index) -> task_uuid
+        task_id_map: Dict[str, Dict[int, str]] = {}
+
+        for story in stories:
+            story_data = story_tasks.get(story.id, {})
+
+            # Handle both formats: {"tasks": [...]} or directly [...]
+            if isinstance(story_data, list):
+                tasks_data = story_data
+            elif isinstance(story_data, dict):
+                tasks_data = story_data.get("tasks", [])
+            else:
+                tasks_data = []
+
+            task_id_map[story.id] = {}
+            for i, task_data in enumerate(tasks_data):
+                if isinstance(task_data, dict):
+                    # Use task_index from LLM if provided, otherwise use enumeration index
+                    task_index = task_data.get("task_index", i)
+                    task_uuid = str(uuid.uuid4())
+                    task_id_map[story.id][task_index] = task_uuid
+
+        # Second pass: process tasks and resolve dependencies
         for story in stories:
             story_data = story_tasks.get(story.id, {})
 
@@ -181,13 +195,45 @@ Important:
                 if isinstance(task_data, str):
                     task_dict = {"description": task_data, "is_atomic": True}
                 elif isinstance(task_data, dict):
-                    task_dict = task_data
+                    task_dict = task_data.copy()
                 else:
                     # Skip invalid entries
                     continue
 
+                # Get the task_index and assigned UUID
+                task_index = task_dict.get("task_index", i)
+                task_uuid = task_id_map[story.id].get(task_index)
+                if task_uuid:
+                    task_dict["id"] = task_uuid
+
+                # Convert depends_on_indices to depends_on (list of UUIDs)
+                depends_on_indices = task_dict.pop("depends_on_indices", [])
+                depends_on = []
+                for dep_ref in depends_on_indices:
+                    if isinstance(dep_ref, int):
+                        # Same story dependency
+                        dep_uuid = task_id_map[story.id].get(dep_ref)
+                        if dep_uuid:
+                            depends_on.append(dep_uuid)
+                    elif isinstance(dep_ref, str) and ":" in dep_ref:
+                        # Cross-story dependency: "story_id:index"
+                        dep_story_id, dep_index_str = dep_ref.split(":", 1)
+                        try:
+                            dep_index = int(dep_index_str)
+                            if dep_story_id in task_id_map:
+                                dep_uuid = task_id_map[dep_story_id].get(dep_index)
+                                if dep_uuid:
+                                    depends_on.append(dep_uuid)
+                        except ValueError:
+                            pass  # Invalid format, skip
+
+                task_dict["depends_on"] = depends_on
                 task_dict["story_id"] = story.id
                 task_dict["epic_id"] = epic.id
+
+                # Remove task_index from output (internal only)
+                task_dict.pop("task_index", None)
+
                 normalized_tasks.append(task_dict)
 
             result[story.id] = TaskDecomposition(

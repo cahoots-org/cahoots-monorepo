@@ -1,0 +1,80 @@
+# Go REST API Tech Stack
+# High-performance API with Chi router
+
+name: go-api
+display_name: "Go API"
+description: "RESTful API with Go and Chi router"
+category: backend
+
+# Project structure
+src_dir: internal
+test_dir: internal
+
+# Commands
+install_command: go mod download
+test_command: go test -v -race -cover ./...
+build_command: go build -o bin/server ./cmd/server
+start_command: ./bin/server
+
+# File patterns
+source_pattern: "**/*.go"
+test_pattern: "**/*_test.go"
+
+# Conventions for LLM code generation
+conventions: |
+  Project Structure:
+  - Entry point: cmd/server/main.go
+  - API router: internal/api/router.go
+  - Handlers: internal/api/{resource}/handler.go
+  - Models: internal/models/{name}.go
+  - Tests: internal/api/{resource}/handler_test.go (same package)
+
+  Code Style:
+  - Use Chi router for HTTP routing
+  - Handlers are functions, not methods on structs
+  - Return errors explicitly, don't panic
+  - Use context.Context as first parameter
+  - Use descriptive variable names
+
+  Chi Router Patterns:
+  - Create routers with chi.NewRouter()
+  - Mount sub-routers: r.Mount("/users", usersRouter())
+  - Middleware: r.Use(middleware.Logger)
+  - Routes: r.Get("/", handler), r.Post("/", handler)
+
+  Error Handling:
+  - Use http.Error() for simple errors
+  - Return JSON error responses for API consistency
+  - Log errors with appropriate context
+  - Use appropriate HTTP status codes
+
+  Testing:
+  - Use httptest.NewRecorder() for response recording
+  - Use httptest.NewRequest() for request creation
+  - Test table pattern for multiple test cases
+  - Test both success and error paths
+
+# Initial project files
+config_files:
+  go.mod: |
+    module {{project_name}}
+
+    go 1.21
+
+    require (
+      github.com/go-chi/chi/v5 v5.0.11
+    )
+
+  Makefile: |
+    .PHONY: build run test
+
+    build:
+    	go build -o bin/server ./cmd/server
+
+    run:
+    	go run ./cmd/server
+
+    test:
+    	go test -v -race -cover ./...
+
+runner_image: golang:1.21
