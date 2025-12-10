@@ -349,6 +349,77 @@ IMPORTANT - Event Modeling Principles:
 4. Automations are BACKGROUND PROCESSES - triggered automatically
 5. Focus on BEHAVIOR not implementation
 
+STEP 1: IDENTIFY THE APPLICATION TYPE AND APPLY DOMAIN-SPECIFIC PATTERNS
+
+First, identify which application archetype(s) this project matches:
+
+**TWO-SIDED MARKETPLACE** (Airbnb, Uber, Fiverr, etc.):
+Required patterns to include:
+- Escrow/Hold mechanics: CreditHeld, CreditReleased, HoldExpired, RefundIssued
+- Booking lifecycle: RequestSubmitted, RequestAccepted, RequestDeclined, BookingConfirmed, BookingCancelled, BookingRescheduled
+- Completion flow: ServiceStarted, ServiceCompleted, ServiceDisputed
+- No-show handling: NoShowReported, NoShowConfirmed, PenaltyApplied
+- Dispute resolution: DisputeOpened, EvidenceSubmitted, DisputeResolved, DisputeEscalated
+- Ratings & reviews: RatingSubmitted, RatingDisputed, ReviewPublished, ReviewHidden
+- Trust & safety: UserReported, UserWarned, UserSuspended, UserBanned, VerificationRequested, VerificationCompleted
+
+**CREDIT/TOKEN ECONOMY**:
+Required patterns to include:
+- Balance management: CreditsAdded, CreditsDeducted, CreditHeld, CreditReleased
+- Transactions: TransactionInitiated, TransactionCompleted, TransactionFailed, TransactionReversed
+- Expiration: CreditsExpiring, CreditsExpired
+- Promotions: BonusAwarded, PromotionApplied
+
+**SCHEDULING SYSTEM** (calendars, appointments, sessions):
+Required patterns to include:
+- Availability: AvailabilitySet, AvailabilityUpdated, SlotBlocked, SlotReleased
+- Timezone handling: TimezoneDetected, TimezoneConflictResolved
+- Reminders: ReminderScheduled, ReminderSent, ReminderSnoozed
+- Conflicts: ConflictDetected, ConflictResolved
+
+**SUBSCRIPTION/SaaS**:
+Required patterns to include:
+- Lifecycle: TrialStarted, SubscriptionCreated, SubscriptionUpgraded, SubscriptionDowngraded, SubscriptionCancelled, SubscriptionExpired
+- Billing: PaymentScheduled, PaymentProcessed, PaymentFailed, PaymentRetried
+- Usage: UsageLimitReached, UsageLimitWarning, OverageCharged
+
+**CONTENT PLATFORM** (social, publishing, media):
+Required patterns to include:
+- Content lifecycle: ContentCreated, ContentEdited, ContentPublished, ContentArchived, ContentDeleted
+- Moderation: ContentFlagged, ContentReviewed, ContentApproved, ContentRejected
+- Engagement: ContentViewed, ContentLiked, ContentShared, ContentCommented
+
+**E-COMMERCE**:
+Required patterns to include:
+- Cart: CartCreated, ItemAdded, ItemRemoved, CartAbandoned
+- Checkout: CheckoutStarted, CheckoutCompleted, CheckoutAbandoned
+- Order: OrderPlaced, OrderConfirmed, OrderCancelled, OrderRefunded
+- Fulfillment: OrderShipped, OrderDelivered, DeliveryFailed, ReturnRequested, ReturnReceived
+
+STEP 2: IDENTIFY EDGE CASES AND FAILURE SCENARIOS
+
+For EVERY happy path event, ask yourself: "What could go wrong?"
+
+Common failure patterns to include:
+- Validation failures: ValidationFailed, InvalidDataRejected
+- Authorization failures: AccessDenied, PermissionInsufficient
+- Resource conflicts: ConflictDetected, ResourceLocked, ResourceUnavailable
+- Timeout/expiration: SessionExpired, RequestTimedOut, LinkExpired, HoldExpired
+- External service failures: PaymentFailed, NotificationFailed, IntegrationError
+- User-initiated cancellations: RequestCancelled, BookingCancelled, OrderCancelled
+- Rollback scenarios: TransactionRolledBack, ChangeReverted
+- Retry scenarios: RetryScheduled, RetryAttempted, RetryExhausted
+
+STEP 3: ENSURE COMPLETE ENTITY LIFECYCLES
+
+For each major entity, ensure you have events for:
+1. Creation (e.g., UserRegistered, OrderCreated)
+2. Updates/Changes (e.g., ProfileUpdated, OrderModified)
+3. State transitions (e.g., OrderSubmitted → OrderConfirmed → OrderShipped)
+4. Cancellation/Termination (e.g., OrderCancelled, AccountDeactivated)
+5. Failure states (e.g., OrderFailed, DeliveryFailed)
+6. Recovery/Retry (e.g., PaymentRetried, DeliveryRescheduled)
+
 Extract the following components:
 
 1. EVENTS - Facts that happened (past tense):
@@ -614,6 +685,34 @@ Guidelines:
 - Every user action should have a corresponding command
 - Every automatic behavior should have an automation
 
+CRITICAL - COMPLETENESS CHECKLIST:
+Before returning your response, verify you have included:
+
+1. **Domain-Specific Patterns**: If this is a marketplace, did you include escrow, disputes, ratings?
+   If booking/scheduling, did you include availability, cancellations, no-shows?
+
+2. **Failure Events**: For every happy path event, did you add the corresponding failure event?
+   (e.g., PaymentProcessed → PaymentFailed, BookingConfirmed → BookingFailed)
+
+3. **Cancellation/Reversal Events**: Can users cancel or undo actions? Include:
+   - Cancellation events (RequestCancelled, BookingCancelled)
+   - Refund events (RefundRequested, RefundProcessed)
+   - Reversal events (TransactionReversed, ChangeReverted)
+
+4. **Trust & Safety** (for multi-user systems): Did you include:
+   - Reporting (UserReported, ContentFlagged)
+   - Moderation actions (ContentRemoved, UserWarned, UserSuspended)
+   - Verification (VerificationRequested, VerificationCompleted)
+
+5. **Expiration/Timeout Events**: What happens when things expire?
+   - Session/token expiration (SessionExpired, TokenExpired)
+   - Hold expiration (HoldExpired, ReservationExpired)
+   - Deadline passed (DeadlineMissed, OfferExpired)
+
+6. **Notification Events**: Include events for all notifications:
+   - ReminderSent, NotificationSent, AlertTriggered
+   - These are often forgotten but critical for user experience
+
 CRITICAL COMMAND RULES - AVOID THESE COMMON MISTAKES:
 
 1. ❌ NO UI-SPECIFIC COMMANDS - Commands should represent DOMAIN ACTIONS, not UI interactions
@@ -770,6 +869,29 @@ IMPORTANT - Event Modeling Principles:
 3. Read Models are QUERIES - data views (only create when displaying/querying data)
 4. Automations are BACKGROUND PROCESSES - triggered automatically
 5. Focus on BEHAVIOR not implementation
+
+STEP 1: IDENTIFY THE APPLICATION TYPE AND APPLY DOMAIN-SPECIFIC PATTERNS
+
+First, identify which application archetype(s) this project matches and include the required patterns:
+
+**TWO-SIDED MARKETPLACE**: Include escrow (CreditHeld/Released), booking lifecycle (RequestSubmitted/Accepted/Declined),
+  disputes (DisputeOpened/Resolved), ratings (RatingSubmitted), no-shows (NoShowReported/PenaltyApplied)
+
+**CREDIT/TOKEN ECONOMY**: Include balance events (CreditsHeld/Released/Expired), transactions (TransactionCompleted/Failed/Reversed)
+
+**SCHEDULING SYSTEM**: Include availability (AvailabilitySet/Updated), reminders (ReminderScheduled/Sent), conflicts (ConflictDetected)
+
+**SUBSCRIPTION/SaaS**: Include lifecycle (TrialStarted, SubscriptionCreated/Cancelled), billing (PaymentProcessed/Failed)
+
+STEP 2: ENSURE COMPLETE EVENT COVERAGE
+
+For EVERY happy path, include the corresponding failure/cancellation events:
+- BookingConfirmed → BookingCancelled, BookingFailed
+- PaymentProcessed → PaymentFailed, RefundIssued
+- ServiceCompleted → ServiceDisputed, NoShowReported
+
+For multi-user systems, include Trust & Safety events:
+- UserReported, UserWarned, UserSuspended, VerificationRequested/Completed
 
 Extract the following components:
 
@@ -960,6 +1082,21 @@ Guidelines:
 - Past tense for events, imperative for commands
 - Only create read models when displaying/querying data
 - Every user action should have a corresponding command
+
+CRITICAL - COMPLETENESS CHECKLIST:
+Before returning your response, verify you have included:
+
+1. **Domain-Specific Patterns**: If this is a marketplace, did you include escrow, disputes, ratings?
+   If booking/scheduling, did you include availability, cancellations, no-shows?
+
+2. **Failure Events**: For every happy path event, did you add the corresponding failure event?
+   (e.g., PaymentProcessed → PaymentFailed, BookingConfirmed → BookingFailed)
+
+3. **Cancellation/Reversal Events**: Include RequestCancelled, BookingCancelled, RefundRequested, etc.
+
+4. **Trust & Safety** (for multi-user systems): Include UserReported, UserWarned, UserSuspended, VerificationRequested
+
+5. **Expiration Events**: Include HoldExpired, SessionExpired, ReservationExpired as needed
 
 CRITICAL COMMAND RULES - AVOID THESE COMMON MISTAKES:
 

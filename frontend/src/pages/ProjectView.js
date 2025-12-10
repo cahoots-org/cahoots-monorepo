@@ -44,6 +44,8 @@ import {
   generateProposalMarkdown,
   extractGWTScenarios,
   groupStoriesByEpic,
+  aggregateByBusinessDomain,
+  generateExecutiveSummary,
 } from '../utils/personaDataTransforms';
 import apiClient from '../services/unifiedApiClient';
 
@@ -597,87 +599,96 @@ const DevScenariosTab = ({ task, onEditArtifact }) => {
 /* ========== CONSULTANT TABS ========== */
 
 const ConsultantScopeTab = ({ task, onEditArtifact }) => {
-  // Use swimlanes as feature breakdown (more granular), fallback to epics
-  const swimlanes = task?.metadata?.swimlanes || [];
+  // Use business-friendly domain aggregation
+  const businessDomains = aggregateByBusinessDomain(task);
   const epics = task?.context?.epics || task?.metadata?.epics || [];
 
-  // Helper to format command names into readable actions
-  const formatAction = (cmd) => {
-    // Convert "AddToCart" -> "Add to cart", "ProcessPayment" -> "Process payment"
-    return cmd
-      .replace(/([A-Z])/g, ' $1')
-      .trim()
-      .toLowerCase()
-      .replace(/^./, c => c.toUpperCase());
-  };
-
-  // Helper to format read model names into what users see
-  const formatView = (rm) => {
-    return rm
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/View$|Display$|Screen$|Page$/i, '')
-      .trim()
-      .toLowerCase()
-      .replace(/^./, c => c.toUpperCase());
-  };
+  // Calculate totals for the summary
+  const totalCapabilities = businessDomains.reduce((sum, d) =>
+    sum + d.actions.length + d.views.length + d.automations.length + d.capabilities.length, 0
+  );
 
   return (
     <Card style={styles.tabCard}>
       <Text style={styles.tabTitle}>What You're Building</Text>
 
-      {swimlanes.length === 0 && epics.length === 0 ? (
+      {/* Quick summary */}
+      {businessDomains.length > 0 && (
+        <div style={styles.scopeSummary}>
+          <Badge variant="secondary" style={styles.scopeBadge}>
+            {businessDomains.length} Business {businessDomains.length === 1 ? 'Area' : 'Areas'}
+          </Badge>
+          <Badge variant="secondary" style={styles.scopeBadge}>
+            {totalCapabilities} {totalCapabilities === 1 ? 'Capability' : 'Capabilities'}
+          </Badge>
+        </div>
+      )}
+
+      {businessDomains.length === 0 && epics.length === 0 ? (
         <Text style={styles.emptyText}>No features defined yet.</Text>
-      ) : swimlanes.length > 0 ? (
+      ) : businessDomains.length > 0 ? (
         <div style={styles.capabilityList}>
-          {swimlanes.map((sw, i) => (
+          {businessDomains.map((domain, i) => (
             <div key={i} style={styles.capabilityCard}>
               <div style={styles.capabilityHeader}>
-                <Text style={styles.capabilityName}>{sw.name}</Text>
+                <Text style={styles.capabilityName}>{domain.name}</Text>
                 {onEditArtifact && (
                   <IconButton
                     icon={EditIcon}
                     size="sm"
                     variant="ghost"
-                    onClick={() => onEditArtifact('swimlane', sw)}
-                    title="Edit swimlane"
+                    onClick={() => onEditArtifact('domain', { name: domain.name, ...domain })}
+                    title="Edit domain"
                   />
                 )}
               </div>
-              {sw.description && (
-                <Text style={styles.capabilityDesc}>{sw.description}</Text>
+              {domain.description && (
+                <Text style={styles.capabilityDesc}>{domain.description}</Text>
               )}
 
-              {/* What users can DO - the commands as readable actions */}
-              {sw.commands?.length > 0 && (
+              {/* What users can DO - business-friendly action names */}
+              {domain.actions.length > 0 && (
                 <div style={styles.capabilitySection}>
-                  <Text style={styles.capabilitySectionTitle}>Users can:</Text>
+                  <Text style={styles.capabilitySectionTitle}>What users can do:</Text>
                   <ul style={styles.capabilityActionList}>
-                    {sw.commands.map((cmd, j) => (
-                      <li key={j} style={styles.capabilityAction}>{formatAction(cmd)}</li>
+                    {domain.actions.map((action, j) => (
+                      <li key={j} style={styles.capabilityAction}>{action}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {/* What users can SEE - the read models as screens/views */}
-              {sw.read_models?.length > 0 && (
+              {/* What users can SEE - business-friendly view names */}
+              {domain.views.length > 0 && (
                 <div style={styles.capabilitySection}>
-                  <Text style={styles.capabilitySectionTitle}>Users see:</Text>
+                  <Text style={styles.capabilitySectionTitle}>What users see:</Text>
                   <ul style={styles.capabilityActionList}>
-                    {sw.read_models.map((rm, j) => (
-                      <li key={j} style={styles.capabilityAction}>{formatView(rm)}</li>
+                    {domain.views.map((view, j) => (
+                      <li key={j} style={styles.capabilityAction}>{view}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {/* Automations as "The system will..." */}
-              {sw.automations?.length > 0 && (
+              {/* Automatic behaviors */}
+              {domain.automations.length > 0 && (
                 <div style={styles.capabilitySection}>
                   <Text style={styles.capabilitySectionTitle}>Automatic behaviors:</Text>
                   <ul style={styles.capabilityActionList}>
-                    {sw.automations.map((auto, j) => (
-                      <li key={j} style={styles.capabilityAction}>{formatAction(auto)}</li>
+                    {domain.automations.map((auto, j) => (
+                      <li key={j} style={styles.capabilityAction}>{auto}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* For domains built from raw events when no swimlanes exist */}
+              {domain.capabilities.length > 0 && domain.actions.length === 0 && (
+                <div style={styles.capabilitySection}>
+                  <Text style={styles.capabilitySectionTitle}>Key capabilities:</Text>
+                  <ul style={styles.capabilityActionList}>
+                    {domain.capabilities.map((cap, j) => (
+                      <li key={j} style={styles.capabilityAction}>{cap}</li>
                     ))}
                   </ul>
                 </div>
@@ -1256,6 +1267,18 @@ const styles = {
     lineHeight: tokens.typography.lineHeight.relaxed,
   },
   // Consultant Capability styles - focused on what the product DOES
+  scopeSummary: {
+    display: 'flex',
+    gap: tokens.spacing[3],
+    marginBottom: tokens.spacing[4],
+    flexWrap: 'wrap',
+  },
+  scopeBadge: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
+    backgroundColor: 'var(--color-surface)',
+    border: '1px solid var(--color-border)',
+  },
   capabilityList: {
     display: 'flex',
     flexDirection: 'column',

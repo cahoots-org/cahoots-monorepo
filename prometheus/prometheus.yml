@@ -3,10 +3,17 @@ global:
   evaluation_interval: 15s
 
 scrape_configs:
-  # Cahoots API metrics
+  # Docker compose for local metrics
   - job_name: 'cahoots-api'
     static_configs:
       - targets: ['cahoots-api:8000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+
+  # Production metrics
+  - job_name: 'cahoots-api-production'
+    static_configs:
+      - targets: ['api.cahoots.cc']
     metrics_path: '/metrics'
     scrape_interval: 10s
 

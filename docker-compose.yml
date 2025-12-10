@@ -256,12 +256,12 @@ services:
       - REACT_APP_API_URL=http://localhost:8000
       - REACT_APP_WS_URL=ws://localhost:8000
       - NODE_ENV=production
-      - BACKEND_URL=http://api:8000
+      - BACKEND_URL=http://cahoots-api:8000
       - PORT=80
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
-      api:
+      cahoots-api:
         condition: service_healthy
     restart: unless-stopped
 
@@ -303,7 +303,7 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.enable-lifecycle'
     depends_on:
-      api:
+      cahoots-api:
         condition: service_healthy
     restart: unless-stopped
 

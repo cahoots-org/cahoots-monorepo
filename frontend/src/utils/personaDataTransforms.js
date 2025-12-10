@@ -154,6 +154,253 @@ export const extractGWTScenarios = (task) => {
 };
 
 /**
+ * Transform technical event names into business-friendly capability names
+ * "EmailVerificationSent" → "Email verification"
+ * "UserRegistered" → "User registration"
+ * "RecipeCreated" → "Recipe creation"
+ */
+const toBusinessCapability = (technicalName) => {
+  if (!technicalName) return '';
+
+  // Split camelCase/PascalCase into words
+  let words = technicalName
+    .replace(/([A-Z])/g, ' $1')
+    .trim()
+    .split(/\s+/);
+
+  // Remove common technical suffixes that don't add business value
+  const technicalSuffixes = [
+    'Event', 'Command', 'Handler', 'Service', 'Repository',
+    'Created', 'Updated', 'Deleted', 'Sent', 'Received',
+    'Started', 'Completed', 'Failed', 'Processed', 'View',
+    'Display', 'Screen', 'Page', 'Model', 'Query'
+  ];
+
+  // Convert past tense verbs to noun form for better readability
+  const pastToNoun = {
+    'registered': 'registration',
+    'created': 'creation',
+    'updated': 'updates',
+    'deleted': 'deletion',
+    'sent': 'sending',
+    'received': 'receipt',
+    'verified': 'verification',
+    'authenticated': 'authentication',
+    'processed': 'processing',
+    'completed': 'completion',
+    'failed': 'failure',
+    'added': 'addition',
+    'removed': 'removal',
+    'changed': 'changes',
+    'modified': 'modifications',
+    'saved': 'saving',
+    'loaded': 'loading',
+    'fetched': 'fetching',
+    'submitted': 'submission',
+    'cancelled': 'cancellation',
+    'approved': 'approval',
+    'rejected': 'rejection',
+    'published': 'publishing',
+    'archived': 'archiving',
+  };
+
+  // Remove technical suffixes and convert
+  words = words.filter(w => !technicalSuffixes.includes(w));
+
+  // Convert last word if it's a past tense verb
+  if (words.length > 0) {
+    const lastWord = words[words.length - 1].toLowerCase();
+    if (pastToNoun[lastWord]) {
+      words[words.length - 1] = pastToNoun[lastWord];
+    }
+  }
+
+  // Join and format nicely
+  return words.join(' ').toLowerCase().replace(/^\w/, c => c.toUpperCase());
+};
+
+/**
+ * Extract domain/aggregate from a technical name
+ * "UserRegistered" → "User"
+ * "RecipeCreated" → "Recipe"
+ * "MealPlanGenerated" → "Meal Plan"
+ */
+const extractDomain = (name) => {
+  if (!name) return 'General';
+
+  // Common domain patterns - extract the first noun
+  const domainPatterns = [
+    /^(User|Account|Profile|Auth)/i,
+    /^(Recipe|Ingredient|Cuisine)/i,
+    /^(Meal|Menu|Plan|Schedule)/i,
+    /^(Grocery|Shopping|Cart|List)/i,
+    /^(Cookbook|Collection|Favorite)/i,
+    /^(Email|Notification|Alert)/i,
+    /^(Payment|Subscription|Billing)/i,
+    /^(Admin|Settings|Config)/i,
+  ];
+
+  for (const pattern of domainPatterns) {
+    const match = name.match(pattern);
+    if (match) {
+      // Format: "MealPlan" → "Meal Plan"
+      return match[1].replace(/([a-z])([A-Z])/g, '$1 $2');
+    }
+  }
+
+  // Default: take first word (usually the domain)
+  const firstWord = name.replace(/([A-Z])/g, ' $1').trim().split(/\s+/)[0];
+  return firstWord || 'General';
+};
+
+/**
+ * Aggregate event model data by business domain for consultant view
+ * Groups swimlanes, events, commands by their domain (User, Recipe, etc.)
+ * Returns business-friendly capability descriptions
+ */
+export const aggregateByBusinessDomain = (task) => {
+  const metadata = task?.metadata || {};
+  const swimlanes = metadata.swimlanes || [];
+  const events = metadata.extracted_events || [];
+  const commands = metadata.commands || [];
+  const readModels = metadata.read_models || [];
+
+  // Domain map: { "User": { capabilities: Set, actions: Set, views: Set } }
+  const domains = new Map();
+
+  const ensureDomain = (domainName) => {
+    if (!domains.has(domainName)) {
+      domains.set(domainName, {
+        name: domainName,
+        description: '',
+        capabilities: new Set(),
+        actions: new Set(),
+        views: new Set(),
+        automations: new Set(),
+      });
+    }
+    return domains.get(domainName);
+  };
+
+  // Process swimlanes (best source - already grouped by domain)
+  swimlanes.forEach(sw => {
+    const domainName = sw.name || 'General';
+    const domain = ensureDomain(domainName);
+
+    if (sw.description) {
+      domain.description = sw.description;
+    }
+
+    // Convert commands to business actions
+    (sw.commands || []).forEach(cmd => {
+      const action = toBusinessCapability(cmd);
+      if (action && action.length > 2) {
+        domain.actions.add(action);
+      }
+    });
+
+    // Convert read models to views
+    (sw.read_models || []).forEach(rm => {
+      const view = toBusinessCapability(rm);
+      if (view && view.length > 2) {
+        domain.views.add(view);
+      }
+    });
+
+    // Convert automations to background capabilities
+    (sw.automations || []).forEach(auto => {
+      const automation = toBusinessCapability(auto);
+      if (automation && automation.length > 2) {
+        domain.automations.add(automation);
+      }
+    });
+  });
+
+  // If no swimlanes, build from raw events/commands
+  if (swimlanes.length === 0) {
+    // Group events by domain
+    events.forEach(evt => {
+      const evtName = typeof evt === 'string' ? evt : evt.name;
+      const domainName = extractDomain(evtName);
+      const domain = ensureDomain(domainName);
+      const capability = toBusinessCapability(evtName);
+      if (capability && capability.length > 2) {
+        domain.capabilities.add(capability);
+      }
+    });
+
+    // Group commands by domain
+    commands.forEach(cmd => {
+      const cmdName = typeof cmd === 'string' ? cmd : cmd.name;
+      const domainName = extractDomain(cmdName);
+      const domain = ensureDomain(domainName);
+      const action = toBusinessCapability(cmdName);
+      if (action && action.length > 2) {
+        domain.actions.add(action);
+      }
+    });
+
+    // Group read models by domain
+    readModels.forEach(rm => {
+      const rmName = typeof rm === 'string' ? rm : rm.name;
+      const domainName = extractDomain(rmName);
+      const domain = ensureDomain(domainName);
+      const view = toBusinessCapability(rmName);
+      if (view && view.length > 2) {
+        domain.views.add(view);
+      }
+    });
+  }
+
+  // Convert Map to array and Sets to arrays
+  return Array.from(domains.values()).map(domain => ({
+    name: domain.name,
+    description: domain.description,
+    actions: Array.from(domain.actions),
+    views: Array.from(domain.views),
+    automations: Array.from(domain.automations),
+    capabilities: Array.from(domain.capabilities),
+  })).filter(d =>
+    // Filter out empty domains
+    d.actions.length > 0 || d.views.length > 0 ||
+    d.automations.length > 0 || d.capabilities.length > 0
+  );
+};
+
+/**
+ * Generate executive summary for consultant proposals
+ */
+export const generateExecutiveSummary = (task, taskTree) => {
+  const domains = aggregateByBusinessDomain(task);
+  const metrics = calculateScopeMetrics(task, taskTree);
+
+  // Build a high-level summary
+  const domainNames = domains.map(d => d.name).slice(0, 5);
+  const totalCapabilities = domains.reduce((sum, d) =>
+    sum + d.actions.length + d.views.length + d.automations.length, 0
+  );
+
+  let summary = `This project delivers a comprehensive solution spanning ${domains.length} core business areas`;
+
+  if (domainNames.length > 0) {
+    summary += ` including ${domainNames.slice(0, 3).join(', ')}`;
+    if (domainNames.length > 3) {
+      summary += `, and ${domainNames.length - 3} more`;
+    }
+  }
+
+  summary += `. The system provides ${totalCapabilities} distinct capabilities`;
+
+  if (metrics.storyCount > 0) {
+    summary += ` across ${metrics.storyCount} user stories`;
+  }
+
+  summary += '.';
+
+  return summary;
+};
+
+/**
  * Calculate scope metrics for Consultant view
  */
 export const calculateScopeMetrics = (task, taskTree) => {
@@ -189,62 +436,66 @@ export const calculateScopeMetrics = (task, taskTree) => {
 
 /**
  * Generate proposal markdown for Consultant export
- * Focuses on capabilities - what the product DOES, not counts
+ * Uses business-friendly domain aggregation instead of raw technical data
  */
 export const generateProposalMarkdown = (task, taskTree) => {
-  const swimlanes = task?.metadata?.swimlanes || [];
+  const businessDomains = aggregateByBusinessDomain(task);
   const epics = task?.context?.epics || task?.metadata?.epics || [];
   const stories = task?.context?.user_stories || task?.metadata?.user_stories || [];
   const requirements = task?.metadata?.requirements || {};
-
-  // Helper to format technical names to readable text
-  const formatName = (name) => {
-    return name
-      .replace(/([A-Z])/g, ' $1')
-      .replace(/View$|Display$|Screen$|Page$/i, '')
-      .trim()
-      .toLowerCase()
-      .replace(/^./, c => c.toUpperCase());
-  };
+  const execSummary = generateExecutiveSummary(task, taskTree);
 
   let md = `# Project Proposal\n\n`;
-  md += `## Overview\n\n${task?.description || 'No description provided.'}\n\n`;
 
-  // Capabilities section - what the product does
-  if (swimlanes.length > 0) {
-    md += `## Product Capabilities\n\n`;
-    swimlanes.forEach((sw, i) => {
-      md += `### ${sw.name}\n\n`;
-      if (sw.description) {
-        md += `${sw.description}\n\n`;
+  // Executive Summary section
+  md += `## Executive Summary\n\n`;
+  md += `${task?.description || 'No description provided.'}\n\n`;
+  md += `${execSummary}\n\n`;
+
+  // Business Capabilities section - aggregated by domain
+  if (businessDomains.length > 0) {
+    md += `## Business Capabilities\n\n`;
+    businessDomains.forEach((domain) => {
+      md += `### ${domain.name}\n\n`;
+      if (domain.description) {
+        md += `${domain.description}\n\n`;
       }
 
-      if (sw.commands?.length > 0) {
-        md += `**Users can:**\n`;
-        sw.commands.forEach(cmd => {
-          md += `- ${formatName(cmd)}\n`;
+      if (domain.actions.length > 0) {
+        md += `**What users can do:**\n`;
+        domain.actions.forEach(action => {
+          md += `- ${action}\n`;
         });
         md += `\n`;
       }
 
-      if (sw.read_models?.length > 0) {
-        md += `**Users see:**\n`;
-        sw.read_models.forEach(rm => {
-          md += `- ${formatName(rm)}\n`;
+      if (domain.views.length > 0) {
+        md += `**What users see:**\n`;
+        domain.views.forEach(view => {
+          md += `- ${view}\n`;
         });
         md += `\n`;
       }
 
-      if (sw.automations?.length > 0) {
+      if (domain.automations.length > 0) {
         md += `**Automatic behaviors:**\n`;
-        sw.automations.forEach(auto => {
-          md += `- ${formatName(auto)}\n`;
+        domain.automations.forEach(auto => {
+          md += `- ${auto}\n`;
+        });
+        md += `\n`;
+      }
+
+      // For domains built from raw events (no swimlanes)
+      if (domain.capabilities.length > 0 && domain.actions.length === 0) {
+        md += `**Key capabilities:**\n`;
+        domain.capabilities.forEach(cap => {
+          md += `- ${cap}\n`;
         });
         md += `\n`;
       }
     });
   } else if (epics.length > 0) {
-    // Fallback to epics if no swimlanes
+    // Fallback to epics if no event model data
     md += `## Features\n\n`;
     epics.forEach((epic, i) => {
       const epicTitle = epic.title || epic.name || 'Unnamed Feature';
