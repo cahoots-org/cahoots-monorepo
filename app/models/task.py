@@ -38,6 +38,10 @@ class Task(BaseModel):
     implementation_details: Optional[str] = None
     story_points: Optional[int] = None
     subtasks: List[str] = Field(default_factory=list)  # Just IDs, not full objects
+    depends_on: List[str] = Field(
+        default_factory=list,
+        description="IDs of tasks this task depends on (must complete before this can start)"
+    )
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

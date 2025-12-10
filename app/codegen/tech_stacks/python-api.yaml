@@ -1,0 +1,90 @@
+# Python REST API Tech Stack
+# FastAPI backend
+
+name: python-api
+display_name: "Python API"
+description: "RESTful API with FastAPI and Pydantic"
+category: backend
+
+# Project structure
+src_dir: app
+test_dir: tests
+
+# Commands
+install_command: pip install -e ".[dev]"
+test_command: pytest
+build_command: pip install -e .
+start_command: uvicorn app.main:app --reload
+
+# File patterns
+source_pattern: "**/*.py"
+test_pattern: "**/test_*.py"
+
+# Conventions for LLM code generation
+conventions: |
+  Project Structure:
+  - Entry point: app/main.py (FastAPI app creation)
+  - Routes: app/routes/{name}.py (one router per resource)
+  - Route registration: app/routes/__init__.py (imports all routers)
+  - Models: app/models/{name}.py (Pydantic models for request/response)
+  - Services: app/services/{name}.py (business logic)
+  - Tests: tests/test_{name}.py
+
+  Code Style:
+  - Use async def for all route handlers
+  - Type hints on all functions
+  - Pydantic models for request/response schemas
+  - Use Depends() for dependency injection
+  - Use status codes from fastapi.status
+
+  FastAPI Patterns:
+  - Router per resource: router = APIRouter(prefix="/users", tags=["users"])
+  - Request models: class CreateUserRequest(BaseModel)
+  - Response models: class UserResponse(BaseModel)
+  - Path params: @router.get("/{user_id}")
+  - Query params: def list_users(skip: int = 0, limit: int = 10)
+
+  Error Handling:
+  - Use HTTPException for client errors
+  - Return appropriate status codes (400, 404, 422)
+  - Include detail messages in exceptions
+  - Validate with Pydantic, let FastAPI handle 422s
+
+  Testing:
+  - Use TestClient from fastapi.testclient
+  - Test each endpoint for success and error cases
+  - Use pytest fixtures for client and test data
+  - Mock external services in tests
+
+# Initial project files
+config_files:
+  pyproject.toml: |
+    [build-system]
+    requires = ["setuptools>=61.0"]
+    build-backend = "setuptools.build_meta"
+
+    [project]
+    name = "{{project_name}}"
+    version = "1.0.0"
+    requires-python = ">=3.11"
+    dependencies = [
+        "fastapi>=0.109.0",
+        "uvicorn[standard]>=0.25.0",
+        "pydantic>=2.5.3",
+    ]
+
+    [project.optional-dependencies]
+    dev = [
+        "pytest>=7.4.4",
+        "pytest-asyncio>=0.23.3",
+        "httpx>=0.26.0",
+    ]
+
+    [tool.pytest.ini_options]
+    asyncio_mode = "auto"
+    testpaths = ["tests"]
+
+    [tool.setuptools.packages.find]
+    where = ["."]
+
+runner_image: python:3.11-slim

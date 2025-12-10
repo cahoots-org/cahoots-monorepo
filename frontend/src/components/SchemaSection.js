@@ -92,9 +92,9 @@ const SchemaSection = ({ title, items, itemType, onUpdate, editable = true }) =>
   };
 
   const getItemIcon = () => {
-    if (itemType === 'command') return '⚡';
-    if (itemType === 'event') return '📝';
-    return '📊';
+    if (itemType === 'command') return '👆';  // User Action
+    if (itemType === 'event') return '⚙️';    // Background Process
+    return '📱';                               // Screen/View
   };
 
   if (!items || items.length === 0) {

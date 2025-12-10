@@ -324,9 +324,70 @@ class UnifiedApiClient {
   }
 
   async getTaskStats(topLevelOnly = true) {
-    return this.get('/tasks/stats', { 
-      params: { top_level_only: topLevelOnly } 
+    return this.get('/tasks/stats', {
+      params: { top_level_only: topLevelOnly }
     });
+  }
+
+  // Code Generation Methods
+  async getTechStacks() {
+    return this.get('/codegen/tech-stacks');
+  }
+
+  async getTechStackDetails(stackName) {
+    return this.get(`/codegen/tech-stacks/${stackName}`);
+  }
+
+  async startCodeGeneration(projectId, techStack, repoName = null) {
+    return this.post(`/codegen/projects/${projectId}/generate`, {
+      tech_stack: techStack,
+      repo_name: repoName,
+    });
+  }
+
+  async getGenerationStatus(projectId) {
+    return this.get(`/codegen/projects/${projectId}/generate/status`);
+  }
+
+  async cancelGeneration(projectId) {
+    return this.post(`/codegen/projects/${projectId}/generate/cancel`);
+  }
+
+  async retryGeneration(projectId) {
+    return this.post(`/codegen/projects/${projectId}/generate/retry`);
+  }
+
+  async addGenerationRetries(projectId) {
+    return this.post(`/codegen/projects/${projectId}/generate/keep-trying`);
+  }
+
+  // Edit Methods with Cascade Support
+  /**
+   * Analyze an edit to get cascade effects before applying
+   * @param {string} taskId - The task ID
+   * @param {object} editRequest - { artifact_type, artifact_id, changes }
+   * @returns {Promise<object>} - { direct_change, cascade_effects, total_affected }
+   */
+  async analyzeEdit(taskId, editRequest) {
+    return this.post(`/edit/tasks/${taskId}/analyze`, editRequest);
+  }
+
+  /**
+   * Apply an edit with selected cascade changes
+   * @param {string} taskId - The task ID
+   * @param {object} applyRequest - { direct_change, cascade_changes_to_apply }
+   * @returns {Promise<object>} - { success, changes_applied, updated_task }
+   */
+  async applyEdit(taskId, applyRequest) {
+    return this.post(`/edit/tasks/${taskId}/apply`, applyRequest);
+  }
+
+  /**
+   * Get supported artifact types for editing
+   * @returns {Promise<object>} - List of artifact types with metadata
+   */
+  async getEditableArtifactTypes() {
+    return this.get('/edit/artifact-types');
   }
 }
 

@@ -1,0 +1,111 @@
+# Node.js CLI Application Tech Stack
+# Command-line tool with Commander.js
+
+name: nodejs-cli
+display_name: "Node.js CLI"
+description: "Command-line application with Commander.js and TypeScript"
+category: cli
+
+# Project structure
+src_dir: src
+test_dir: src/__tests__
+
+# Commands
+install_command: npm install
+test_command: npm test
+build_command: npm run build
+start_command: node dist/index.js
+
+# File patterns
+source_pattern: "**/*.ts"
+test_pattern: "**/*.test.ts"
+
+# Conventions for LLM code generation
+conventions: |
+  Project Structure:
+  - Entry point: src/index.ts (Commander program setup with #!/usr/bin/env node)
+  - Commands: src/commands/{name}.ts (one file per command)
+  - Utilities: src/utils/{name}.ts (shared helpers)
+  - Tests: src/__tests__/{name}.test.ts
+
+  Code Style:
+  - Use Commander.js for argument parsing
+  - Use chalk for colored output (green=success, red=error, yellow=warning)
+  - Exit codes: 0=success, 1=user error, 2=system error
+  - Use async/await, wrap main in async function
+  - Validate inputs early, fail fast with clear messages
+
+  CLI Patterns:
+  - Each command exports a Command object
+  - Use .option() for flags, .argument() for positional args
+  - Use .action() callback for command logic
+  - Provide --help automatically via Commander
+  - Support --quiet flag for scriptable output (JSON only)
+  - Support --verbose flag for debug info
+
+  Testing:
+  - Test command logic, not Commander parsing
+  - Mock file system and network calls
+  - Test exit codes for error cases
+  - Use jest.spyOn for console output testing
+
+  Output:
+  - Human-readable by default
+  - JSON with --json flag for scripting
+  - Progress indicators for long operations
+  - Clear error messages with suggestions
+
+# Initial project files
+config_files:
+  package.json: |
+    {
+      "name": "{{project_name}}",
+      "version": "1.0.0",
+      "bin": {
+        "{{project_name}}": "./dist/index.js"
+      },
+      "scripts": {
+        "dev": "ts-node src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js",
+        "test": "jest"
+      },
+      "dependencies": {
+        "commander": "^11.1.0",
+        "chalk": "^4.1.2"
+      },
+      "devDependencies": {
+        "typescript": "^5.3.3",
+        "ts-node": "^10.9.2",
+        "jest": "^29.7.0",
+        "ts-jest": "^29.1.1",
+        "@types/jest": "^29.5.11",
+        "@types/node": "^20.10.6"
+      }
+    }
+
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2022",
+        "module": "commonjs",
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "resolveJsonModule": true
+      },
+      "include": ["src/**/*"],
+      "exclude": ["node_modules", "dist"]
+    }
+
+  jest.config.js: |
+    module.exports = {
+      preset: 'ts-jest',
+      testEnvironment: 'node',
+      roots: ['<rootDir>/src'],
+      testMatch: ['**/__tests__/**/*.test.ts'],
+    };
+
+runner_image: node:20-slim

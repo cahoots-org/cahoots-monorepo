@@ -10,6 +10,7 @@ This replaces 4 separate LLM calls with 1 comprehensive analysis.
 """
 
 from typing import List, Dict, Any
+import time
 from app.models import Task
 from app.analyzer.llm_client import LLMClient, LocalLLMClient
 from app.analyzer.validation_tools import VALIDATION_TOOLS, execute_tool_call
@@ -17,6 +18,11 @@ from app.analyzer.event_extractor import DomainEvent, EventType, EVENT_TYPE_MAPP
 from app.analyzer.state_machine_detector import StateMachine, StateTransition, TransitionType
 from app.analyzer.cqrs_detector import Command, Query, CQRSAnalysis
 from app.analyzer.schema_generator import Entity, Field, SchemaAnalysis
+from app.metrics import (
+    event_modeling_subphase_duration,
+    event_modeling_llm_calls_per_subphase,
+    event_modeling_validation_retries
+)
 
 
 class UnifiedDomainAnalyzer:
@@ -42,28 +48,48 @@ class UnifiedDomainAnalyzer:
         """
         print(f"[UnifiedDomainAnalyzer] Analyzing domain from description only (pre-decomposition)")
 
-        # Single LLM call analyzing just the root description
+        # Sub-phase 1: Initial analysis from description
+        start_time = time.time()
         analysis = await self._analyze_description_only(root_task)
+        duration = time.time() - start_time
+        event_modeling_subphase_duration.labels(subphase="analyze_description").observe(duration)
+        event_modeling_llm_calls_per_subphase.labels(subphase="analyze_description").inc()
+        print(f"[UnifiedDomainAnalyzer] Sub-phase analyze_description took {duration:.2f}s")
 
-        # Add swimlanes and chapters (no validation yet)
+        # Sub-phase 2: Swimlanes and chapters
+        start_time = time.time()
         print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
         analysis = await self._detect_swimlanes_and_chapters(root_task, analysis)
+        duration = time.time() - start_time
+        event_modeling_subphase_duration.labels(subphase="swimlanes_chapters").observe(duration)
+        event_modeling_llm_calls_per_subphase.labels(subphase="swimlanes_chapters").inc()
+        print(f"[UnifiedDomainAnalyzer] Sub-phase swimlanes_chapters took {duration:.2f}s")
 
-        # Generate wireframes and data flow tracking (no validation yet)
+        # Sub-phase 3: Wireframes and data flow
+        start_time = time.time()
         print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
         analysis = await self._generate_wireframes_and_dataflow(root_task, analysis)
+        duration = time.time() - start_time
+        event_modeling_subphase_duration.labels(subphase="wireframes_dataflow").observe(duration)
+        event_modeling_llm_calls_per_subphase.labels(subphase="wireframes_dataflow").inc()
+        print(f"[UnifiedDomainAnalyzer] Sub-phase wireframes_dataflow took {duration:.2f}s")
 
         # Skip data flow validation - too slow with retry loops
         # Final validation will catch major issues
 
-        # NOW validate everything once at the end
+        # Sub-phase 4: Validation and fixing
+        validation_start = time.time()
         print(f"[UnifiedDomainAnalyzer] Running final validation...")
         from app.analyzer.event_model_validator import EventModelValidator
         validator = EventModelValidator()
 
         max_retries = 3  # Reduced from 10 to 3
+        actual_retries = 0
         for retry in range(max_retries):
+            validation_iter_start = time.time()
             is_valid, validation_issues = validator.validate(analysis)
+            validation_iter_duration = time.time() - validation_iter_start
+            event_modeling_subphase_duration.labels(subphase="validation").observe(validation_iter_duration)
 
             if is_valid:
                 print(f"[UnifiedDomainAnalyzer] Final validation passed")
@@ -73,10 +99,21 @@ class UnifiedDomainAnalyzer:
 
             if errors and retry < max_retries - 1:
                 print(f"[UnifiedDomainAnalyzer] Final validation failed with {len(errors)} errors (attempt {retry + 1}/{max_retries})")
+                fix_start = time.time()
                 analysis = await self._fix_validation_errors(analysis, validation_issues)
+                fix_duration = time.time() - fix_start
+                event_modeling_subphase_duration.labels(subphase="fix_errors").observe(fix_duration)
+                event_modeling_llm_calls_per_subphase.labels(subphase="fix_errors").inc()
+                actual_retries += 1
+                print(f"[UnifiedDomainAnalyzer] Sub-phase fix_errors took {fix_duration:.2f}s")
             else:
                 print(f"[UnifiedDomainAnalyzer] Proceeding with {len(errors)} validation errors after {max_retries} attempts")
                 break
+
+        # Record the number of retries
+        event_modeling_validation_retries.observe(actual_retries)
+        total_validation_duration = time.time() - validation_start
+        print(f"[UnifiedDomainAnalyzer] Total validation phase took {total_validation_duration:.2f}s with {actual_retries} fix retries")
 
         # Emit progress
         if self.task_event_emitter and user_id:
@@ -142,7 +179,12 @@ class UnifiedDomainAnalyzer:
             print(f"[UnifiedDomainAnalyzer] Processing batch {batch_idx + 1}/{len(batches)} ({len(task_descriptions)} tasks)")
 
             # Generate batch without validation (validation happens once at the end)
+            batch_start = time.time()
             batch_result = await self._analyze_batch(root_task, task_descriptions, len(atomic_tasks), None)
+            batch_duration = time.time() - batch_start
+            event_modeling_subphase_duration.labels(subphase="analyze_description").observe(batch_duration)
+            event_modeling_llm_calls_per_subphase.labels(subphase="analyze_description").inc()
+            print(f"[UnifiedDomainAnalyzer] Sub-phase analyze_description (batch {batch_idx + 1}) took {batch_duration:.2f}s")
 
             all_events.extend(batch_result.get("events", []))
             all_commands.extend(batch_result.get("commands", []))
@@ -164,11 +206,15 @@ class UnifiedDomainAnalyzer:
                 print(f"[UnifiedDomainAnalyzer] Emitted progress: {len(all_events)} events, {len(all_commands)} commands, {len(all_read_models)} read models")
 
         # Deduplicate by name (events are DomainEvent objects, others are dicts)
+        dedup_start = time.time()
         events = self._deduplicate_events(all_events)
         commands = self._deduplicate_by_name(all_commands)
         read_models = self._deduplicate_by_name(all_read_models)
         user_interactions = self._deduplicate_user_interactions(all_user_interactions)
         automations = self._deduplicate_by_name(all_automations)
+        dedup_duration = time.time() - dedup_start
+        event_modeling_subphase_duration.labels(subphase="deduplication").observe(dedup_duration)
+        print(f"[UnifiedDomainAnalyzer] Sub-phase deduplication took {dedup_duration:.2f}s")
 
         combined_result = {
             "events": events,
@@ -181,27 +227,47 @@ class UnifiedDomainAnalyzer:
         # If we had multiple batches, make a final consolidation pass to ensure completeness
         if len(batches) > 1:
             print(f"[UnifiedDomainAnalyzer] Making final consolidation pass to ensure completeness")
+            consolidation_start = time.time()
             combined_result = await self._consolidate_event_model(root_task, combined_result, atomic_tasks)
+            consolidation_duration = time.time() - consolidation_start
+            event_modeling_subphase_duration.labels(subphase="consolidation").observe(consolidation_duration)
+            event_modeling_llm_calls_per_subphase.labels(subphase="consolidation").inc()
+            print(f"[UnifiedDomainAnalyzer] Sub-phase consolidation took {consolidation_duration:.2f}s")
 
-        # Add swimlanes and chapters for Event Modeling structure (no validation yet)
+        # Sub-phase: Swimlanes and chapters
+        start_time = time.time()
         print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
         combined_result = await self._detect_swimlanes_and_chapters(root_task, combined_result)
+        duration = time.time() - start_time
+        event_modeling_subphase_duration.labels(subphase="swimlanes_chapters").observe(duration)
+        event_modeling_llm_calls_per_subphase.labels(subphase="swimlanes_chapters").inc()
+        print(f"[UnifiedDomainAnalyzer] Sub-phase swimlanes_chapters took {duration:.2f}s")
 
-        # Generate wireframes and data flow tracking (no validation yet)
+        # Sub-phase: Wireframes and data flow
+        start_time = time.time()
         print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
         combined_result = await self._generate_wireframes_and_dataflow(root_task, combined_result)
+        duration = time.time() - start_time
+        event_modeling_subphase_duration.labels(subphase="wireframes_dataflow").observe(duration)
+        event_modeling_llm_calls_per_subphase.labels(subphase="wireframes_dataflow").inc()
+        print(f"[UnifiedDomainAnalyzer] Sub-phase wireframes_dataflow took {duration:.2f}s")
 
         # Skip data flow validation - too slow with retry loops
         # Final validation will catch major issues
 
-        # NOW validate everything once at the very end
+        # Sub-phase: Validation and fixing
+        validation_start = time.time()
         print(f"[UnifiedDomainAnalyzer] Running final validation...")
         from app.analyzer.event_model_validator import EventModelValidator
         validator = EventModelValidator()
 
         max_retries = 3  # Reduced from 10 to 3
+        actual_retries = 0
         for retry in range(max_retries):
+            validation_iter_start = time.time()
             is_valid, validation_issues = validator.validate(combined_result)
+            validation_iter_duration = time.time() - validation_iter_start
+            event_modeling_subphase_duration.labels(subphase="validation").observe(validation_iter_duration)
 
             if is_valid:
                 print(f"[UnifiedDomainAnalyzer] Final validation passed")
@@ -211,10 +277,21 @@ class UnifiedDomainAnalyzer:
 
             if errors and retry < max_retries - 1:
                 print(f"[UnifiedDomainAnalyzer] Final validation failed with {len(errors)} errors (attempt {retry + 1}/{max_retries})")
+                fix_start = time.time()
                 combined_result = await self._fix_validation_errors(combined_result, validation_issues)
+                fix_duration = time.time() - fix_start
+                event_modeling_subphase_duration.labels(subphase="fix_errors").observe(fix_duration)
+                event_modeling_llm_calls_per_subphase.labels(subphase="fix_errors").inc()
+                actual_retries += 1
+                print(f"[UnifiedDomainAnalyzer] Sub-phase fix_errors took {fix_duration:.2f}s")
             else:
                 print(f"[UnifiedDomainAnalyzer] Proceeding with {len(errors)} validation errors after {max_retries} attempts")
                 break
+
+        # Record validation metrics
+        event_modeling_validation_retries.observe(actual_retries)
+        total_validation_duration = time.time() - validation_start
+        print(f"[UnifiedDomainAnalyzer] Total validation phase took {total_validation_duration:.2f}s with {actual_retries} fix retries")
 
         return combined_result
 

@@ -46,14 +46,14 @@ const ChangePreview = ({ changes, isOpen, onClose, onAccept, onReject, loading }
 
   const getChangeIcon = (type) => {
     const icons = {
-      command: '🔵',
-      event: '🟠',
-      read_model: '🟢',
+      command: '🔵',      // User Action
+      event: '🟠',        // System Event
+      read_model: '🟢',   // Screen/View
       task: '🎯',
       gwt: '📋',
-      swimlane: '🏊',
+      swimlane: '🏢',     // Business Area
       diagram: '🎨',
-      automation: '⚙️',
+      automation: '⚙️',   // Background Process
     };
     return icons[type] || '📌';
   };
@@ -77,7 +77,7 @@ const ChangePreview = ({ changes, isOpen, onClose, onAccept, onReject, loading }
       <div style={styles.container}>
         <Text style={styles.description}>
           Your edit will trigger the following changes to maintain consistency across
-          the Event Model, tasks, and diagram:
+          the system blueprint, tasks, and diagram:
         </Text>
 
         <div style={styles.controls}>

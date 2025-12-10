@@ -4,6 +4,8 @@ This wraps the existing UnifiedDomainAnalyzer to provide automatic context injec
 via the Context Engine while preserving its efficient single-LLM-call architecture.
 """
 
+import asyncio
+import time
 import types
 from typing import List, Dict, Any, Optional
 from app.models import Task
@@ -11,6 +13,7 @@ from app.analyzer.llm_client import LLMClient
 from app.analyzer.context_aware_agent import ContextAwareAgent
 from app.analyzer.unified_domain_analyzer import UnifiedDomainAnalyzer
 from app.services.context_engine_client import ContextEngineClient
+from app.metrics import event_modeling_subphase_duration
 
 
 class ContextAwareDomainAnalyzer(ContextAwareAgent):
@@ -153,43 +156,25 @@ class ContextAwareDomainAnalyzer(ContextAwareAgent):
 
         # OPTIMIZATION: Fetch context ONCE at the start of batch processing
         # This avoids redundant context retrievals for each task
+        context_fetch_start = time.time()
         if self.context_engine and project_id:
             await self._ensure_registered(project_id)
             self._cached_context = await self._get_context(project_id)
             print(f"[ContextAwareDomainAnalyzer] ✓ Fetched context once for batch processing ({len(tasks)} tasks)")
         else:
             self._cached_context = None
+        context_fetch_duration = time.time() - context_fetch_start
+        event_modeling_subphase_duration.labels(subphase="context_fetch").observe(context_fetch_duration)
+        print(f"[ContextAwareDomainAnalyzer] Sub-phase context_fetch took {context_fetch_duration:.2f}s")
 
         try:
             # Call the wrapped analyzer - all its LLM calls will use cached context
             analysis = await self.domain_analyzer.analyze_domain(tasks, root_task, user_id)
 
-            # Publish analysis results to Context Engine for other agents
+            # Publish analysis results to Context Engine for other agents (fire-and-forget)
             if self.context_engine and project_id:
-                await self.publish_data(
-                    project_id=project_id,
-                    data_key="event_model_analysis",
-                    data={
-                        "events": [
-                            {
-                                "name": e.name,
-                                "event_type": e.event_type.value,
-                                "description": e.description,
-                                "actor": e.actor,
-                                "affected_entity": e.affected_entity,
-                                "triggers": e.triggers
-                            }
-                            for e in analysis.get("events", [])
-                        ],
-                        "commands": analysis.get("commands", []),
-                        "read_models": analysis.get("read_models", []),
-                        "user_interactions": analysis.get("user_interactions", []),
-                        "automations": analysis.get("automations", []),
-                        "swimlanes": analysis.get("swimlanes", []),
-                        "chapters": analysis.get("chapters", [])
-                    }
-                )
-                print(f"[ContextAwareDomainAnalyzer] ✓ Published event model analysis to Context Engine")
+                # Create background task - don't block on this
+                asyncio.create_task(self._publish_analysis_async(project_id, analysis))
 
             return analysis
 
@@ -199,6 +184,39 @@ class ContextAwareDomainAnalyzer(ContextAwareAgent):
                 delattr(self, '_cached_context')
             if hasattr(self, '_current_project_id'):
                 delattr(self, '_current_project_id')
+
+    async def _publish_analysis_async(self, project_id: str, analysis: Dict[str, Any]):
+        """Publish analysis to Context Engine in background (fire-and-forget)."""
+        try:
+            context_publish_start = time.time()
+            await self.publish_data(
+                project_id=project_id,
+                data_key="event_model_analysis",
+                data={
+                    "events": [
+                        {
+                            "name": e.name,
+                            "event_type": e.event_type.value,
+                            "description": e.description,
+                            "actor": e.actor,
+                            "affected_entity": e.affected_entity,
+                            "triggers": e.triggers
+                        }
+                        for e in analysis.get("events", [])
+                    ],
+                    "commands": analysis.get("commands", []),
+                    "read_models": analysis.get("read_models", []),
+                    "user_interactions": analysis.get("user_interactions", []),
+                    "automations": analysis.get("automations", []),
+                    "swimlanes": analysis.get("swimlanes", []),
+                    "chapters": analysis.get("chapters", [])
+                }
+            )
+            context_publish_duration = time.time() - context_publish_start
+            event_modeling_subphase_duration.labels(subphase="context_publish").observe(context_publish_duration)
+            print(f"[ContextAwareDomainAnalyzer] ✓ Published event model analysis (background, {context_publish_duration:.2f}s)")
+        except Exception as e:
+            print(f"[ContextAwareDomainAnalyzer] ⚠ Background publish failed: {e}")
 
     async def analyze_domain_from_description(
         self,

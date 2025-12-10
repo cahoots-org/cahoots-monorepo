@@ -87,6 +87,33 @@ pytest tests/ -v
 | Redis | 6380 | Data storage |
 | Context Engine | 8003 | Semantic routing |
 | OpenSearch | 9201 | Vector search |
+| Gitea | 3001 | Git server for code generation |
+| Workspace Service | 8010 | File operations for agents |
+| Runner Service | 8011 | Test execution |
+| Prometheus | 9090 | Metrics collection |
+| Grafana | 3002 | Metrics dashboards |
+
+## Monitoring
+
+Prometheus and Grafana are included for monitoring code generation performance.
+
+```bash
+# Start monitoring stack
+docker compose up -d prometheus grafana
+```
+
+**Grafana:** http://localhost:3002
+- Username: `admin`
+- Password: `cahoots`
+
+A pre-built dashboard "Cahoots Code Generation" is automatically provisioned with:
+- Idea-to-code duration (the headline metric)
+- LLM call latency and token usage
+- Task processing rates
+- Merge operation stats
+
+**Prometheus:** http://localhost:9090
+- Scrapes metrics from the API at `/metrics`
 
 ## License
 

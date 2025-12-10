@@ -17,6 +17,8 @@ const LiveActivityFeed = ({ taskId }) => {
   const [activities, setActivities] = useState([]);
   const feedRef = useRef(null);
   const { subscribe, connected } = useWebSocket();
+  const pendingEventsRef = useRef([]);
+  const batchTimeoutRef = useRef(null);
 
   // Auto-scroll to bottom when new activities arrive
   useEffect(() => {
@@ -25,21 +27,56 @@ const LiveActivityFeed = ({ taskId }) => {
     }
   }, [activities]);
 
+  // Batch and flush pending events
+  const flushPendingEvents = () => {
+    if (pendingEventsRef.current.length === 0) return;
+
+    const pending = pendingEventsRef.current;
+    pendingEventsRef.current = [];
+
+    // Group similar events
+    const batched = batchSimilarEvents(pending);
+
+    setActivities(prev => [...prev.slice(-50 + batched.length), ...batched]);
+  };
+
   // Subscribe to WebSocket events for this task
   useEffect(() => {
-    if (!connected || !taskId) return;
+    if (!connected || !taskId) {
+      return;
+    }
 
     const unsubscribe = subscribe((event) => {
       // Filter for events related to this task
-      if (event.task_id !== taskId && event.root_task_id !== taskId) return;
+      if (event.task_id !== taskId && event.root_task_id !== taskId) {
+        return;
+      }
 
       const activity = mapEventToActivity(event);
       if (activity) {
-        setActivities(prev => [...prev.slice(-50), activity]); // Keep last 50
+        // Add to pending events
+        pendingEventsRef.current.push(activity);
+
+        // Clear existing timeout and set a new one
+        if (batchTimeoutRef.current) {
+          clearTimeout(batchTimeoutRef.current);
+        }
+
+        // Flush after 1.5 seconds of no new events, or immediately for milestone/success events
+        const isImportant = activity.type === 'milestone' || activity.type === 'success';
+        const delay = isImportant ? 300 : 1500;
+
+        batchTimeoutRef.current = setTimeout(flushPendingEvents, delay);
       }
     });
 
-    return () => unsubscribe?.();
+    return () => {
+      unsubscribe?.();
+      if (batchTimeoutRef.current) {
+        clearTimeout(batchTimeoutRef.current);
+        flushPendingEvents(); // Flush any remaining events
+      }
+    };
   }, [connected, subscribe, taskId]);
 
   // Add initial activity
@@ -105,7 +142,70 @@ const TypingIndicator = () => (
   </div>
 );
 
-// Map WebSocket events to activity items
+// Batch similar events together
+function batchSimilarEvents(events) {
+  if (events.length === 0) return [];
+  if (events.length === 1) return events;
+
+  const batched = [];
+  const groups = {};
+
+  // Group events by their batch key (event type + icon combination)
+  events.forEach(event => {
+    const key = event.batchKey || event.type;
+    if (!groups[key]) {
+      groups[key] = [];
+    }
+    groups[key].push(event);
+  });
+
+  // Process each group
+  Object.entries(groups).forEach(([key, groupEvents]) => {
+    if (groupEvents.length === 1) {
+      // Single event, just add it
+      batched.push(groupEvents[0]);
+    } else {
+      // Multiple similar events - create a batched message
+      const first = groupEvents[0];
+
+      if (key === 'task-created') {
+        // Batch task created events
+        batched.push({
+          ...first,
+          id: `batch-tasks-${Date.now()}`,
+          message: `Added ${groupEvents.length} new tasks to your plan`,
+          detail: groupEvents.slice(0, 3).map(e => e.detail).filter(Boolean).join(', ') +
+                  (groupEvents.length > 3 ? ` and ${groupEvents.length - 3} more...` : ''),
+        });
+      } else if (key === 'context-update') {
+        // Batch context updates
+        batched.push({
+          ...first,
+          id: `batch-ctx-${Date.now()}`,
+          message: `Updated ${groupEvents.length} project components`,
+          detail: groupEvents.map(e => e.message).join(' → '),
+        });
+      } else {
+        // For other types, just take the last one but note the count
+        const last = groupEvents[groupEvents.length - 1];
+        if (groupEvents.length > 2) {
+          batched.push({
+            ...last,
+            detail: last.detail ? `${last.detail} (${groupEvents.length} updates)` : `${groupEvents.length} updates`,
+          });
+        } else {
+          // Just add them individually for small groups
+          batched.push(...groupEvents);
+        }
+      }
+    }
+  });
+
+  // Sort by timestamp
+  return batched.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+}
+
+// Map WebSocket events to activity items with user-friendly messages
 function mapEventToActivity(event) {
   const type = event.type || event.event_type;
   const data = event.data || event;
@@ -115,8 +215,9 @@ function mapEventToActivity(event) {
       return {
         id: `task-${Date.now()}-${Math.random()}`,
         type: 'success',
+        batchKey: 'task-created',
         icon: '✨',
-        message: 'Created task',
+        message: 'Added a new task to your plan',
         detail: data.description?.substring(0, 60) + (data.description?.length > 60 ? '...' : ''),
         timestamp: new Date(),
       };
@@ -125,8 +226,9 @@ function mapEventToActivity(event) {
       return {
         id: `update-${Date.now()}-${Math.random()}`,
         type: 'info',
+        batchKey: 'task-updated',
         icon: '📝',
-        message: 'Updated task data',
+        message: 'Refined task details',
         timestamp: new Date(),
       };
 
@@ -136,7 +238,7 @@ function mapEventToActivity(event) {
           id: `complete-${Date.now()}`,
           type: 'success',
           icon: '🎉',
-          message: 'Processing complete!',
+          message: 'Your project plan is ready!',
           timestamp: new Date(),
         };
       } else if (data.new_status === 'processing') {
@@ -144,7 +246,7 @@ function mapEventToActivity(event) {
           id: `processing-${Date.now()}`,
           type: 'info',
           icon: '⚙️',
-          message: 'Started processing...',
+          message: 'Getting started on your project...',
           timestamp: new Date(),
         };
       }
@@ -155,7 +257,8 @@ function mapEventToActivity(event) {
         id: `decomp-start-${Date.now()}`,
         type: 'milestone',
         icon: '🔨',
-        message: 'Starting task decomposition',
+        message: 'Breaking down your project into tasks',
+        detail: 'Creating a step-by-step implementation plan',
         timestamp: new Date(),
       };
 
@@ -164,21 +267,22 @@ function mapEventToActivity(event) {
         id: `decomp-done-${Date.now()}`,
         type: 'success',
         icon: '✅',
-        message: 'Task decomposition complete',
-        detail: data.subtasks_count ? `${data.subtasks_count} subtasks created` : null,
+        message: 'Project breakdown complete!',
+        detail: data.subtasks_count ? `Created ${data.subtasks_count} actionable tasks` : null,
         timestamp: new Date(),
       };
 
     case 'context.updated':
       const contextMessages = {
-        'tech_stack': { icon: '🔧', message: 'Analyzed tech stack' },
-        'epics_and_stories': { icon: '📚', message: 'Created epics and user stories' },
-        'decomposed_tasks': { icon: '📋', message: 'Decomposed into tasks' },
+        'tech_stack': { icon: '🔧', message: 'Figured out the best technologies to use' },
+        'epics_and_stories': { icon: '📚', message: 'Organized into major goals and user needs' },
+        'decomposed_tasks': { icon: '📋', message: 'Created detailed task list' },
       };
-      const ctx = contextMessages[data.data_key] || { icon: '📊', message: data.message || 'Updated project context' };
+      const ctx = contextMessages[data.data_key] || { icon: '📊', message: data.message || 'Updated your project' };
       return {
         id: `ctx-${Date.now()}-${Math.random()}`,
         type: 'info',
+        batchKey: 'context-update',
         icon: ctx.icon,
         message: ctx.message,
         timestamp: new Date(),
@@ -189,7 +293,8 @@ function mapEventToActivity(event) {
         id: `em-start-${Date.now()}`,
         type: 'milestone',
         icon: '⚡',
-        message: 'Starting event modeling analysis',
+        message: 'Designing your system architecture',
+        detail: 'Mapping out how users will interact with your app',
         timestamp: new Date(),
       };
 
@@ -199,9 +304,10 @@ function mapEventToActivity(event) {
       return {
         id: `em-progress-${Date.now()}-${Math.random()}`,
         type: 'info',
+        batchKey: 'event-modeling-progress',
         icon: '🔄',
-        message: 'Building event model...',
-        detail: events || commands ? `${events} events, ${commands} commands` : null,
+        message: 'Planning system behavior...',
+        detail: events || commands ? `Found ${commands} user actions, ${events} background processes` : null,
         timestamp: new Date(),
       };
 
@@ -210,8 +316,8 @@ function mapEventToActivity(event) {
         id: `em-done-${Date.now()}`,
         type: 'success',
         icon: '✅',
-        message: 'Event model complete!',
-        detail: `${data.events || 0} events, ${data.commands || 0} commands, ${data.read_models || 0} read models`,
+        message: 'System design complete!',
+        detail: `${data.commands || 0} user actions, ${data.read_models || 0} screens, ${data.events || 0} background processes`,
         timestamp: new Date(),
       };
 
@@ -220,17 +326,26 @@ function mapEventToActivity(event) {
         id: `em-error-${Date.now()}`,
         type: 'error',
         icon: '❌',
-        message: 'Event modeling error',
+        message: 'Had trouble with system design',
         detail: data.error || data.message,
         timestamp: new Date(),
       };
 
     case 'task.processing_update':
+      // Make processing messages more friendly
+      let friendlyMessage = data.message || 'Working on it...';
+      // Replace technical terms in messages
+      friendlyMessage = friendlyMessage
+        .replace(/decompos/gi, 'breaking down')
+        .replace(/event model/gi, 'system design')
+        .replace(/slice/gi, 'feature')
+        .replace(/command/gi, 'action');
       return {
         id: `proc-${Date.now()}-${Math.random()}`,
         type: 'info',
+        batchKey: 'processing-update',
         icon: '🔄',
-        message: data.message || 'Processing...',
+        message: friendlyMessage,
         timestamp: new Date(),
       };
 

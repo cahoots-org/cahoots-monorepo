@@ -19,13 +19,24 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
   const [currentStep, setCurrentStep] = useState('');
   const [error, setError] = useState(null);
 
+  // User-friendly stage labels with descriptions
   const stageLabels = {
-    source: 'Source Processing',
-    context_fetch: 'Context Analysis',
-    complexity_scorer: 'Complexity Analysis',
-    root_processor: 'Technical Planning',
-    decomposer: 'Task Decomposition',
-    composer: 'Final Composition'
+    source: 'Reading Your Request',
+    context_fetch: 'Understanding Context',
+    complexity_scorer: 'Estimating Work',
+    root_processor: 'Planning Architecture',
+    decomposer: 'Creating Tasks',
+    composer: 'Finalizing Plan'
+  };
+
+  // More detailed descriptions for each stage
+  const stageDescriptions = {
+    source: 'Carefully reading through your requirements',
+    context_fetch: 'Figuring out how different parts connect',
+    complexity_scorer: 'Calculating how much work each part needs',
+    root_processor: 'Designing the technical structure',
+    decomposer: 'Breaking down into specific, actionable tasks',
+    composer: 'Organizing everything into a complete plan'
   };
 
   const handleDecompositionEvent = (event) => {
@@ -70,8 +81,8 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
       // Handle event modeling started
       case 'event_modeling.started':
         if (event.task_id === taskId) {
-          addStep('Event Model Generation', 'in_progress', 'Analyzing events, commands, and read models...');
-          setCurrentStep('Generating event model...');
+          addStep('Designing System Blueprint', 'in_progress', 'Mapping out how users will interact with your app...');
+          setCurrentStep('Creating your system blueprint...');
         }
         break;
 
@@ -81,11 +92,11 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
           const { events, commands, read_models, user_interactions, automations } = event;
           const totalItems = (events || 0) + (commands || 0) + (read_models || 0) + (user_interactions || 0) + (automations || 0);
           updateStep(
-            'Event Model Generation',
+            'Designing System Blueprint',
             'in_progress',
-            `Identified ${totalItems} elements (${events || 0} events, ${commands || 0} commands, ${read_models || 0} read models)...`
+            `Found ${totalItems} elements: ${commands || 0} user actions, ${read_models || 0} screens, ${events || 0} background processes...`
           );
-          setCurrentStep(`Processing event model: ${totalItems} elements identified`);
+          setCurrentStep(`Discovered ${totalItems} features so far`);
         }
         break;
 
@@ -94,11 +105,11 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
         if (event.task_id === taskId) {
           const { events, commands, read_models, user_interactions, automations } = event;
           updateStep(
-            'Event Model Generation',
+            'Designing System Blueprint',
             'completed',
-            `Generated ${events || 0} events, ${commands || 0} commands, ${read_models || 0} read models`
+            `Complete: ${commands || 0} user actions, ${read_models || 0} screens, ${events || 0} background processes`
           );
-          setCurrentStep('Event model complete! Finalizing...');
+          setCurrentStep('System blueprint complete! Wrapping up...');
           setTimeout(() => {
             if (onDecompositionComplete) {
               onDecompositionComplete();
@@ -239,7 +250,7 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
               color: tokens.colors.dark.text,
               margin: 0,
             }}>
-              {isDecomposing ? 'Decomposing Task' : 'Decomposition Complete'}
+              {isDecomposing ? 'Building Your Project Plan' : 'Project Plan Ready'}
             </Text>
           </div>
           
@@ -273,7 +284,7 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
                 marginTop: tokens.spacing[2],
                 fontStyle: 'italic',
               }}>
-                The AI is analyzing your task and will start creating subtasks shortly...
+                We're reading through your requirements and will start building your plan shortly...
               </Text>
             )}
           </div>

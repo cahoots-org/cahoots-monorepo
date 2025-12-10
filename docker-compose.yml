@@ -156,6 +156,95 @@ services:
   #     start_period: 600s
   #   restart: unless-stopped
 
+  # Gitea - Self-hosted Git server for code generation
+  gitea:
+    image: gitea/gitea:1.21-rootless
+    platform: linux/amd64
+    ports:
+      - "3001:3000"
+      - "2222:22"
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__server__ROOT_URL=http://localhost:3001
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__service__DISABLE_REGISTRATION=true
+      - GITEA__security__INSTALL_LOCK=true
+    volumes:
+      - gitea_data:/var/lib/gitea
+      - gitea_config:/etc/gitea
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/v1/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Workspace Service - Git-backed file operations for code generation agents
+  workspace-service:
+    build:
+      context: ./workspace-service
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    ports:
+      - "8010:8001"
+    environment:
+      - WORKSPACE_GITEA_URL=http://gitea:3000
+      - WORKSPACE_GITEA_API_TOKEN=${GITEA_API_TOKEN:-}
+      - WORKSPACE_GITEA_BOT_USERNAME=cahoots-bot
+      - WORKSPACE_CONTEXT_ENGINE_URL=http://context-engine:8001
+      - WORKSPACE_REDIS_URL=redis://redis:6379
+      - WORKSPACE_WORKSPACES_ROOT=/workspaces
+      - WORKSPACE_COMMIT_AUTHOR_NAME=Cahoots Bot
+      - WORKSPACE_COMMIT_AUTHOR_EMAIL=bot@cahoots.dev
+    volumes:
+      - workspaces_data:/workspaces
+    depends_on:
+      redis:
+        condition: service_healthy
+      gitea:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Runner Service - Test execution on Cloud Run Jobs
+  runner-service:
+    build:
+      context: ./runner-service
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    ports:
+      - "8011:8002"
+    environment:
+      - RUNNER_REDIS_URL=redis://redis:6379
+      - RUNNER_WORKSPACE_SERVICE_URL=http://workspace-service:8001
+      - RUNNER_GCP_PROJECT_ID=${GCP_PROJECT_ID:-}
+      - RUNNER_GCP_REGION=${GCP_REGION:-us-central1}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+    volumes:
+      - ${GCP_CREDENTIALS_PATH:-./gcp-credentials.json}:/app/gcp-credentials.json:ro
+      # Mount Docker socket for local test execution (used when GCP not configured)
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      redis:
+        condition: service_healthy
+      workspace-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   # Frontend (React)
   frontend:
     build:
@@ -200,7 +289,47 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     restart: unless-stopped
 
+  # Prometheus - Metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    platform: linux/amd64
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Grafana - Metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    platform: linux/amd64
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=cahoots
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
 volumes:
   redis_data:
   opensearch_data:
   vllm-cache:
+  gitea_data:
+  gitea_config:
+  workspaces_data:
+  prometheus_data:
+  grafana_data:

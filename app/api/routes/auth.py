@@ -455,6 +455,7 @@ async def get_current_user(
             "username": "admin",
             "full_name": "Admin User",
             "role": "admin",
+            "is_admin": True,  # Bypass ownership checks in development
             "subscription_tier": "enterprise",
             "subscription_status": "active",
             "monthly_task_limit": 1000,

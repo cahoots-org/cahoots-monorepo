@@ -151,7 +151,7 @@ const SchemasTab = ({ task, taskTree }) => {
         </div>
         <h3 style={styles.emptyStateTitle}>Generating Schemas</h3>
         <p style={styles.emptyStateDescription}>
-          Schemas are being generated as part of the event model analysis...
+          Data structures are being generated as part of the system blueprint analysis...
         </p>
       </div>
     );
@@ -164,7 +164,7 @@ const SchemasTab = ({ task, taskTree }) => {
         <span style={styles.emptyStateIcon}>📐</span>
         <h3 style={styles.emptyStateTitle}>No Schemas Available</h3>
         <p style={styles.emptyStateDescription}>
-          Schemas will be generated when the event model is created.
+          Data structures will be generated when the system blueprint is created.
         </p>
       </div>
     );
@@ -181,7 +181,7 @@ const SchemasTab = ({ task, taskTree }) => {
           }}
           onClick={() => setActiveSection('commands')}
         >
-          ⚡ Commands ({commands.length})
+          ⚡ User Actions ({commands.length})
         </button>
         <button
           style={{
@@ -190,7 +190,7 @@ const SchemasTab = ({ task, taskTree }) => {
           }}
           onClick={() => setActiveSection('events')}
         >
-          📝 Events ({events.length})
+          ⚙️ Background Processes ({events.length})
         </button>
         <button
           style={{
@@ -199,18 +199,18 @@ const SchemasTab = ({ task, taskTree }) => {
           }}
           onClick={() => setActiveSection('read_models')}
         >
-          📊 Read Models ({readModels.length})
+          📊 Screens/Views ({readModels.length})
         </button>
       </div>
 
       {/* Help Text */}
       <Card style={styles.helpCard}>
         <CardContent>
-          <Text style={styles.helpTitle}>💡 About Schemas</Text>
+          <Text style={styles.helpTitle}>💡 About Data Structures</Text>
           <Text style={styles.helpText}>
-            Schemas define the exact structure of data flowing through your system.
-            Each command, event, and read model has typed fields with source tracking.
-            Editing schemas will trigger cascade analysis to ensure consistency across your event model.
+            Data structures define the exact shape of information flowing through your app.
+            Each user action, background process, and screen has typed fields that track where data comes from.
+            Editing these will automatically update related parts of your system to keep everything consistent.
           </Text>
         </CardContent>
       </Card>
@@ -219,10 +219,10 @@ const SchemasTab = ({ task, taskTree }) => {
       {task.metadata?.data_flow_validation && !task.metadata.data_flow_validation.valid && (
         <Card style={styles.errorCard}>
           <CardContent>
-            <Text style={styles.errorTitle}>⚠️ Data Flow Validation Errors</Text>
+            <Text style={styles.errorTitle}>⚠️ Issues Found</Text>
             <Text style={styles.errorText}>
-              {task.metadata.data_flow_validation.errors?.length || 0} errors found in data flow.
-              Fix these to ensure your event model is ready for code generation.
+              {task.metadata.data_flow_validation.errors?.length || 0} issues found in your data flow.
+              Fix these to ensure your app is ready for code generation.
             </Text>
             <div style={styles.errorList}>
               {(task.metadata.data_flow_validation.errors || []).slice(0, 5).map((error, idx) => (
@@ -241,7 +241,7 @@ const SchemasTab = ({ task, taskTree }) => {
       {/* Active Section Content */}
       {activeSection === 'commands' && (
         <SchemaSection
-          title="Commands"
+          title="User Actions"
           items={commands}
           itemType="command"
           onUpdate={handleUpdateCommands}
@@ -251,7 +251,7 @@ const SchemasTab = ({ task, taskTree }) => {
 
       {activeSection === 'events' && (
         <SchemaSection
-          title="Events"
+          title="Background Processes"
           items={events}
           itemType="event"
           onUpdate={handleUpdateEvents}
@@ -261,7 +261,7 @@ const SchemasTab = ({ task, taskTree }) => {
 
       {activeSection === 'read_models' && (
         <SchemaSection
-          title="Read Models"
+          title="Screens/Views"
           items={readModels}
           itemType="read_model"
           onUpdate={handleUpdateReadModels}
@@ -276,10 +276,10 @@ const SchemasTab = ({ task, taskTree }) => {
             <LoadingSpinner size="medium" />
             <div>
               <Text style={{ fontWeight: tokens.typography.fontWeight.semibold, marginBottom: tokens.spacing[1] }}>
-                Analyzing Cascade Changes...
+                Analyzing Changes...
               </Text>
               <Text style={{ color: 'var(--color-text-muted)', fontSize: tokens.typography.fontSize.sm[0] }}>
-                The AI is analyzing how this schema change affects the rest of your Event Model.
+                Checking how this change affects the rest of your app.
               </Text>
             </div>
           </CardContent>
@@ -291,7 +291,7 @@ const SchemasTab = ({ task, taskTree }) => {
         <Card style={{ marginTop: tokens.spacing[4], border: `2px solid ${tokens.colors.error[300]}` }}>
           <CardContent style={{ padding: tokens.spacing[4] }}>
             <Text style={{ fontWeight: tokens.typography.fontWeight.semibold, marginBottom: tokens.spacing[2], color: tokens.colors.error[700] }}>
-              Cascade Analysis Failed
+              Analysis Failed
             </Text>
             <Text>{cascadeError}</Text>
           </CardContent>

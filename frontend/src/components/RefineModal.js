@@ -33,14 +33,14 @@ const FEEDBACK_CHIPS = [
 
 // Change type styling
 const CHANGE_STYLES = {
-  add_chapter: { icon: '📗', color: tokens.colors.success[500], label: 'Add Chapter' },
-  remove_chapter: { icon: '📕', color: tokens.colors.error[500], label: 'Remove Chapter' },
-  modify_chapter: { icon: '📘', color: tokens.colors.primary[500], label: 'Modify Chapter' },
-  add_slice: { icon: '➕', color: tokens.colors.success[500], label: 'Add Slice' },
-  remove_slice: { icon: '➖', color: tokens.colors.error[500], label: 'Remove Slice' },
-  modify_slice: { icon: '✏️', color: tokens.colors.primary[500], label: 'Modify Slice' },
-  add_event: { icon: '⚡', color: tokens.colors.success[500], label: 'Add Event' },
-  add_command: { icon: '🎯', color: tokens.colors.success[500], label: 'Add Command' },
+  add_chapter: { icon: '📗', color: tokens.colors.success[500], label: 'Add Module' },
+  remove_chapter: { icon: '📕', color: tokens.colors.error[500], label: 'Remove Module' },
+  modify_chapter: { icon: '📘', color: tokens.colors.primary[500], label: 'Modify Module' },
+  add_slice: { icon: '➕', color: tokens.colors.success[500], label: 'Add Feature' },
+  remove_slice: { icon: '➖', color: tokens.colors.error[500], label: 'Remove Feature' },
+  modify_slice: { icon: '✏️', color: tokens.colors.primary[500], label: 'Modify Feature' },
+  add_event: { icon: '⚡', color: tokens.colors.success[500], label: 'Add System Event' },
+  add_command: { icon: '🎯', color: tokens.colors.success[500], label: 'Add User Action' },
   general: { icon: '📝', color: tokens.colors.neutral[500], label: 'General' },
 };
 
@@ -200,12 +200,12 @@ const RefineModal = ({
             <div style={styles.summarySection}>
               <Text style={styles.summaryLabel}>Current Plan</Text>
               <div style={styles.summaryStats}>
-                <Badge variant="default">{epicCount} epics</Badge>
-                <Badge variant="default">{storyCount} stories</Badge>
-                <Badge variant="default">{taskCount} tasks</Badge>
-                <Badge variant="default">{chapterCount} chapters</Badge>
-                <Badge variant="default">{commandCount} commands</Badge>
-                <Badge variant="default">{eventCount} events</Badge>
+                <Badge variant="default">{epicCount} {epicCount === 1 ? 'epic' : 'epics'}</Badge>
+                <Badge variant="default">{storyCount} {storyCount === 1 ? 'story' : 'stories'}</Badge>
+                <Badge variant="default">{taskCount} {taskCount === 1 ? 'task' : 'tasks'}</Badge>
+                <Badge variant="default">{chapterCount} {chapterCount === 1 ? 'module' : 'modules'}</Badge>
+                <Badge variant="default">{commandCount} {commandCount === 1 ? 'action' : 'actions'}</Badge>
+                <Badge variant="default">{eventCount} {eventCount === 1 ? 'event' : 'events'}</Badge>
               </div>
             </div>
 
@@ -239,7 +239,7 @@ const RefineModal = ({
 
 Examples:
 - Add user authentication with OAuth
-- Split the 'User Management' chapter into separate admin and user flows
+- Split the 'User Management' module into separate admin and user flows
 - Remove the mobile app features, focus on web only
 - Add more detail to the payment processing tasks"
                 style={styles.textarea}
