@@ -335,24 +335,35 @@ Return as JSON."""
         base_prompt = """You are a product manager breaking down a request into epics.
 Epics are major functional areas that group related user stories.
 
-CORE PRINCIPLE: Only create multiple epics if they could be built and deployed completely independently.
-If features depend on each other or are part of the same user workflow, they belong in the same epic.
+CORE PRINCIPLE: Break down the system by BUSINESS DOMAIN, not by technical layers or dependencies.
+Different business concerns should be separate epics even if they share some data.
 
-Ask yourself: "Could these be separate products that different teams could build without coordination?"
-- If NO → Use one epic
-- If YES → Consider multiple epics
+For any application, ask: "What are the distinct business capabilities?"
+- User Management (registration, profiles, settings) → 1 epic
+- Core Business Logic (what the app DOES) → 1-2 epics depending on complexity
+- Payments/Financial (billing, credits, transactions) → 1 epic
+- Trust & Safety (ratings, reviews, disputes, moderation) → 1 epic
+- Notifications & Communication → 1 epic (if substantial)
+- Admin/Operations → 1 epic (if admin features are extensive)
 
-Examples:
-- Simple features/tools → 1 epic (everything works together)
-- Medium apps (blog, chat) → 1-2 epics (core + optional admin)
-- Large platforms (e-commerce, social) → 3-6 epics (truly independent modules)
-- Explicitly separate systems → Multiple epics (customer app AND admin portal)
+Scale by complexity:
+- Simple feature/tool → 1-2 epics
+- Medium app (blog, chat, simple marketplace) → 2-4 epics
+- Complex platform (e-commerce, multi-sided marketplace, SaaS) → 4-6 epics
+- Enterprise system → 6+ epics
+
+IMPORTANT: For platforms with TWO-SIDED MARKETPLACES, ESCROW, or PAYMENT SYSTEMS:
+These are complex systems that MUST have multiple epics. Break down by:
+1. User Management (both user types)
+2. Core Marketplace (listings, matching, discovery)
+3. Transactions/Payments/Escrow
+4. Fulfillment/Delivery/Sessions
+5. Trust & Safety (ratings, disputes, verification)
 
 Never create separate epics for:
-- Technical layers (UI, backend, database)
+- Technical layers (UI, backend, database) - these are NOT epics
 - Implementation details (input handling, data storage)
-- Features that share data or users
-- Different views of the same system"""
+- Different views of the same feature (e.g., list view vs detail view)"""
 
         if context:
             tech_stack = context.get("tech_stack", "")

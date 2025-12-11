@@ -254,117 +254,376 @@ const extractDomain = (name) => {
 };
 
 /**
- * Aggregate event model data by business domain for consultant view
- * Groups swimlanes, events, commands by their domain (User, Recipe, etc.)
- * Returns business-friendly capability descriptions
+ * Infer automatic behaviors from event chains and automations
+ * E.g., BidAccepted -> EscrowFundsHeld suggests automatic escrow on bid acceptance
  */
-export const aggregateByBusinessDomain = (task) => {
+const inferAutomaticBehaviors = (task) => {
   const metadata = task?.metadata || {};
-  const swimlanes = metadata.swimlanes || [];
-  const events = metadata.extracted_events || [];
+  const automations = metadata.automations || [];
   const commands = metadata.commands || [];
-  const readModels = metadata.read_models || [];
+  const events = metadata.extracted_events || [];
 
-  // Domain map: { "User": { capabilities: Set, actions: Set, views: Set } }
-  const domains = new Map();
+  const behaviors = [];
 
-  const ensureDomain = (domainName) => {
-    if (!domains.has(domainName)) {
-      domains.set(domainName, {
-        name: domainName,
-        description: '',
-        capabilities: new Set(),
-        actions: new Set(),
-        views: new Set(),
-        automations: new Set(),
+  // Extract from explicit automations
+  automations.forEach(auto => {
+    const name = typeof auto === 'string' ? auto : auto.name;
+    const desc = typeof auto === 'object' ? auto.description : '';
+    if (name) {
+      behaviors.push({
+        name: toBusinessCapability(name),
+        description: desc,
+        type: 'automation'
       });
     }
-    return domains.get(domainName);
-  };
+  });
 
-  // Process swimlanes (best source - already grouped by domain)
-  swimlanes.forEach(sw => {
-    const domainName = sw.name || 'General';
-    const domain = ensureDomain(domainName);
+  // Infer from command -> event chains
+  commands.forEach(cmd => {
+    const cmdName = typeof cmd === 'string' ? cmd : cmd.name;
+    const triggers = cmd.triggers_events || [];
 
-    if (sw.description) {
-      domain.description = sw.description;
-    }
-
-    // Convert commands to business actions
-    (sw.commands || []).forEach(cmd => {
-      const action = toBusinessCapability(cmd);
-      if (action && action.length > 2) {
-        domain.actions.add(action);
-      }
-    });
-
-    // Convert read models to views
-    (sw.read_models || []).forEach(rm => {
-      const view = toBusinessCapability(rm);
-      if (view && view.length > 2) {
-        domain.views.add(view);
-      }
-    });
-
-    // Convert automations to background capabilities
-    (sw.automations || []).forEach(auto => {
-      const automation = toBusinessCapability(auto);
-      if (automation && automation.length > 2) {
-        domain.automations.add(automation);
+    // Look for patterns indicating automatic behavior
+    triggers.forEach(evt => {
+      const evtLower = evt.toLowerCase();
+      // If a command triggers multiple events, some may be automatic side-effects
+      if (triggers.length > 1 &&
+          (evtLower.includes('sent') || evtLower.includes('notification') ||
+           evtLower.includes('email') || evtLower.includes('created') ||
+           evtLower.includes('initialized') || evtLower.includes('updated'))) {
+        // E.g., RegisterUser -> VerificationEmailSent
+        const behavior = toBusinessCapability(evt);
+        if (behavior && !behaviors.find(b => b.name === behavior)) {
+          behaviors.push({
+            name: behavior,
+            description: `Triggered automatically when ${toBusinessCapability(cmdName)}`,
+            type: 'side_effect'
+          });
+        }
       }
     });
   });
 
-  // If no swimlanes, build from raw events/commands
-  if (swimlanes.length === 0) {
-    // Group events by domain
-    events.forEach(evt => {
-      const evtName = typeof evt === 'string' ? evt : evt.name;
-      const domainName = extractDomain(evtName);
-      const domain = ensureDomain(domainName);
-      const capability = toBusinessCapability(evtName);
-      if (capability && capability.length > 2) {
-        domain.capabilities.add(capability);
-      }
-    });
+  // Look for common automation patterns in events
+  const automationPatterns = [
+    { pattern: /EmailSent|NotificationSent|AlertSent/i, desc: 'notification sent automatically' },
+    { pattern: /AccountLocked|RateLimited/i, desc: 'triggered by security rules' },
+    { pattern: /FundsHeld|EscrowCreated|PaymentProcessed/i, desc: 'triggered by transaction' },
+    { pattern: /TokenExpired|SessionEnded/i, desc: 'triggered by time expiry' },
+    { pattern: /BadgeAwarded|PointsAwarded/i, desc: 'triggered by achievement' },
+  ];
 
-    // Group commands by domain
-    commands.forEach(cmd => {
-      const cmdName = typeof cmd === 'string' ? cmd : cmd.name;
-      const domainName = extractDomain(cmdName);
-      const domain = ensureDomain(domainName);
-      const action = toBusinessCapability(cmdName);
-      if (action && action.length > 2) {
-        domain.actions.add(action);
+  events.forEach(evt => {
+    const evtName = typeof evt === 'string' ? evt : evt.name;
+    automationPatterns.forEach(({ pattern, desc }) => {
+      if (pattern.test(evtName)) {
+        const behavior = toBusinessCapability(evtName);
+        if (behavior && !behaviors.find(b => b.name === behavior)) {
+          behaviors.push({
+            name: behavior,
+            description: desc,
+            type: 'inferred'
+          });
+        }
       }
     });
+  });
 
-    // Group read models by domain
-    readModels.forEach(rm => {
-      const rmName = typeof rm === 'string' ? rm : rm.name;
-      const domainName = extractDomain(rmName);
-      const domain = ensureDomain(domainName);
-      const view = toBusinessCapability(rmName);
-      if (view && view.length > 2) {
-        domain.views.add(view);
-      }
-    });
+  return behaviors;
+};
+
+/**
+ * Extract actor/persona from user story
+ */
+const extractPersona = (story) => {
+  const actor = story?.actor || '';
+  const actorLower = actor.toLowerCase();
+
+  if (actorLower.includes('admin') || actorLower.includes('moderator') || actorLower.includes('operator')) {
+    return 'admin';
   }
+  if (actorLower.includes('client') || actorLower.includes('buyer') || actorLower.includes('customer')) {
+    return 'client';
+  }
+  if (actorLower.includes('freelancer') || actorLower.includes('seller') || actorLower.includes('provider') ||
+      actorLower.includes('vendor') || actorLower.includes('tutor') || actorLower.includes('teacher')) {
+    return 'provider';
+  }
+  if (actorLower.includes('system') || actorLower.includes('platform')) {
+    return 'system';
+  }
+  return 'user'; // Default persona
+};
 
-  // Convert Map to array and Sets to arrays
-  return Array.from(domains.values()).map(domain => ({
-    name: domain.name,
-    description: domain.description,
-    actions: Array.from(domain.actions),
-    views: Array.from(domain.views),
-    automations: Array.from(domain.automations),
-    capabilities: Array.from(domain.capabilities),
-  })).filter(d =>
-    // Filter out empty domains
-    d.actions.length > 0 || d.views.length > 0 ||
-    d.automations.length > 0 || d.capabilities.length > 0
-  );
+/**
+ * Aggregate event model data by business domain for consultant view
+ * Uses epics as primary source (clean, business-focused) and enriches with commands/read models
+ */
+export const aggregateByBusinessDomain = (task) => {
+  const context = task?.context || {};
+  const metadata = task?.metadata || {};
+
+  // Primary source: Epics (clean business-focused domains)
+  const epics = context.epics || metadata.epics || [];
+  const stories = context.user_stories || metadata.user_stories || [];
+
+  // Secondary sources: Event model elements
+  const commands = metadata.commands || [];
+  const readModels = metadata.read_models || [];
+  const chapters = metadata.chapters || [];
+
+  // Build domain map from epics
+  const domains = new Map();
+
+  // Helper to clean and normalize domain names
+  const cleanDomainName = (name) => {
+    if (!name) return 'General';
+    // Remove numbers, newlines, and normalize spacing
+    return name
+      .replace(/\n\d+/g, '')  // Remove \n followed by numbers
+      .replace(/\d+\s*$/g, '') // Remove trailing numbers
+      .replace(/\n/g, ' ')     // Replace newlines with spaces
+      .replace(/\s+/g, ' ')    // Normalize whitespace
+      .trim()
+      .split(/(?=[A-Z])/).join(' ') // Split PascalCase
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const ensureDomain = (domainName, description = '') => {
+    const cleanName = cleanDomainName(domainName);
+    if (!domains.has(cleanName)) {
+      domains.set(cleanName, {
+        name: cleanName,
+        description: description,
+        clientActions: new Set(),
+        providerActions: new Set(),
+        adminActions: new Set(),
+        userActions: new Set(),
+        systemActions: new Set(),
+        views: new Set(),
+        automations: new Set(),
+      });
+    } else if (description && !domains.get(cleanName).description) {
+      domains.get(cleanName).description = description;
+    }
+    return domains.get(cleanName);
+  };
+
+  // Step 1: Create domains from epics (best source)
+  epics.forEach(epic => {
+    const epicTitle = epic.title || epic.name || 'General';
+    const domain = ensureDomain(epicTitle, epic.description);
+
+    // Get stories for this epic
+    const epicStories = stories.filter(s => s.epic_id === epic.id);
+
+    epicStories.forEach(story => {
+      const persona = extractPersona(story);
+      const action = story.action || story.title || '';
+
+      if (action) {
+        // Clean the action text for display
+        const cleanAction = action
+          .replace(/^(I want to |I can |I should be able to )/i, '')
+          .replace(/^\w/, c => c.toUpperCase());
+
+        // Add to appropriate persona bucket
+        switch (persona) {
+          case 'client':
+            domain.clientActions.add(cleanAction);
+            break;
+          case 'provider':
+            domain.providerActions.add(cleanAction);
+            break;
+          case 'admin':
+            domain.adminActions.add(cleanAction);
+            break;
+          case 'system':
+            domain.systemActions.add(cleanAction);
+            break;
+          default:
+            domain.userActions.add(cleanAction);
+        }
+      }
+    });
+  });
+
+  // Step 2: Extract read models from chapters (cleaner than swimlanes)
+  const readModelsByDomain = new Map();
+  chapters.forEach(chapter => {
+    // Parse chapter name to extract domain
+    const chapterName = chapter.name || '';
+    const domainPart = chapterName.split(':')[0] || '';
+    const cleanDomain = cleanDomainName(domainPart);
+
+    (chapter.slices || []).forEach(slice => {
+      if (slice.read_model) {
+        if (!readModelsByDomain.has(cleanDomain)) {
+          readModelsByDomain.set(cleanDomain, new Set());
+        }
+        readModelsByDomain.set(cleanDomain,
+          readModelsByDomain.get(cleanDomain).add(toBusinessCapability(slice.read_model)));
+      }
+    });
+  });
+
+  // Match read models to domains
+  readModelsByDomain.forEach((readModels, chapterDomain) => {
+    // Find best matching epic domain
+    let bestMatch = null;
+    let bestScore = 0;
+
+    domains.forEach((domain, domainName) => {
+      const score = calculateSimilarity(chapterDomain, domainName);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = domainName;
+      }
+    });
+
+    if (bestMatch && bestScore > 0.3) {
+      readModels.forEach(rm => domains.get(bestMatch).views.add(rm));
+    }
+  });
+
+  // Step 3: Add read models from event model
+  readModels.forEach(rm => {
+    const rmName = typeof rm === 'string' ? rm : rm.name;
+    if (!rmName) return;
+
+    // Try to match to a domain
+    let bestMatch = null;
+    let bestScore = 0;
+
+    domains.forEach((domain, domainName) => {
+      const score = calculateSimilarity(rmName, domainName);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = domainName;
+      }
+    });
+
+    if (bestMatch && bestScore > 0.2) {
+      domains.get(bestMatch).views.add(toBusinessCapability(rmName));
+    }
+  });
+
+  // Step 4: Add automatic behaviors
+  const automaticBehaviors = inferAutomaticBehaviors(task);
+
+  // Try to assign automations to domains
+  automaticBehaviors.forEach(behavior => {
+    let assigned = false;
+
+    // Try to match to a domain by keyword
+    domains.forEach((domain, domainName) => {
+      const domainLower = domainName.toLowerCase();
+      const behaviorLower = behavior.name.toLowerCase();
+
+      if (behaviorLower.includes(domainLower.split(' ')[0]) ||
+          domainLower.includes(behaviorLower.split(' ')[0])) {
+        domain.automations.add(behavior.name);
+        assigned = true;
+      }
+    });
+
+    // If not assigned, put in most relevant domain based on keywords
+    if (!assigned) {
+      const behaviorLower = behavior.name.toLowerCase();
+      if (behaviorLower.includes('email') || behaviorLower.includes('notification')) {
+        const notifDomain = Array.from(domains.keys()).find(d =>
+          d.toLowerCase().includes('notification') || d.toLowerCase().includes('communication'));
+        if (notifDomain) {
+          domains.get(notifDomain).automations.add(behavior.name);
+        }
+      } else if (behaviorLower.includes('escrow') || behaviorLower.includes('fund') || behaviorLower.includes('payment')) {
+        const paymentDomain = Array.from(domains.keys()).find(d =>
+          d.toLowerCase().includes('escrow') || d.toLowerCase().includes('payment') || d.toLowerCase().includes('milestone'));
+        if (paymentDomain) {
+          domains.get(paymentDomain).automations.add(behavior.name);
+        }
+      }
+    }
+  });
+
+  // Convert Map to array with structured output
+  return Array.from(domains.values())
+    .map(domain => ({
+      name: domain.name,
+      description: domain.description,
+      clientActions: Array.from(domain.clientActions),
+      providerActions: Array.from(domain.providerActions),
+      adminActions: Array.from(domain.adminActions),
+      userActions: Array.from(domain.userActions),
+      systemActions: Array.from(domain.systemActions),
+      views: Array.from(domain.views),
+      automations: Array.from(domain.automations),
+      // Legacy fields for backward compatibility
+      actions: [
+        ...Array.from(domain.clientActions),
+        ...Array.from(domain.providerActions),
+        ...Array.from(domain.adminActions),
+        ...Array.from(domain.userActions),
+      ],
+      capabilities: [],
+    }))
+    .filter(d =>
+      // Filter out empty domains
+      d.clientActions.length > 0 || d.providerActions.length > 0 ||
+      d.adminActions.length > 0 || d.userActions.length > 0 ||
+      d.views.length > 0 || d.automations.length > 0
+    )
+    .sort((a, b) => {
+      // Sort by priority: User/Profile first, then core business, then support functions
+      const priority = {
+        'User Management': 1,
+        'User': 1,
+        'Profile': 2,
+        'Marketplace': 3,
+        'Project': 3,
+        'Escrow': 4,
+        'Payment': 4,
+        'Milestone': 4,
+        'Dispute': 5,
+        'Trust': 5,
+        'Notification': 6,
+        'Communication': 6,
+        'Admin': 7,
+        'Reporting': 7,
+      };
+
+      const getPriority = (name) => {
+        for (const [key, val] of Object.entries(priority)) {
+          if (name.toLowerCase().includes(key.toLowerCase())) return val;
+        }
+        return 5;
+      };
+
+      return getPriority(a.name) - getPriority(b.name);
+    });
+};
+
+/**
+ * Calculate simple string similarity (0-1)
+ */
+const calculateSimilarity = (str1, str2) => {
+  if (!str1 || !str2) return 0;
+
+  const s1 = str1.toLowerCase().replace(/[^a-z]/g, '');
+  const s2 = str2.toLowerCase().replace(/[^a-z]/g, '');
+
+  if (s1 === s2) return 1;
+  if (s1.includes(s2) || s2.includes(s1)) return 0.8;
+
+  // Check word overlap
+  const words1 = new Set(str1.toLowerCase().split(/\W+/).filter(w => w.length > 2));
+  const words2 = new Set(str2.toLowerCase().split(/\W+/).filter(w => w.length > 2));
+
+  let overlap = 0;
+  words1.forEach(w => { if (words2.has(w)) overlap++; });
+
+  return overlap / Math.max(words1.size, words2.size, 1);
 };
 
 /**
@@ -596,6 +855,7 @@ export const getPersonaTabs = (persona) => {
     dev: [
       { id: 'eventmodel', label: 'Event Model', icon: '🔄' },
       { id: 'scenarios', label: 'Scenarios', icon: '🧪' },
+      { id: 'codegen', label: 'Code Gen', icon: '⚡' },
     ],
     consultant: [
       { id: 'scope', label: 'Scope', icon: '📐' },

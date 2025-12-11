@@ -77,7 +77,21 @@ const CreateTask = () => {
       }
     } catch (error) {
       console.error('Create task error:', error);
-      showError(error?.userMessage || error?.message || 'Failed to create task');
+      // Handle Pydantic validation errors (422) which come as array of objects
+      let errorMessage = 'Failed to create task';
+      if (error?.userMessage) {
+        if (Array.isArray(error.userMessage)) {
+          // Extract message from validation error objects
+          errorMessage = error.userMessage
+            .map(e => e.msg || e.message || JSON.stringify(e))
+            .join(', ');
+        } else if (typeof error.userMessage === 'string') {
+          errorMessage = error.userMessage;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      showError(errorMessage);
       setIsSubmitting(false);
     }
   };

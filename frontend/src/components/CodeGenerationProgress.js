@@ -27,40 +27,77 @@ const CodeGenerationProgress = ({
   const [error, setError] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const { lastMessage } = useWebSocket();
+  const { subscribe } = useWebSocket();
 
   // Fetch initial status
   useEffect(() => {
     fetchStatus();
   }, [projectId]);
 
-  // Handle WebSocket messages for real-time updates
+  // Subscribe to WebSocket messages for real-time updates
   useEffect(() => {
-    if (!lastMessage) return;
+    if (!subscribe) return;
 
-    const { type, project_id } = lastMessage;
-    if (project_id !== projectId) return;
+    const handleMessage = (message) => {
+      const { type, project_id } = message;
 
-    // Handle code generation events
-    if (type?.startsWith('codegen.') || type?.startsWith('codegen:')) {
-      // Update status from WebSocket data
-      setStatus(prev => ({
-        ...prev,
-        status: lastMessage.status || prev?.status,
-        progress_percent: lastMessage.progress_percent ?? lastMessage.progress ?? prev?.progress_percent,
-        // Support both task and slice terminology
-        completed_tasks: lastMessage.completed_tasks ?? lastMessage.completed_slices ?? prev?.completed_tasks,
-        total_tasks: lastMessage.total_tasks ?? lastMessage.total_slices ?? prev?.total_tasks,
-        current_task: lastMessage.task_description || lastMessage.current_slices?.[0] || prev?.current_task,
-        last_error: lastMessage.error || prev?.last_error,
-      }));
+      // Only process messages for this project
+      if (project_id !== projectId) return;
 
-      // Handle completion
-      if (type === 'codegen.completed' || type === 'codegen:generation_complete') {
-        onComplete?.(lastMessage);
+      // Handle code generation events - backend uses task_* events, not codegen.*
+      const codegenEvents = [
+        'task_started', 'task_complete', 'task_merged', 'task_failed',
+        'generation_started', 'generation_complete', 'generation_failed',
+        'codegen.started', 'codegen.progress', 'codegen.completed', 'codegen.failed',
+      ];
+
+      if (codegenEvents.includes(type) || type?.startsWith('codegen.') || type?.startsWith('codegen:')) {
+        console.log('[CodeGenProgress] Received event:', type, message);
+
+        // Update status from WebSocket data
+        setStatus(prev => {
+          // Calculate completed count for task_complete events
+          let completedTasks = message.completed_tasks ?? message.completed_slices ?? prev?.completed_tasks;
+          if (type === 'task_complete' && prev?.completed_tasks !== undefined) {
+            completedTasks = (prev.completed_tasks || 0) + 1;
+          }
+
+          return {
+            ...prev,
+            status: message.status || prev?.status,
+            progress_percent: message.progress_percent ?? message.progress ?? prev?.progress_percent,
+            completed_tasks: completedTasks,
+            total_tasks: message.total_tasks ?? message.total_slices ?? prev?.total_tasks,
+            current_task: message.task_description || message.current_slice || message.slice_name || prev?.current_task,
+            last_error: message.error || prev?.last_error,
+            tech_stack: message.tech_stack || prev?.tech_stack,
+            repo_url: message.repo_url || prev?.repo_url,
+          };
+        });
+
+        // Handle completion
+        if (type === 'generation_complete' || type === 'codegen.completed') {
+          onComplete?.(message);
+        }
+
+        // Handle failure
+        if (type === 'generation_failed' || type === 'codegen.failed') {
+          setStatus(prev => ({
+            ...prev,
+            status: 'failed',
+            last_error: message.error || 'Code generation failed',
+          }));
+        }
       }
-    }
-  }, [lastMessage, projectId, onComplete]);
+    };
+
+    // Subscribe and get unsubscribe function
+    const unsubscribe = subscribe(handleMessage);
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [subscribe, projectId, onComplete]);
 
   const fetchStatus = async () => {
     setLoading(true);

@@ -23,7 +23,7 @@ class RepositoryInfo(BaseModel):
 
 class TaskRequest(BaseModel):
     """Request model for task creation and processing."""
-    description: str = Field(..., min_length=1, max_length=5000, description="Description of the task")
+    description: str = Field(..., min_length=1, max_length=50000, description="Description of the task")
     max_depth: int = Field(5, ge=1, le=10, description="Maximum recursion depth for decomposition")
     max_subtasks: int = Field(7, ge=1, le=20, description="Maximum number of subtasks per task")
     complexity_threshold: float = Field(0.45, ge=0.1, le=0.9, description="Threshold for determining task atomicity")

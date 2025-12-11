@@ -20,6 +20,14 @@ class StoryAnalyzer:
         self.llm = llm_client
         self.story_counter = 0
 
+    def reset(self):
+        """Reset the analyzer state for a new task generation.
+
+        MUST be called before generating stories for a new root task to
+        prevent cross-task contamination of story IDs.
+        """
+        self.story_counter = 0
+
     async def generate_all_stories_with_deduplication(
         self,
         epics: List[Epic],

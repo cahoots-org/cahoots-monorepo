@@ -88,7 +88,12 @@ Epic: "{epic.title}"
 
 {chr(10).join(stories_text)}
 
-For EACH story, generate implementation tasks that satisfy its acceptance criteria.{additional_instructions}
+Generate implementation tasks that satisfy ALL the user stories' acceptance criteria.{additional_instructions}
+
+TASK GENERATION GUIDELINES:
+- Complex stories may need MULTIPLE tasks (e.g., a story about "user authentication" might need: data model task, API endpoints task, UI components task)
+- Simple related stories can be CONSOLIDATED into fewer tasks (e.g., two stories about "viewing" and "filtering" a list can share a task)
+- Think like a tech lead assigning work - what are the logical units of implementation?
 
 Return as JSON with structure:
 {{
@@ -98,35 +103,41 @@ Return as JSON with structure:
         {{
           "task_index": 0,
           "description": "Specific implementation task with file paths",
-          "is_atomic": true/false,
+          "is_atomic": true,
           "implementation_details": "Technical approach referencing specific files",
-          "story_points": 1-8,
-          "depends_on_indices": []
+          "story_points": <1-13>,
+          "depends_on_indices": [],
+          "also_implements": []  // other story IDs this task helps satisfy
         }}
       ]
     }}
   }}
 }}
 
+STORY POINT GUIDELINES (use the full 1-13 range):
+- 1-2 SP: Config changes, small bug fixes, adding a field
+- 3-5 SP: Standard CRUD operations, simple API endpoints, basic UI components
+- 6-8 SP: Complex features with multiple parts, integrations, multi-step workflows
+- 9-13 SP: Major integrations (OAuth from scratch), complex algorithms, multi-service orchestration
+
 DEPENDENCY RULES:
 - Each task has a unique "task_index" (0, 1, 2, ...)
 - Use "depends_on_indices" to list indices of tasks that MUST complete first
 - Dependencies can cross stories if needed (use format "story_id:index")
-- Example: task_index 2 might have depends_on_indices: [0, 1] if it needs those tasks done first
 - Data model tasks should come first, then API endpoints, then UI components
 
-CRITICAL DECOMPOSITION RULES:
-- Group related acceptance criteria into single tasks when they're part of the same implementation
-- Do NOT create a separate task for each acceptance criterion
-- Quality attributes (performance, responsiveness) are part of implementation, not separate tasks
+DECOMPOSITION RULES:
+- A story can have 1-5 tasks depending on complexity
+- Tasks should be implementable in a single focused session (2-8 hours)
+- Group related acceptance criteria when they share the same implementation
+- Quality attributes (performance, security) are part of the task, not separate tasks
+- If a task helps multiple stories, list the additional story IDs in "also_implements"
 
 Important:
 - Process ALL stories in one response
-- ALL tasks should be ATOMIC
-- Mark ALL tasks as is_atomic: true
 - Write task descriptions naturally, as a developer would describe their work
 - VARY your language - don't start every task with "Implement" or "Create"
-- Good examples: "Set up user authentication with JWT tokens", "Wire up the payment form to Stripe API", "Add pagination to the posts feed", "Handle file uploads with size validation", "Connect the notification service to email provider"
+- Good examples: "Set up user authentication with JWT tokens", "Wire up the payment form to Stripe API", "Add pagination to the posts feed", "Handle file uploads with size validation"
 - Maintain consistency across related stories"""
 
         response = await self.llm.generate_json(

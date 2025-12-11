@@ -420,12 +420,47 @@ class MergeAgent:
         for attempt in range(self.config.max_conflict_resolution_attempts):
             try:
                 resolved_count = 0
+                skipped_count = 0
 
                 for file_path in conflicted_files:
-                    # Get the conflicted file content
-                    file_content = await self._get_file_content(project_id, branch, file_path)
-                    if not file_content:
-                        logger.warning(f"[MergeAgent] Could not read conflicted file: {file_path}")
+                    # Get the file content from the task branch
+                    branch_content = await self._get_file_content(project_id, branch, file_path)
+
+                    # Get the file content from main for comparison
+                    main_content = await self._get_file_content(project_id, "main", file_path)
+
+                    # Case 1: File only exists on main (new file being added)
+                    # This is not really a conflict - just accept the main version
+                    if not branch_content and main_content:
+                        logger.info(f"[MergeAgent] File only exists on main, accepting: {file_path}")
+                        success = await self._write_file(project_id, branch, file_path, main_content)
+                        if success:
+                            resolved_count += 1
+                        continue
+
+                    # Case 2: File only exists on task branch (deleted in main or new in task)
+                    # Keep the task branch version
+                    if branch_content and not main_content:
+                        logger.info(f"[MergeAgent] File only exists on task branch, keeping: {file_path}")
+                        resolved_count += 1
+                        skipped_count += 1
+                        continue
+
+                    # Case 3: File doesn't exist on either branch (shouldn't happen)
+                    if not branch_content and not main_content:
+                        logger.warning(f"[MergeAgent] File doesn't exist on either branch: {file_path}")
+                        skipped_count += 1
+                        resolved_count += 1
+                        continue
+
+                    # Case 4: File exists on both - check if it has conflict markers
+                    has_conflict_markers = "<<<<<<" in branch_content and "======" in branch_content and ">>>>>>" in branch_content
+
+                    if not has_conflict_markers:
+                        # Files are identical or one overwrote the other - no real conflict
+                        logger.info(f"[MergeAgent] No conflict markers in {file_path}, skipping resolution")
+                        resolved_count += 1
+                        skipped_count += 1
                         continue
 
                     # Get context from Contex for related files
@@ -436,7 +471,7 @@ class MergeAgent:
                     # Build prompt for conflict resolution
                     prompt = self._build_conflict_resolution_prompt(
                         file_path=file_path,
-                        conflicted_content=file_content,
+                        conflicted_content=branch_content,
                         task_description=task_description,
                         context_files=context_files
                     )
@@ -463,12 +498,13 @@ class MergeAgent:
                         logger.info(f"[MergeAgent] Resolved conflict in {file_path}")
 
                 if resolved_count == len(conflicted_files):
-                    # Commit the resolution
-                    await self._commit_changes(
-                        project_id,
-                        branch,
-                        f"Resolve merge conflicts: {task_description}"
-                    )
+                    # Only commit if we actually made changes (not just skipped)
+                    if skipped_count < len(conflicted_files):
+                        await self._commit_changes(
+                            project_id,
+                            branch,
+                            f"Resolve merge conflicts: {task_description}"
+                        )
                     return True
 
             except Exception as e:

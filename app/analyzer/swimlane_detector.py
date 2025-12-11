@@ -353,7 +353,7 @@ Return ONLY valid JSON."""
     return None
 
 
-async def _generate_chapters_with_gwt(llm_client, root_task, event_model: Dict[str, Any], swimlanes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+async def _generate_chapters_with_gwt(llm_client, root_task, event_model: Dict[str, Any], swimlanes: List[Dict[str, Any]], user_stories: List[Dict] = None) -> List[Dict[str, Any]]:
     """Phase 2: Generate chapters with GWT scenarios, processing in batches if needed."""
 
     commands = event_model.get('commands', [])
@@ -361,7 +361,7 @@ async def _generate_chapters_with_gwt(llm_client, root_task, event_model: Dict[s
 
     # For small event models, process all at once
     if len(commands) + len(read_models) <= 30:
-        return await _generate_chapters_batch(llm_client, root_task, commands, read_models)
+        return await _generate_chapters_batch(llm_client, root_task, commands, read_models, user_stories=user_stories)
 
     # For large event models, process by swimlane
     all_chapters = []
@@ -372,7 +372,8 @@ async def _generate_chapters_with_gwt(llm_client, root_task, event_model: Dict[s
         if sw_commands or sw_read_models:
             chapters = await _generate_chapters_batch(
                 llm_client, root_task, sw_commands, sw_read_models,
-                chapter_prefix=swimlane.get('name', 'Main')
+                chapter_prefix=swimlane.get('name', 'Main'),
+                user_stories=user_stories
             )
             if chapters:
                 all_chapters.extend(chapters)
@@ -385,58 +386,127 @@ async def _generate_chapters_batch(
     root_task,
     commands: List[Dict],
     read_models: List[Dict],
-    chapter_prefix: str = ""
+    chapter_prefix: str = "",
+    user_stories: List[Dict] = None
 ) -> List[Dict[str, Any]]:
     """Generate chapters with GWT for a batch of commands/read models."""
 
-    # Create compact command info with parameters for GWT generation
+    # Create detailed command info with full parameters for rich GWT generation
     cmd_info = []
     for c in commands:
         if isinstance(c, dict) and c.get('name'):
             name = c['name']
-            desc = c.get('description', '')[:100]
+            desc = c.get('description', '')
             triggers = c.get('triggers_events', [])
-            params = [p.get('name') for p in c.get('parameters', []) if isinstance(p, dict) and p.get('required')]
-            cmd_info.append(f"- {name}: {desc} → {','.join(triggers)}. Required: {','.join(params) if params else 'none'}")
+            params = c.get('parameters', [])
+            param_details = []
+            for p in params:
+                if isinstance(p, dict):
+                    p_name = p.get('name', '')
+                    p_type = p.get('type', 'string')
+                    p_required = '(required)' if p.get('required') else '(optional)'
+                    param_details.append(f"{p_name}: {p_type} {p_required}")
+            cmd_info.append(f"""- {name}:
+    Description: {desc}
+    Triggers: {', '.join(triggers) if triggers else 'events'}
+    Parameters: {', '.join(param_details) if param_details else 'none'}""")
 
     rm_info = []
     for rm in read_models:
         if isinstance(rm, dict) and rm.get('name'):
             name = rm['name']
-            desc = rm.get('description', '')[:100]
-            rm_info.append(f"- {name}: {desc}")
+            desc = rm.get('description', '')
+            fields = rm.get('fields', [])
+            field_names = [f.get('name', '') for f in fields if isinstance(f, dict)][:5]
+            rm_info.append(f"- {name}: {desc}. Fields: {', '.join(field_names) if field_names else 'various'}")
 
-    prompt = f"""Generate chapters with GWT scenarios for these commands and read models.
+    # Include user stories if available for acceptance criteria context
+    story_context = ""
+    if user_stories:
+        story_snippets = []
+        for story in user_stories[:5]:  # Limit to avoid token overflow
+            if isinstance(story, dict):
+                actor = story.get('actor', 'User')
+                action = story.get('action', '')
+                criteria = story.get('acceptance_criteria', [])[:2]
+                if action:
+                    story_snippets.append(f"- As {actor}, {action}")
+                    for c in criteria:
+                        story_snippets.append(f"  • {c}")
+        if story_snippets:
+            story_context = f"""
+USER STORIES & ACCEPTANCE CRITERIA (use these for scenario specifics):
+{chr(10).join(story_snippets)}
+"""
+
+    prompt = f"""Generate BDD test scenarios (Given-When-Then) for these commands and read models.
 
 PROJECT: {root_task.description if root_task else "Unknown"}
-
+{story_context}
 COMMANDS:
 {chr(10).join(cmd_info) if cmd_info else "None"}
 
 READ MODELS:
 {chr(10).join(rm_info) if rm_info else "None"}
 
-Return JSON with chapters containing slices. Each slice needs GWT scenarios.
+CRITICAL REQUIREMENTS FOR HIGH-QUALITY SCENARIOS:
 
-Format:
+1. **NAMED ACTORS with specific identifiers**:
+   - BAD: "Given a user wants to..."
+   - GOOD: "Given Client 'acme-corp' (clientId: 'client-123') owns project 'website-redesign'"
+
+2. **CONCRETE ENTITY IDs and VALUES**:
+   - BAD: "When the command is executed"
+   - GOOD: "When AcceptBid is executed with bidId='bid-456', projectId='proj-789'"
+
+3. **SPECIFIC EVENT PAYLOADS in Then clause**:
+   - BAD: "Then events are emitted"
+   - GOOD: "Then BidAccepted is emitted with contractId='contract-001', amount=$2000"
+
+4. **MULTIPLE SCENARIO TYPES per command** (aim for 3-5 scenarios each):
+   a. Happy path with full specifics
+   b. Authorization failure (wrong user tries action)
+   c. Business rule violation (e.g., insufficient funds, invalid state)
+   d. Edge case (concurrent access, expiration, boundary values)
+
+5. **READ MODEL SCENARIOS must show specific data**:
+   - BAD: "Then the read model displays data"
+   - GOOD: "Then EscrowBalance shows totalHeld=$5000, released=$1500, pending=$3500"
+
+EXAMPLE SCENARIOS FOR REFERENCE:
+
+For AcceptBid command:
+{{
+  "given": "Client 'acme-corp' (clientId: 'c-123') has project 'website-redesign' (projectId: 'p-456') with budget $5000. Freelancer 'jane-dev' (freelancerId: 'f-789') submitted bid 'bid-001' for $4500",
+  "when": "Client executes AcceptBid with bidId='bid-001', clientId='c-123'",
+  "then": "BidAccepted is emitted with contractId='contract-new', acceptedAmount=$4500. EscrowFundsHeld is emitted with amount=$4500, contractId='contract-new'. All other bids on project 'p-456' are marked rejected"
+}}
+
+For authorization failure:
+{{
+  "given": "Freelancer 'jane-dev' (freelancerId: 'f-789') submitted bid 'bid-001' on project owned by 'acme-corp'",
+  "when": "Different client 'other-corp' (clientId: 'c-999') attempts AcceptBid with bidId='bid-001'",
+  "then": "BidAcceptanceFailed is emitted with reason='UnauthorizedAccess'. No escrow funds are held. Bid remains in 'pending' status"
+}}
+
+For a read model:
+{{
+  "given": "EscrowFundsHeld event occurred with amount=$5000 for contract 'contract-123'. MilestoneReleased events occurred for $1500 total",
+  "then": "EscrowBalanceDetails for contract 'contract-123' shows totalHeld=$5000, released=$1500, remaining=$3500, with breakdown by milestone"
+}}
+
+Return JSON with chapters containing slices:
+
 {{"chapters": [
   {{"name": "Chapter Name", "description": "...", "slices": [
     {{"type": "state_change", "command": "CmdName", "events": ["Event1"], "gwt_scenarios": [
-      {{"given": "precondition", "when": "action", "then": "outcome"}},
-      {{"given": "error case", "when": "action", "then": "error result"}}
+      {{"given": "detailed precondition with named actors and IDs", "when": "specific action with parameter values", "then": "specific outcome with event payloads"}}
     ]}},
     {{"type": "state_view", "read_model": "RMName", "source_events": ["Event1"], "gwt_scenarios": [
-      {{"given": "event occurred", "then": "data shown"}}
+      {{"given": "specific events that occurred with values", "then": "exact data shown with field values"}}
     ]}}
   ]}}
 ]}}
-
-Rules:
-- Every command becomes a state_change slice
-- Every read model becomes a state_view slice
-- Include 2+ GWT scenarios per slice (happy + error paths)
-- Use concrete examples based on the domain
-- state_change uses given/when/then, state_view uses given/then
 
 Return ONLY valid JSON."""
 
@@ -567,7 +637,7 @@ def _parse_json_response(content: str) -> Dict[str, Any]:
     return None
 
 
-async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict[str, Any]) -> Dict[str, Any]:
+async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict[str, Any], user_stories: List[Dict] = None) -> Dict[str, Any]:
     """
     Detect swimlanes (business capabilities) and chapters (workflows) for the event model.
 
@@ -579,6 +649,7 @@ async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict
         llm_client: LLM client for analysis
         root_task: Root task for context
         event_model: Event model with events, commands, read_models, etc.
+        user_stories: Optional list of user stories with acceptance criteria for richer GWT scenarios
 
     Returns:
         Enhanced event model with swimlanes and chapters
@@ -588,6 +659,15 @@ async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict
     num_read_models = len(event_model.get('read_models', []))
 
     print(f"[SwimlaneDetector] Processing: {num_events} events, {num_commands} commands, {num_read_models} read models")
+
+    # Try to get user stories from root_task.context if not provided directly
+    if not user_stories and root_task and hasattr(root_task, 'context') and root_task.context:
+        user_stories = root_task.context.get('user_stories', [])
+        if user_stories:
+            print(f"[SwimlaneDetector] Extracted {len(user_stories)} user stories from root_task.context")
+
+    if user_stories:
+        print(f"[SwimlaneDetector] Using {len(user_stories)} user stories for scenario context")
 
     # Phase 1: Detect swimlanes
     print("[SwimlaneDetector] Phase 1: Detecting swimlanes...")
@@ -602,7 +682,7 @@ async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict
 
     # Phase 2: Generate chapters with GWT
     print("[SwimlaneDetector] Phase 2: Generating chapters with GWT scenarios...")
-    chapters = await _generate_chapters_with_gwt(llm_client, root_task, event_model, swimlanes)
+    chapters = await _generate_chapters_with_gwt(llm_client, root_task, event_model, swimlanes, user_stories=user_stories)
 
     if not chapters:
         print("[SwimlaneDetector] Phase 2 failed, generating basic chapters from swimlanes")

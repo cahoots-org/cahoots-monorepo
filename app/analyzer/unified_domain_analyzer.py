@@ -1341,18 +1341,26 @@ IMPORTANT: If validation tools are available, use them to check your output BEFO
             "automations": analysis.get('automations', [])
         }
 
+        # Extract only the items referenced in errors to reduce token usage
+        error_referenced_items = self._extract_error_referenced_items(errors, serializable_analysis)
+
         prompt = f"""You are fixing validation errors in an event model.
 
-CURRENT EVENT MODEL (with errors):
-{json.dumps(serializable_analysis, indent=2)}
+ITEMS WITH ERRORS (subset of full model):
+{json.dumps(error_referenced_items, indent=2)}
 
-VALIDATION ERRORS THAT MUST BE FIXED:
+VALIDATION ERRORS TO FIX:
 {errors_text}
 
 YOUR TASK:
-Return the COMPLETE corrected event model as JSON with ALL sections (events, commands, read_models, user_interactions, automations).
-Make the minimum changes necessary to fix the errors.
-Preserve all existing correct data.
+Return ONLY the CORRECTED items as JSON. Include:
+- "events": [...] - only events that need fixing or new events to add
+- "commands": [...] - only commands that need fixing or new commands to add
+- "read_models": [...] - only read_models that need fixing
+- "automations": [...] - only automations that need fixing
+
+Do NOT return unchanged items. Only return items you are fixing or adding.
+Make minimum changes to fix the errors.
 
 Return ONLY the JSON, no explanation."""
 
@@ -1438,25 +1446,178 @@ Return ONLY the JSON, no explanation."""
                     print("[UnifiedDomainAnalyzer] No valid JSON found in fix response, keeping original")
                     return analysis
 
-                fixed_data = data
+                fixes = data
             else:
                 print("[UnifiedDomainAnalyzer] Unexpected fix response format, keeping original")
                 return analysis
 
-            # Parse events (they need to be DomainEvent objects)
-            fixed_data["events"] = self._parse_events(fixed_data.get("events", []))
+            # Merge fixes into original analysis (incremental update)
+            fixed_data = self._merge_fixes_into_analysis(analysis, fixes)
 
-            # Preserve fields that weren't sent to the LLM for fixing
-            for key in ["swimlanes", "chapters", "wireframes", "data_flow", "slices", "event_model_validation", "event_model_markdown"]:
-                if key in analysis and key not in fixed_data:
-                    fixed_data[key] = analysis[key]
-
-            print(f"[UnifiedDomainAnalyzer] Applied fixes: {len(fixed_data.get('events', []))} events, {len(fixed_data.get('commands', []))} commands")
+            print(f"[UnifiedDomainAnalyzer] Applied fixes: {len(fixes.get('events', []))} events, {len(fixes.get('commands', []))} commands updated/added")
             return fixed_data
 
         except Exception as e:
             print(f"[UnifiedDomainAnalyzer] Error fixing validation errors: {e}")
             return analysis
+
+    def _extract_error_referenced_items(self, errors: List[str], analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract only the items referenced in validation errors to reduce token usage."""
+        import re
+
+        # Collect all item names mentioned in errors
+        referenced_events = set()
+        referenced_commands = set()
+        referenced_read_models = set()
+        referenced_automations = set()
+
+        for error in errors:
+            # Handle both string errors and ValidationIssue objects
+            error_str = error.message if hasattr(error, 'message') else str(error)
+            error_lower = error_str.lower()
+
+            # Look for event names (usually in quotes or after "event")
+            event_matches = re.findall(r"event[:\s]+['\"]?(\w+)['\"]?|['\"](\w+)['\"].*event", error_str, re.IGNORECASE)
+            for match in event_matches:
+                name = match[0] or match[1]
+                if name:
+                    referenced_events.add(name)
+
+            # Look for command names
+            command_matches = re.findall(r"command[:\s]+['\"]?(\w+)['\"]?|['\"](\w+)['\"].*command", error_str, re.IGNORECASE)
+            for match in command_matches:
+                name = match[0] or match[1]
+                if name:
+                    referenced_commands.add(name)
+
+            # Look for automation names
+            if "automation" in error_lower:
+                auto_matches = re.findall(r"['\"](\w+)['\"]", error_str)
+                for name in auto_matches:
+                    referenced_automations.add(name)
+
+        # Build subset with only referenced items (or all if we couldn't parse names)
+        result = {
+            "events": [],
+            "commands": [],
+            "read_models": [],
+            "automations": []
+        }
+
+        # Get events - include all if we found references, as fixing may need context
+        events = analysis.get("events", [])
+        if referenced_events:
+            for e in events:
+                name = e.name if hasattr(e, 'name') else e.get('name', '')
+                if name in referenced_events or any(ref.lower() in name.lower() for ref in referenced_events):
+                    result["events"].append(self._serialize_event(e))
+        # If no specific events found, include a sample
+        if not result["events"]:
+            result["events"] = [self._serialize_event(e) for e in events[:20]]
+
+        # Get commands
+        commands = analysis.get("commands", [])
+        if referenced_commands:
+            for c in commands:
+                name = c.get('name', '')
+                if name in referenced_commands or any(ref.lower() in name.lower() for ref in referenced_commands):
+                    result["commands"].append(c)
+        if not result["commands"]:
+            result["commands"] = commands[:20]
+
+        # Include read_models and automations (usually smaller)
+        result["read_models"] = analysis.get("read_models", [])[:15]
+        result["automations"] = analysis.get("automations", [])[:15]
+
+        return result
+
+    def _serialize_event(self, event) -> Dict[str, Any]:
+        """Serialize a DomainEvent to dict."""
+        if isinstance(event, dict):
+            return event
+        return {
+            "name": event.name if hasattr(event, 'name') else "",
+            "event_type": event.event_type.value if hasattr(event, 'event_type') else "domain",
+            "description": event.description if hasattr(event, 'description') else "",
+            "actor": event.actor if hasattr(event, 'actor') else "",
+            "affected_entity": event.affected_entity if hasattr(event, 'affected_entity') else "",
+            "triggered_by": event.triggered_by if hasattr(event, 'triggered_by') else None
+        }
+
+    def _merge_fixes_into_analysis(self, analysis: Dict[str, Any], fixes: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge incremental fixes into the original analysis."""
+        result = dict(analysis)
+
+        # Merge events (update existing or add new)
+        if fixes.get("events"):
+            fixed_events = self._parse_events(fixes["events"])
+            existing_events = list(analysis.get("events", []))
+            existing_names = {(e.name if hasattr(e, 'name') else e.get('name', '')) for e in existing_events}
+
+            for fixed_event in fixed_events:
+                fixed_name = fixed_event.name if hasattr(fixed_event, 'name') else fixed_event.get('name', '')
+                if fixed_name in existing_names:
+                    # Update existing
+                    for i, e in enumerate(existing_events):
+                        e_name = e.name if hasattr(e, 'name') else e.get('name', '')
+                        if e_name == fixed_name:
+                            existing_events[i] = fixed_event
+                            break
+                else:
+                    # Add new
+                    existing_events.append(fixed_event)
+
+            result["events"] = existing_events
+
+        # Merge commands
+        if fixes.get("commands"):
+            existing_commands = list(analysis.get("commands", []))
+            existing_names = {c.get('name', '') for c in existing_commands}
+
+            for fixed_cmd in fixes["commands"]:
+                if fixed_cmd.get('name') in existing_names:
+                    for i, c in enumerate(existing_commands):
+                        if c.get('name') == fixed_cmd.get('name'):
+                            existing_commands[i] = fixed_cmd
+                            break
+                else:
+                    existing_commands.append(fixed_cmd)
+
+            result["commands"] = existing_commands
+
+        # Merge read_models
+        if fixes.get("read_models"):
+            existing_rms = list(analysis.get("read_models", []))
+            existing_names = {r.get('name', '') for r in existing_rms}
+
+            for fixed_rm in fixes["read_models"]:
+                if fixed_rm.get('name') in existing_names:
+                    for i, r in enumerate(existing_rms):
+                        if r.get('name') == fixed_rm.get('name'):
+                            existing_rms[i] = fixed_rm
+                            break
+                else:
+                    existing_rms.append(fixed_rm)
+
+            result["read_models"] = existing_rms
+
+        # Merge automations
+        if fixes.get("automations"):
+            existing_autos = list(analysis.get("automations", []))
+            existing_names = {a.get('name', '') for a in existing_autos}
+
+            for fixed_auto in fixes["automations"]:
+                if fixed_auto.get('name') in existing_names:
+                    for i, a in enumerate(existing_autos):
+                        if a.get('name') == fixed_auto.get('name'):
+                            existing_autos[i] = fixed_auto
+                            break
+                else:
+                    existing_autos.append(fixed_auto)
+
+            result["automations"] = existing_autos
+
+        return result
 
     async def _consolidate_event_model(self, root_task, combined_model: Dict[str, Any], atomic_tasks: List) -> Dict[str, Any]:
         """
@@ -1680,10 +1841,10 @@ Return ONLY valid JSON, no explanation:
                 result.append(interaction)
         return result
 
-    async def _detect_swimlanes_and_chapters(self, root_task, event_model: Dict[str, Any]) -> Dict[str, Any]:
+    async def _detect_swimlanes_and_chapters(self, root_task, event_model: Dict[str, Any], user_stories: List[Dict] = None) -> Dict[str, Any]:
         """Detect swimlanes and chapters using the swimlane_detector module."""
         from app.analyzer.swimlane_detector import detect_swimlanes_and_chapters
-        return await detect_swimlanes_and_chapters(self.llm, root_task, event_model)
+        return await detect_swimlanes_and_chapters(self.llm, root_task, event_model, user_stories=user_stories)
 
     async def _generate_wireframes_and_dataflow(self, root_task, event_model: Dict[str, Any]) -> Dict[str, Any]:
         """Generate wireframes and data flow using the wireframe_generator module."""

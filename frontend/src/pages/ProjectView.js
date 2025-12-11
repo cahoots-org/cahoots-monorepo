@@ -32,6 +32,8 @@ import ProjectSummary from '../components/ProjectSummary';
 import RefineModal from '../components/RefineModal';
 import ExportModal from '../components/ExportModal';
 import UnifiedEditModal from '../components/UnifiedEditModal';
+import CodeGenerationProgress from '../components/CodeGenerationProgress';
+import TechStackSelectionModal from '../components/TechStackSelectionModal';
 
 // Persona components
 import PersonaSelectorBar from '../components/persona/PersonaSelectorBar';
@@ -266,6 +268,9 @@ const ProjectView = () => {
           )}
           {persona === 'dev' && activeTab === 'scenarios' && (
             <DevScenariosTab task={task} onEditArtifact={handleEditArtifact} />
+          )}
+          {persona === 'dev' && activeTab === 'codegen' && (
+            <DevCodeGenTab taskId={taskId} onSuccess={showSuccess} onError={showError} />
           )}
 
           {/* Consultant Tabs */}
@@ -596,21 +601,208 @@ const DevScenariosTab = ({ task, onEditArtifact }) => {
   );
 };
 
+const DevCodeGenTab = ({ taskId, onSuccess, onError }) => {
+  const [showTechStackModal, setShowTechStackModal] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Check for existing generation status on mount
+  useEffect(() => {
+    checkGenerationStatus();
+  }, [taskId]);
+
+  const checkGenerationStatus = async () => {
+    setLoading(true);
+    try {
+      const status = await apiClient.getGenerationStatus(taskId);
+      setGenerationStatus(status);
+    } catch (err) {
+      // 404 means no generation started - that's OK
+      if (err.response?.status !== 404) {
+        console.error('Failed to check generation status:', err);
+      }
+      setGenerationStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGenerationStarted = (response) => {
+    setGenerationStatus(response);
+    onSuccess?.('Code generation started');
+  };
+
+  const handleGenerationComplete = (result) => {
+    setGenerationStatus(result);
+    onSuccess?.('Code generation complete!');
+  };
+
+  const hasActiveGeneration = generationStatus &&
+    ['pending', 'initializing', 'generating', 'integrating'].includes(generationStatus.status);
+
+  const hasCompletedGeneration = generationStatus?.status === 'complete';
+
+  if (loading) {
+    return (
+      <Card style={styles.tabCard}>
+        <div style={styles.codegenLoading}>
+          <LoadingSpinner size="md" />
+          <Text style={styles.codegenLoadingText}>Checking generation status...</Text>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={styles.tabCard}>
+      <Text style={styles.tabTitle}>Code Generation</Text>
+
+      {/* Show progress if generation is active or complete */}
+      {(hasActiveGeneration || hasCompletedGeneration) ? (
+        <CodeGenerationProgress
+          projectId={taskId}
+          onComplete={handleGenerationComplete}
+          onClose={() => setGenerationStatus(null)}
+        />
+      ) : (
+        <div style={styles.codegenStart}>
+          <div style={styles.codegenIcon}>⚡</div>
+          <Text style={styles.codegenTitle}>Generate Code from Event Model</Text>
+          <Text style={styles.codegenDesc}>
+            Transform your event model into a working codebase with tests,
+            proper project structure, and CI/CD configuration.
+          </Text>
+          <Button
+            variant="primary"
+            onClick={() => setShowTechStackModal(true)}
+            style={styles.codegenButton}
+          >
+            Start Code Generation
+          </Button>
+        </div>
+      )}
+
+      {/* Failed generation - show retry option */}
+      {generationStatus?.status === 'failed' && (
+        <div style={styles.codegenFailed}>
+          <Text style={styles.codegenFailedText}>
+            Generation failed: {generationStatus.last_error || 'Unknown error'}
+          </Text>
+          <Button
+            variant="primary"
+            onClick={() => setShowTechStackModal(true)}
+            style={styles.codegenRetryButton}
+          >
+            Try Again
+          </Button>
+        </div>
+      )}
+
+      {/* Tech Stack Selection Modal */}
+      <TechStackSelectionModal
+        isOpen={showTechStackModal}
+        onClose={() => setShowTechStackModal(false)}
+        projectId={taskId}
+        onGenerationStarted={handleGenerationStarted}
+      />
+    </Card>
+  );
+};
+
 /* ========== CONSULTANT TABS ========== */
 
 const ConsultantScopeTab = ({ task, onEditArtifact }) => {
-  // Use business-friendly domain aggregation
+  // Use business-friendly domain aggregation with persona support
   const businessDomains = aggregateByBusinessDomain(task);
   const epics = task?.context?.epics || task?.metadata?.epics || [];
 
   // Calculate totals for the summary
   const totalCapabilities = businessDomains.reduce((sum, d) =>
-    sum + d.actions.length + d.views.length + d.automations.length + d.capabilities.length, 0
+    sum + (d.clientActions?.length || 0) + (d.providerActions?.length || 0) +
+    (d.adminActions?.length || 0) + (d.userActions?.length || 0) +
+    (d.views?.length || 0) + (d.automations?.length || 0), 0
   );
+
+  // Helper to render persona-specific actions
+  const renderPersonaActions = (domain) => {
+    const sections = [];
+
+    // Client actions (buyers, customers)
+    if (domain.clientActions?.length > 0) {
+      sections.push(
+        <div key="client" style={styles.capabilitySection}>
+          <Text style={styles.capabilitySectionTitle}>What clients can do:</Text>
+          <ul style={styles.capabilityActionList}>
+            {domain.clientActions.map((action, j) => (
+              <li key={j} style={styles.capabilityAction}>{action}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    // Provider actions (freelancers, sellers, tutors)
+    if (domain.providerActions?.length > 0) {
+      sections.push(
+        <div key="provider" style={styles.capabilitySection}>
+          <Text style={styles.capabilitySectionTitle}>What freelancers can do:</Text>
+          <ul style={styles.capabilityActionList}>
+            {domain.providerActions.map((action, j) => (
+              <li key={j} style={styles.capabilityAction}>{action}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    // Admin actions
+    if (domain.adminActions?.length > 0) {
+      sections.push(
+        <div key="admin" style={styles.capabilitySection}>
+          <Text style={styles.capabilitySectionTitle}>What admins can do:</Text>
+          <ul style={styles.capabilityActionList}>
+            {domain.adminActions.map((action, j) => (
+              <li key={j} style={styles.capabilityAction}>{action}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    // Generic user actions (when no specific persona)
+    if (domain.userActions?.length > 0) {
+      sections.push(
+        <div key="user" style={styles.capabilitySection}>
+          <Text style={styles.capabilitySectionTitle}>What users can do:</Text>
+          <ul style={styles.capabilityActionList}>
+            {domain.userActions.map((action, j) => (
+              <li key={j} style={styles.capabilityAction}>{action}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    // System actions (automatic processes)
+    if (domain.systemActions?.length > 0) {
+      sections.push(
+        <div key="system" style={styles.capabilitySection}>
+          <Text style={styles.capabilitySectionTitle}>System processes:</Text>
+          <ul style={styles.capabilityActionList}>
+            {domain.systemActions.map((action, j) => (
+              <li key={j} style={styles.capabilityAction}>{action}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    }
+
+    return sections;
+  };
 
   return (
     <Card style={styles.tabCard}>
-      <Text style={styles.tabTitle}>What You're Building</Text>
+      <Text style={styles.tabTitle}>Business Capabilities</Text>
 
       {/* Quick summary */}
       {businessDomains.length > 0 && (
@@ -646,20 +838,11 @@ const ConsultantScopeTab = ({ task, onEditArtifact }) => {
                 <Text style={styles.capabilityDesc}>{domain.description}</Text>
               )}
 
-              {/* What users can DO - business-friendly action names */}
-              {domain.actions.length > 0 && (
-                <div style={styles.capabilitySection}>
-                  <Text style={styles.capabilitySectionTitle}>What users can do:</Text>
-                  <ul style={styles.capabilityActionList}>
-                    {domain.actions.map((action, j) => (
-                      <li key={j} style={styles.capabilityAction}>{action}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              {/* Persona-specific actions */}
+              {renderPersonaActions(domain)}
 
               {/* What users can SEE - business-friendly view names */}
-              {domain.views.length > 0 && (
+              {domain.views?.length > 0 && (
                 <div style={styles.capabilitySection}>
                   <Text style={styles.capabilitySectionTitle}>What users see:</Text>
                   <ul style={styles.capabilityActionList}>
@@ -671,24 +854,12 @@ const ConsultantScopeTab = ({ task, onEditArtifact }) => {
               )}
 
               {/* Automatic behaviors */}
-              {domain.automations.length > 0 && (
+              {domain.automations?.length > 0 && (
                 <div style={styles.capabilitySection}>
                   <Text style={styles.capabilitySectionTitle}>Automatic behaviors:</Text>
                   <ul style={styles.capabilityActionList}>
                     {domain.automations.map((auto, j) => (
                       <li key={j} style={styles.capabilityAction}>{auto}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* For domains built from raw events when no swimlanes exist */}
-              {domain.capabilities.length > 0 && domain.actions.length === 0 && (
-                <div style={styles.capabilitySection}>
-                  <Text style={styles.capabilitySectionTitle}>Key capabilities:</Text>
-                  <ul style={styles.capabilityActionList}>
-                    {domain.capabilities.map((cap, j) => (
-                      <li key={j} style={styles.capabilityAction}>{cap}</li>
                     ))}
                   </ul>
                 </div>
@@ -1186,6 +1357,65 @@ const styles = {
     fontSize: tokens.typography.fontSize.sm[0],
     color: 'var(--color-text-muted)',
     marginBottom: tokens.spacing[1],
+  },
+  // Code Generation styles
+  codegenLoading: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: tokens.spacing[8],
+    gap: tokens.spacing[3],
+  },
+  codegenLoadingText: {
+    color: 'var(--color-text-muted)',
+    fontSize: tokens.typography.fontSize.sm[0],
+  },
+  codegenStart: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: tokens.spacing[8],
+    textAlign: 'center',
+  },
+  codegenIcon: {
+    fontSize: '48px',
+    marginBottom: tokens.spacing[4],
+  },
+  codegenTitle: {
+    fontSize: tokens.typography.fontSize.xl[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    marginBottom: tokens.spacing[2],
+  },
+  codegenDesc: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text-muted)',
+    maxWidth: '400px',
+    marginBottom: tokens.spacing[6],
+    lineHeight: 1.6,
+  },
+  codegenButton: {
+    minWidth: '180px',
+  },
+  codegenFailed: {
+    marginTop: tokens.spacing[4],
+    padding: tokens.spacing[4],
+    backgroundColor: 'var(--color-danger-bg)',
+    borderRadius: tokens.borderRadius.lg,
+    border: '1px solid var(--color-danger-border)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: tokens.spacing[3],
+  },
+  codegenFailedText: {
+    color: 'var(--color-danger)',
+    fontSize: tokens.typography.fontSize.sm[0],
+    textAlign: 'center',
+  },
+  codegenRetryButton: {
+    minWidth: '120px',
   },
   // Consultant styles
   scopeList: {

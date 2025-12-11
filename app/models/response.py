@@ -66,6 +66,7 @@ class TaskTreeNode(BaseModel):
     implementation_details: Optional[str] = None
     story_points: Optional[int] = None
     context: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None  # Contains requirements, event model, etc.
     created_at: datetime
     updated_at: datetime
     children: List["TaskTreeNode"] = Field(default_factory=list)
@@ -84,6 +85,7 @@ class TaskTreeNode(BaseModel):
             implementation_details=task.implementation_details,
             story_points=task.story_points,
             context=task.context,
+            metadata=task.metadata,  # Include requirements, event model, etc.
             created_at=task.created_at,
             updated_at=task.updated_at,
             children=children or [],

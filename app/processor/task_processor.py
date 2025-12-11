@@ -1364,10 +1364,10 @@ class TaskProcessor:
         max_depth: Optional[int],
         user_id: Optional[str]
     ) -> List[Task]:
-        """Re-decompose stories with full event model context to ensure completeness.
+        """Re-decompose stories with full event model context, replacing Pass 1 tasks.
 
-        This generates additional tasks informed by the complete event model,
-        ensuring every command/read model has corresponding implementation tasks.
+        Pass 2 has the complete event model context, so we clear Pass 1 tasks
+        and regenerate from scratch to avoid duplication and get better quality.
 
         Args:
             root_task: Root task
@@ -1385,8 +1385,17 @@ class TaskProcessor:
         # Create enriched context with full event model
         enriched_context = {**(context or {}), "event_model": event_model}
 
+        # Keep track of Pass 1 tasks - only delete after we successfully generate Pass 3 tasks
+        pass1_task_ids = [
+            task_id for task_id, task in tree.tasks.items()
+            if task.depth > 0 and task.id != root_task.id
+        ]
+        pass1_task_count = len(pass1_task_ids)
+
         new_tasks = []
-        existing_descriptions = {task.description.lower().strip() for task in tree.tasks.values()}
+        existing_descriptions = set()  # Start fresh
+        pass3_successful_epics = 0
+        pass3_failed_epics = 0
 
         total_stories = sum(len(stories) for stories in stories_by_epic.values())
         print(f"[TaskProcessor] Re-decomposing {total_stories} stories with {len(event_model.get('commands', []))} commands in event model context")
@@ -1406,8 +1415,12 @@ class TaskProcessor:
                     epic_stories, epic, enriched_context,  # ← Now has complete event model!
                     config=prompt_config
                 )
+                pass3_successful_epics += 1
             except Exception as e:
                 print(f"[TaskProcessor] Error in enriched decomposition for epic {epic.title}: {e}")
+                import traceback
+                traceback.print_exc()
+                pass3_failed_epics += 1
                 continue
 
             # Process decompositions
@@ -1460,6 +1473,23 @@ class TaskProcessor:
 
                     # Emit event
                     await task_event_emitter.emit_task_created(task, user_id)
+
+        # Only clear Pass 1 tasks if Pass 3 successfully generated replacement tasks
+        if new_tasks and pass3_successful_epics > 0:
+            print(f"[TaskProcessor] Pass 3 succeeded ({pass3_successful_epics} epics, {len(new_tasks)} tasks). Clearing {pass1_task_count} Pass 1 tasks.")
+            for task_id in pass1_task_ids:
+                # Remove from tree
+                if task_id in tree.tasks:
+                    del tree.tasks[task_id]
+                # Remove from root's subtasks (but keep Pass 3 tasks we just added)
+                if root_task.subtasks and task_id in root_task.subtasks:
+                    root_task.subtasks.remove(task_id)
+                # Delete from storage
+                await self.storage.delete_task(task_id)
+        elif pass3_failed_epics > 0 and not new_tasks:
+            print(f"[TaskProcessor] ⚠ Pass 3 FAILED for all {pass3_failed_epics} epics. KEEPING {pass1_task_count} Pass 1 tasks to avoid zero-task state.")
+        elif not new_tasks and pass1_task_count > 0:
+            print(f"[TaskProcessor] ⚠ Pass 3 produced no new tasks. KEEPING {pass1_task_count} Pass 1 tasks.")
 
         return new_tasks
 

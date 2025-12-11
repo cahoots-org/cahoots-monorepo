@@ -62,11 +62,35 @@ const ExportModal = ({
   // Function to handle exporting to JSON
   const handleExportToJson = () => {
     if (!task) return;
-    
-    // Create a JSON file from the task tree
-    const dataStr = JSON.stringify(localTaskTree, null, 2);
+
+    // Extract requirements from task metadata for top-level visibility
+    const requirements = task?.metadata?.requirements || localTaskTree?.metadata?.requirements || {};
+    const functionalRequirements = requirements.functional_requirements || [];
+    const nonFunctionalRequirements = requirements.non_functional_requirements || [];
+
+    // Create enhanced export structure with NFRs at top level
+    const exportData = {
+      project: {
+        description: task.description,
+        created_at: task.created_at || localTaskTree?.created_at,
+        total_tasks: localTaskTree?.total_tasks,
+        total_story_points: localTaskTree?.total_story_points,
+        completion_percentage: localTaskTree?.completion_percentage,
+      },
+      requirements: {
+        functional: functionalRequirements,
+        non_functional: nonFunctionalRequirements,
+        summary: {
+          total_functional: functionalRequirements.length,
+          total_non_functional: nonFunctionalRequirements.length,
+        }
+      },
+      task_tree: localTaskTree,
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-    
+
     // Create a download link and trigger the download
     const exportFileDefaultName = `${task.description.split('\n')[0].substring(0, EXPORT_FILENAME_MAX_LENGTH)}-task-tree.json`;
     const linkElement = document.createElement('a');

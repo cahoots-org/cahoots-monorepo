@@ -72,6 +72,9 @@ const styles = {
     fontSize: tokens.typography.fontSize.lg[0],
     lineHeight: tokens.typography.lineHeight.relaxed,
     marginBottom: tokens.spacing[4],
+    maxHeight: '200px',
+    overflow: 'auto',
+    whiteSpace: 'pre-wrap',
   },
   complexityBadge: {
     fontSize: tokens.typography.fontSize.sm[0],

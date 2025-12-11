@@ -46,6 +46,18 @@ class EpicStoryProcessor:
         self.current_stories: Dict[str, List[UserStory]] = {}  # epic_id -> stories
         self.task_to_stories: Dict[str, List[str]] = {}  # task_id -> story_ids
 
+    def reset(self):
+        """Reset all state for a new task generation.
+
+        MUST be called before processing a new root task to prevent
+        cross-task contamination of IDs and data.
+        """
+        self.current_epics = []
+        self.current_stories = {}
+        self.task_to_stories = {}
+        # Reset the story analyzer's counter
+        self.story_analyzer.reset()
+
     async def initialize_epics_and_stories(
         self,
         root_task: Task,
@@ -63,6 +75,9 @@ class EpicStoryProcessor:
         Returns:
             Tuple of (epics, stories_by_epic)
         """
+        # Reset all state to prevent cross-task contamination
+        self.reset()
+
         print(f"[EpicStoryProcessor] Generating epics for root task: {root_task.description[:100]}...")
 
         # Step 1: Generate comprehensive epics
