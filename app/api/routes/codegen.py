@@ -33,6 +33,7 @@ from app.codegen.orchestrator import (
     GenerationStatus,
 )
 from app.codegen.tech_stacks import list_tech_stacks, get_tech_stack
+from app.metrics import user_codegen_runs_total, user_request_total
 
 logger = logging.getLogger(__name__)
 
@@ -200,8 +201,13 @@ async def run_generation_task(
             skip_task_ids=skip_task_ids,
             start_phase=start_phase,
         )
+
+        # Track successful completion
+        user_codegen_runs_total.labels(user_id=user_id, status="completed").inc()
     except Exception as e:
         logger.exception(f"Generation failed for project {project_id}")
+        # Track failure
+        user_codegen_runs_total.labels(user_id=user_id, status="failed").inc()
         # Try to update state to failed
         try:
             state = await state_store.load(project_id)
@@ -367,6 +373,11 @@ async def start_generation(
         except Exception as e:
             # If reconciliation fails, start fresh
             logger.warning(f"Reconciliation failed for {project_id}, starting fresh: {e}")
+
+    # Track user metrics
+    user_id = current_user["id"]
+    user_codegen_runs_total.labels(user_id=user_id, status="started").inc()
+    user_request_total.labels(user_id=user_id, endpoint_category="codegen").inc()
 
     # Initialize state
     state = GenerationState(
@@ -580,6 +591,10 @@ async def retry_generation(
         max_parallel_tasks=3,
         max_fix_attempts=3,
     )
+
+    # Track retry as a new codegen run
+    user_codegen_runs_total.labels(user_id=current_user["id"], status="retried").inc()
+    user_request_total.labels(user_id=current_user["id"], endpoint_category="codegen").inc()
 
     # Reset state for retry
     state.failed_tasks = {}

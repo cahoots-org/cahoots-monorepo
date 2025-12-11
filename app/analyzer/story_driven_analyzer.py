@@ -9,7 +9,7 @@ from app.models import (
     UserStory, StoryStatus, Epic
 )
 from .llm_client import LLMClient
-from app.config import PromptTuningConfig
+from app.config import PromptTuningConfig, get_granularity_config, get_story_point_guidance
 
 
 class StoryDrivenAnalyzer:
@@ -82,6 +82,15 @@ Example task descriptions:
         else:
             additional_instructions = ""
 
+        # Get granularity config from context
+        granularity_level = context.get("granularity", "medium") if context else "medium"
+        granularity_config = get_granularity_config(granularity_level)
+
+        # Build story point guidelines based on granularity
+        sp_min = granularity_config.min_story_points
+        sp_max = granularity_config.max_story_points
+        tasks_per_story = granularity_config.tasks_per_story_hint
+
         user_prompt = f"""Decompose ALL these user stories from the epic into implementation tasks.
 
 Epic: "{epic.title}"
@@ -89,6 +98,8 @@ Epic: "{epic.title}"
 {chr(10).join(stories_text)}
 
 Generate implementation tasks that satisfy ALL the user stories' acceptance criteria.{additional_instructions}
+
+{granularity_config.prompt_guidance}
 
 TASK GENERATION GUIDELINES:
 - Complex stories may need MULTIPLE tasks (e.g., a story about "user authentication" might need: data model task, API endpoints task, UI components task)
@@ -105,7 +116,7 @@ Return as JSON with structure:
           "description": "Specific implementation task with file paths",
           "is_atomic": true,
           "implementation_details": "Technical approach referencing specific files",
-          "story_points": <1-13>,
+          "story_points": <{sp_min}-{sp_max}>,
           "depends_on_indices": [],
           "also_implements": []  // other story IDs this task helps satisfy
         }}
@@ -114,11 +125,11 @@ Return as JSON with structure:
   }}
 }}
 
-STORY POINT GUIDELINES (use the full 1-13 range):
-- 1-2 SP: Config changes, small bug fixes, adding a field
-- 3-5 SP: Standard CRUD operations, simple API endpoints, basic UI components
-- 6-8 SP: Complex features with multiple parts, integrations, multi-step workflows
-- 9-13 SP: Major integrations (OAuth from scratch), complex algorithms, multi-service orchestration
+STORY POINT GUIDELINES (target range: {sp_min}-{sp_max} SP per task):
+- Tasks should be sized within {sp_min}-{sp_max} story points
+- Aim for {tasks_per_story} tasks per user story
+- If a task would be larger than {sp_max} SP, break it into smaller tasks
+- If a task would be smaller than {sp_min} SP, consider combining it with related work
 
 DEPENDENCY RULES:
 - Each task has a unique "task_index" (0, 1, 2, ...)
@@ -127,8 +138,8 @@ DEPENDENCY RULES:
 - Data model tasks should come first, then API endpoints, then UI components
 
 DECOMPOSITION RULES:
-- A story can have 1-5 tasks depending on complexity
-- Tasks should be implementable in a single focused session (2-8 hours)
+- A story can have {tasks_per_story} tasks depending on complexity
+- Tasks should be sized to fit within {sp_min}-{sp_max} story points
 - Group related acceptance criteria when they share the same implementation
 - Quality attributes (performance, security) are part of the task, not separate tasks
 - If a task helps multiple stories, list the additional story IDs in "also_implements"

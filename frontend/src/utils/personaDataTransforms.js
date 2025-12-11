@@ -850,6 +850,7 @@ export const getPersonaTabs = (persona) => {
   const tabs = {
     pm: [
       { id: 'overview', label: 'Overview', icon: '📊' },
+      { id: 'tasks', label: 'Tasks', icon: '✅' },
       { id: 'export', label: 'Export', icon: '📤' },
     ],
     dev: [

@@ -1,6 +1,6 @@
 """Request models for API endpoints."""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -21,6 +21,10 @@ class RepositoryInfo(BaseModel):
         return v
 
 
+# Type alias for granularity levels
+GranularityLevel = Literal["small", "medium", "large"]
+
+
 class TaskRequest(BaseModel):
     """Request model for task creation and processing."""
     description: str = Field(..., min_length=1, max_length=50000, description="Description of the task")
@@ -31,6 +35,10 @@ class TaskRequest(BaseModel):
     requires_approval: bool = Field(False, description="Whether to pause for approval after decomposition")
     repository: Optional[RepositoryInfo] = Field(None, description="Repository information for context")
     user_id: Optional[str] = Field(None, description="ID of the user creating the task")
+    granularity: GranularityLevel = Field(
+        default="medium",
+        description="Task decomposition granularity: 'small' (1-3 SP, detailed), 'medium' (2-8 SP, balanced), 'large' (5-13 SP, high-level)"
+    )
 
     # Optimization settings
     use_cache: bool = Field(True, description="Whether to use caching for similar tasks")

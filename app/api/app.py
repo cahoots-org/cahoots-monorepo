@@ -221,6 +221,10 @@ def create_app() -> FastAPI:
     from app.api.routes import regenerate_router
     app.include_router(regenerate_router, prefix="/api")
 
+    # Include export router
+    from app.api.routes.export import router as export_router
+    app.include_router(export_router)
+
     # Include integration routers - import here to avoid circular imports
     from app.integrations import jira_router, trello_router, github_router
     app.include_router(jira_router)

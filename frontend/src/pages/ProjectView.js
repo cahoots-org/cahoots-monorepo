@@ -22,6 +22,7 @@ import {
   IconButton,
   tokens,
 } from '../design-system';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
@@ -32,6 +33,7 @@ import ProjectSummary from '../components/ProjectSummary';
 import RefineModal from '../components/RefineModal';
 import ExportModal from '../components/ExportModal';
 import UnifiedEditModal from '../components/UnifiedEditModal';
+import UniversalExportModal from '../components/UniversalExportModal';
 import CodeGenerationProgress from '../components/CodeGenerationProgress';
 import TechStackSelectionModal from '../components/TechStackSelectionModal';
 
@@ -66,6 +68,7 @@ const ProjectView = () => {
   });
   const [activeTab, setActiveTab] = useState(null);
   const [showRefineModal, setShowRefineModal] = useState(false);
+  const [showUniversalExport, setShowUniversalExport] = useState(false);
   const [editModal, setEditModal] = useState({ open: false, type: null, artifact: null });
 
   useEffect(() => {
@@ -196,6 +199,16 @@ const ProjectView = () => {
         )}
 
         <div style={styles.headerRight}>
+          {task && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={ArrowDownTrayIcon}
+              onClick={() => setShowUniversalExport(true)}
+            >
+              Export
+            </Button>
+          )}
           <ConnectionIndicator connected={connected} />
           <Button
             variant="ghost"
@@ -254,6 +267,9 @@ const ProjectView = () => {
           {persona === 'pm' && activeTab === 'overview' && (
             <PMOverviewTab task={task} onEditArtifact={handleEditArtifact} />
           )}
+          {persona === 'pm' && activeTab === 'tasks' && (
+            <PMTasksTab task={task} taskTree={taskTree} onEditArtifact={handleEditArtifact} />
+          )}
           {persona === 'pm' && activeTab === 'export' && (
             <PMExportTab
               task={task}
@@ -302,6 +318,13 @@ const ProjectView = () => {
         artifactType={editModal.type}
         artifact={editModal.artifact}
         onSaveComplete={handleEditComplete}
+      />
+
+      <UniversalExportModal
+        isOpen={showUniversalExport}
+        onClose={() => setShowUniversalExport(false)}
+        taskId={taskId}
+        onSuccess={showSuccess}
       />
     </div>
   );
@@ -455,6 +478,210 @@ const PMExportTab = ({ task, taskTree, onShowToast }) => {
         onShowToast={onShowToast}
         inline={true}
       />
+    </Card>
+  );
+};
+
+const PMTasksTab = ({ task, taskTree, onEditArtifact }) => {
+  const [expandedTasks, setExpandedTasks] = useState({});
+  const [sortBy, setSortBy] = useState('order'); // order, points, dependencies
+
+  // Extract all atomic tasks from the tree
+  const getAllTasks = () => {
+    if (!taskTree) return [];
+
+    const allTasks = [];
+    const rootTaskId = taskTree?.task_id || taskTree?.id;
+
+    const collectTasks = (node, depth = 0) => {
+      if (!node) return;
+      const nodeId = node.task_id || node.id;
+      if (node.is_atomic && nodeId !== rootTaskId) {
+        allTasks.push({
+          ...node,
+          id: nodeId,
+          depth,
+        });
+      }
+      (node.children || []).forEach(child => collectTasks(child, depth + 1));
+    };
+    collectTasks(taskTree);
+
+    return allTasks;
+  };
+
+  const allTasks = getAllTasks();
+
+  // Build a map of task IDs for dependency lookup
+  const taskIdMap = {};
+  allTasks.forEach((t, index) => {
+    taskIdMap[t.id] = index + 1; // 1-indexed for display
+  });
+
+  // Sort tasks
+  const sortedTasks = [...allTasks].sort((a, b) => {
+    if (sortBy === 'points') {
+      return (b.story_points || 0) - (a.story_points || 0);
+    }
+    if (sortBy === 'dependencies') {
+      const aDeps = a.depends_on?.length || 0;
+      const bDeps = b.depends_on?.length || 0;
+      return aDeps - bDeps; // Tasks with fewer dependencies first
+    }
+    return 0; // Keep original order
+  });
+
+  // Calculate totals
+  const totalTasks = allTasks.length;
+  const totalPoints = allTasks.reduce((sum, t) => sum + (t.story_points || 0), 0);
+  const tasksWithDeps = allTasks.filter(t => t.depends_on?.length > 0).length;
+
+  const toggleTaskExpand = (taskId) => {
+    setExpandedTasks(prev => ({ ...prev, [taskId]: !prev[taskId] }));
+  };
+
+  const expandAll = () => {
+    const expanded = {};
+    allTasks.forEach(t => { expanded[t.id] = true; });
+    setExpandedTasks(expanded);
+  };
+
+  const collapseAll = () => {
+    setExpandedTasks({});
+  };
+
+  // Get human-readable dependency references
+  const getDependencyLabels = (dependsOn) => {
+    if (!dependsOn || dependsOn.length === 0) return [];
+    return dependsOn.map(depId => {
+      const taskNum = taskIdMap[depId];
+      return taskNum ? `#${taskNum}` : depId.slice(0, 8);
+    });
+  };
+
+  return (
+    <Card style={styles.tabCard}>
+      <div style={styles.tasksHeader}>
+        <Text style={styles.tabTitle}>Implementation Tasks</Text>
+        <div style={styles.tasksControls}>
+          <select
+            style={styles.sortSelect}
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+          >
+            <option value="order">Original Order</option>
+            <option value="points">By Story Points</option>
+            <option value="dependencies">By Dependencies</option>
+          </select>
+          <Button variant="ghost" size="sm" onClick={expandAll}>Expand All</Button>
+          <Button variant="ghost" size="sm" onClick={collapseAll}>Collapse All</Button>
+        </div>
+      </div>
+
+      {/* Summary stats */}
+      <div style={styles.tasksSummary}>
+        <Badge variant="primary" style={styles.tasksSummaryBadge}>
+          {totalTasks} Tasks
+        </Badge>
+        <Badge variant="secondary" style={styles.tasksSummaryBadge}>
+          {totalPoints} Story Points
+        </Badge>
+        {tasksWithDeps > 0 && (
+          <Badge variant="info" style={styles.tasksSummaryBadge}>
+            {tasksWithDeps} with Dependencies
+          </Badge>
+        )}
+      </div>
+
+      {totalTasks === 0 ? (
+        <div style={styles.tasksEmpty}>
+          <Text style={styles.emptyText}>
+            No implementation tasks generated yet. Tasks are created during the decomposition process.
+          </Text>
+        </div>
+      ) : (
+        <div style={styles.tasksList}>
+          {sortedTasks.map((t, index) => {
+            const taskNum = taskIdMap[t.id];
+            const isExpanded = expandedTasks[t.id];
+            const depLabels = getDependencyLabels(t.depends_on);
+            const hasDetails = t.implementation_details || depLabels.length > 0;
+
+            return (
+              <div key={t.id} style={styles.taskCard}>
+                {/* Task header - always visible */}
+                <div
+                  style={{
+                    ...styles.taskCardHeader,
+                    cursor: hasDetails ? 'pointer' : 'default',
+                  }}
+                  onClick={() => hasDetails && toggleTaskExpand(t.id)}
+                >
+                  <div style={styles.taskCardLeft}>
+                    <span style={styles.taskNumber}>#{taskNum}</span>
+                    {hasDetails && (
+                      <span style={styles.taskExpandIcon}>
+                        {isExpanded ? '▼' : '▶'}
+                      </span>
+                    )}
+                    <Text style={styles.taskCardDescription}>
+                      {t.description || t.title || 'Untitled task'}
+                    </Text>
+                  </div>
+                  <div style={styles.taskCardRight}>
+                    {depLabels.length > 0 && (
+                      <div style={styles.taskDepIndicator} title={`Depends on: ${depLabels.join(', ')}`}>
+                        <span style={styles.taskDepIcon}>⟵</span>
+                        <span style={styles.taskDepCount}>{depLabels.length}</span>
+                      </div>
+                    )}
+                    {t.story_points && (
+                      <Badge variant="secondary" style={styles.taskPointsBadge}>
+                        {t.story_points} SP
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded details */}
+                {isExpanded && hasDetails && (
+                  <div style={styles.taskCardDetails}>
+                    {/* Dependencies section */}
+                    {depLabels.length > 0 && (
+                      <div style={styles.taskDepSection}>
+                        <Text style={styles.taskDepLabel}>Dependencies:</Text>
+                        <div style={styles.taskDepList}>
+                          {t.depends_on.map((depId, i) => {
+                            const depNum = taskIdMap[depId];
+                            const depTask = allTasks.find(task => task.id === depId);
+                            return (
+                              <div key={depId} style={styles.taskDepItem}>
+                                <span style={styles.taskDepRef}>#{depNum || '?'}</span>
+                                <Text style={styles.taskDepText}>
+                                  {depTask?.description?.slice(0, 60) || depId.slice(0, 8)}
+                                  {depTask?.description?.length > 60 ? '...' : ''}
+                                </Text>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Implementation details */}
+                    {t.implementation_details && (
+                      <div style={styles.taskImplSection}>
+                        <Text style={styles.taskImplLabel}>Implementation Details:</Text>
+                        <Text style={styles.taskImplText}>{t.implementation_details}</Text>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </Card>
   );
 };
@@ -1268,6 +1495,182 @@ const styles = {
     color: 'var(--color-text-muted)',
     fontStyle: 'italic',
     paddingLeft: tokens.spacing[4],
+  },
+  // PM Tasks Tab styles
+  tasksHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: tokens.spacing[4],
+    flexWrap: 'wrap',
+    gap: tokens.spacing[3],
+  },
+  tasksControls: {
+    display: 'flex',
+    gap: tokens.spacing[2],
+    alignItems: 'center',
+  },
+  sortSelect: {
+    padding: `${tokens.spacing[2]} ${tokens.spacing[3]}`,
+    borderRadius: tokens.borderRadius.md,
+    border: '1px solid var(--color-border)',
+    backgroundColor: 'var(--color-surface)',
+    color: 'var(--color-text)',
+    fontSize: tokens.typography.fontSize.sm[0],
+    cursor: 'pointer',
+  },
+  tasksSummary: {
+    display: 'flex',
+    gap: tokens.spacing[3],
+    marginBottom: tokens.spacing[5],
+    flexWrap: 'wrap',
+  },
+  tasksSummaryBadge: {
+    padding: `${tokens.spacing[2]} ${tokens.spacing[4]}`,
+    fontSize: tokens.typography.fontSize.sm[0],
+  },
+  tasksEmpty: {
+    padding: tokens.spacing[8],
+    textAlign: 'center',
+  },
+  tasksList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[2],
+  },
+  taskCard: {
+    backgroundColor: 'var(--color-surface)',
+    borderRadius: tokens.borderRadius.lg,
+    border: '1px solid var(--color-border)',
+    overflow: 'hidden',
+  },
+  taskCardHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: tokens.spacing[4],
+    gap: tokens.spacing[3],
+    transition: 'background-color 0.15s ease',
+  },
+  taskCardLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[3],
+    flex: 1,
+    minWidth: 0,
+  },
+  taskNumber: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.primary[400],
+    fontFamily: 'monospace',
+    minWidth: '36px',
+  },
+  taskExpandIcon: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    color: 'var(--color-text-muted)',
+    width: '12px',
+    flexShrink: 0,
+  },
+  taskCardDescription: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    fontWeight: tokens.typography.fontWeight.medium,
+    lineHeight: tokens.typography.lineHeight.relaxed,
+    flex: 1,
+  },
+  taskCardRight: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[3],
+    flexShrink: 0,
+  },
+  taskDepIndicator: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: tokens.spacing[1],
+    padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+    backgroundColor: `${tokens.colors.warning[500]}15`,
+    borderRadius: tokens.borderRadius.md,
+    cursor: 'help',
+  },
+  taskDepIcon: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: tokens.colors.warning[500],
+  },
+  taskDepCount: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    color: tokens.colors.warning[600],
+  },
+  taskPointsBadge: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    padding: `${tokens.spacing[1]} ${tokens.spacing[3]}`,
+    fontFamily: 'monospace',
+    fontWeight: tokens.typography.fontWeight.semibold,
+  },
+  taskCardDetails: {
+    padding: tokens.spacing[4],
+    paddingTop: 0,
+    borderTop: '1px solid var(--color-border)',
+    marginTop: tokens.spacing[2],
+  },
+  taskDepSection: {
+    marginBottom: tokens.spacing[4],
+  },
+  taskDepLabel: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    color: 'var(--color-text-muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: tokens.spacing[2],
+  },
+  taskDepList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: tokens.spacing[2],
+  },
+  taskDepItem: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: tokens.spacing[2],
+    padding: tokens.spacing[2],
+    backgroundColor: 'var(--color-bg)',
+    borderRadius: tokens.borderRadius.md,
+    borderLeft: `3px solid ${tokens.colors.warning[400]}`,
+  },
+  taskDepRef: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    fontWeight: tokens.typography.fontWeight.bold,
+    color: tokens.colors.warning[500],
+    fontFamily: 'monospace',
+    minWidth: '32px',
+  },
+  taskDepText: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    color: 'var(--color-text-muted)',
+    flex: 1,
+  },
+  taskImplSection: {
+    marginTop: tokens.spacing[3],
+  },
+  taskImplLabel: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    color: 'var(--color-text-muted)',
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    marginBottom: tokens.spacing[2],
+  },
+  taskImplText: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: 'var(--color-text)',
+    lineHeight: tokens.typography.lineHeight.relaxed,
+    padding: tokens.spacing[3],
+    backgroundColor: 'var(--color-bg)',
+    borderRadius: tokens.borderRadius.md,
+    fontFamily: 'monospace',
+    whiteSpace: 'pre-wrap',
   },
   // Dev styles
   modelSection: {

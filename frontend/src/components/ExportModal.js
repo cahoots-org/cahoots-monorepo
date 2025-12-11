@@ -6,7 +6,6 @@ import TrelloExportProgress from './TrelloExportProgress';
 import { Modal, tokens } from '../design-system';
 
 // Constants for export functionality
-const EXPORT_FILENAME_MAX_LENGTH = 30;
 const BOARD_NAME_MAX_LENGTH = 30;
 
 const ExportModal = ({
@@ -58,46 +57,6 @@ const ExportModal = ({
     setIsJiraModalOpen(true);
   };
   const onJiraModalClose = () => setIsJiraModalOpen(false);
-
-  // Function to handle exporting to JSON
-  const handleExportToJson = () => {
-    if (!task) return;
-
-    // Extract requirements from task metadata for top-level visibility
-    const requirements = task?.metadata?.requirements || localTaskTree?.metadata?.requirements || {};
-    const functionalRequirements = requirements.functional_requirements || [];
-    const nonFunctionalRequirements = requirements.non_functional_requirements || [];
-
-    // Create enhanced export structure with NFRs at top level
-    const exportData = {
-      project: {
-        description: task.description,
-        created_at: task.created_at || localTaskTree?.created_at,
-        total_tasks: localTaskTree?.total_tasks,
-        total_story_points: localTaskTree?.total_story_points,
-        completion_percentage: localTaskTree?.completion_percentage,
-      },
-      requirements: {
-        functional: functionalRequirements,
-        non_functional: nonFunctionalRequirements,
-        summary: {
-          total_functional: functionalRequirements.length,
-          total_non_functional: nonFunctionalRequirements.length,
-        }
-      },
-      task_tree: localTaskTree,
-    };
-
-    const dataStr = JSON.stringify(exportData, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-
-    // Create a download link and trigger the download
-    const exportFileDefaultName = `${task.description.split('\n')[0].substring(0, EXPORT_FILENAME_MAX_LENGTH)}-task-tree.json`;
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.click();
-  };
 
   // Function to handle exporting to JIRA via backend API
   const handleExportToJira = async () => {
@@ -344,30 +303,6 @@ const ExportModal = ({
 
   const exportButtons = (
     <div style={inline ? styles.exportOptionsInline : styles.exportOptions}>
-      <button
-        style={styles.exportOption}
-        onClick={() => {
-          handleExportToJson();
-          if (!inline) onClose();
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.transform = 'translateY(-2px)';
-          e.currentTarget.style.boxShadow = '0 4px 16px rgba(0, 0, 0, 0.15)';
-          e.currentTarget.style.borderColor = tokens.colors.primary[500];
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.transform = 'translateY(0)';
-          e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.1)';
-          e.currentTarget.style.borderColor = 'var(--color-border)';
-        }}
-      >
-        <span style={styles.exportIcon}>📄</span>
-        <div style={styles.exportOptionText}>
-          <span style={styles.exportOptionTitle}>JSON</span>
-          <span style={styles.exportOptionDesc}>Download as JSON file</span>
-        </div>
-      </button>
-
       <button
         style={{
           ...styles.exportOption,
@@ -766,7 +701,7 @@ const styles = {
   },
   exportOptionsInline: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, 1fr)',
+    gridTemplateColumns: 'repeat(2, 1fr)',
     gap: tokens.spacing[4],
   },
   exportOption: {

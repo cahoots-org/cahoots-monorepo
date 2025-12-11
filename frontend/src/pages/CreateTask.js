@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeftIcon, SparklesIcon, CodeBracketIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, SparklesIcon, CodeBracketIcon, InformationCircleIcon, ChevronDownIcon, ChevronRightIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline';
 import Button from '../design-system/components/Button';
 import { Heading1, Text } from '../design-system/components/Typography';
 import Card from '../design-system/components/Card';
@@ -8,6 +8,7 @@ import { tokens } from '../design-system/tokens';
 // Removed useCreateTask - using direct API call for immediate navigation
 import { useApp } from '../contexts/AppContext';
 import apiClient from '../services/unifiedApiClient';
+import GranularitySelector from '../components/GranularitySelector';
 
 const CreateTask = () => {
   const navigate = useNavigate();
@@ -19,6 +20,8 @@ const CreateTask = () => {
   const [githubRepo, setGithubRepo] = useState('');
   const [isGitHubConnected, setIsGitHubConnected] = useState(false);
   const [checkingGitHub, setCheckingGitHub] = useState(true);
+  const [granularity, setGranularity] = useState('medium');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // Check GitHub connection status on mount
   useEffect(() => {
@@ -55,6 +58,7 @@ const CreateTask = () => {
       complexity_threshold: 0.7,
       use_context: true,
       requires_approval: false,
+      granularity,
       ...(githubRepo.trim() && {
         github_repo_url: githubRepo.trim()
       })
@@ -282,6 +286,67 @@ const CreateTask = () => {
                 </button>
                 .
               </Text>
+            </div>
+          )}
+        </div>
+
+        {/* Advanced Options (Collapsible) */}
+        <div style={{ marginBottom: tokens.spacing[5] }}>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: tokens.spacing[2],
+              padding: `${tokens.spacing[2]} 0`,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              color: tokens.colors.neutral[600],
+              width: '100%',
+              textAlign: 'left',
+            }}
+          >
+            {showAdvanced ? (
+              <ChevronDownIcon style={{ width: '16px', height: '16px' }} />
+            ) : (
+              <ChevronRightIcon style={{ width: '16px', height: '16px' }} />
+            )}
+            <AdjustmentsHorizontalIcon style={{ width: '16px', height: '16px' }} />
+            Advanced Options
+          </button>
+
+          {showAdvanced && (
+            <div style={{
+              marginTop: tokens.spacing[3],
+              padding: tokens.spacing[4],
+              backgroundColor: tokens.colors.neutral[50],
+              borderRadius: tokens.borderRadius.lg,
+              border: `1px solid ${tokens.colors.neutral[200]}`,
+            }}>
+              <label style={{
+                display: 'block',
+                fontSize: '14px',
+                fontWeight: '500',
+                color: tokens.colors.neutral[700],
+                marginBottom: tokens.spacing[3],
+              }}>
+                Task Granularity
+              </label>
+              <Text style={{
+                fontSize: '13px',
+                color: tokens.colors.neutral[500],
+                marginBottom: tokens.spacing[3],
+              }}>
+                Control how tasks are sized based on your team's preferences
+              </Text>
+              <GranularitySelector
+                value={granularity}
+                onChange={setGranularity}
+              />
             </div>
           )}
         </div>

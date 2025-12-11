@@ -672,6 +672,69 @@ llm_cache_hits_total = Counter(
 
 
 # =============================================================================
+# USER STATISTICS
+# =============================================================================
+
+user_projects_created_total = Counter(
+    'user_projects_created_total',
+    'Projects created per user',
+    ['user_id']
+)
+
+user_llm_tokens_consumed_total = Counter(
+    'user_llm_tokens_consumed_total',
+    'Total LLM tokens consumed per user',
+    ['user_id', 'token_type']  # token_type: input, output
+)
+
+user_codegen_runs_total = Counter(
+    'user_codegen_runs_total',
+    'Code generation runs per user',
+    ['user_id', 'status']  # status: started, completed, failed
+)
+
+user_active_sessions = Gauge(
+    'user_active_sessions',
+    'Current active sessions per user',
+    ['user_id']
+)
+
+unique_users_total = Counter(
+    'unique_users_total',
+    'Total unique users (increment on first activity)',
+    ['source']  # source: auth0, local, anonymous
+)
+
+user_request_total = Counter(
+    'user_request_total',
+    'Total API requests per user',
+    ['user_id', 'endpoint_category']  # endpoint_category: tasks, codegen, export, etc.
+)
+
+user_api_latency = Histogram(
+    'user_api_latency_seconds',
+    'API request latency per user',
+    ['user_id', 'endpoint_category'],
+    buckets=[0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0]
+)
+
+daily_active_users = Gauge(
+    'daily_active_users',
+    'Number of users active in the last 24 hours'
+)
+
+weekly_active_users = Gauge(
+    'weekly_active_users',
+    'Number of users active in the last 7 days'
+)
+
+monthly_active_users = Gauge(
+    'monthly_active_users',
+    'Number of users active in the last 30 days'
+)
+
+
+# =============================================================================
 # BACKWARD COMPATIBILITY - Legacy metrics
 # =============================================================================
 

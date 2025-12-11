@@ -21,6 +21,7 @@ from app.services.tech_stack_decision import TechStackDecisionService
 from app.analyzer.llm_client import LLMClient
 from app.services.github_context_agent import GitHubContextEnrichmentAgent
 from app.config import PromptTuningConfig
+from app.metrics import user_projects_created_total, user_request_total
 
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -174,6 +175,9 @@ async def create_task(
         if request.requires_approval:
             context["require_human_review"] = True
 
+        # Add granularity setting to context (defaults to "medium")
+        context["granularity"] = request.granularity
+
         # Parse prompt config if provided
         prompt_config = None
         if request.prompt_config:
@@ -197,6 +201,10 @@ async def create_task(
 
         # Save the root task so it's immediately visible
         await storage.save_task(root_task)
+
+        # Track user metrics
+        user_projects_created_total.labels(user_id=user_id).inc()
+        user_request_total.labels(user_id=user_id, endpoint_category="tasks").inc()
 
         # Emit task created event immediately
         await task_event_emitter.emit_task_created(root_task, user_id)

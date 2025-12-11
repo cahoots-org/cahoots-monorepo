@@ -250,7 +250,7 @@ const Layout = ({ children }) => {
                     </Link>
                     <Link to="/login" style={{ textDecoration: 'none' }}>
                       <Button
-                        variant="secondary"
+                        variant={location.pathname === '/login' ? 'primary' : 'secondary'}
                         size="sm"
                       >
                         Sign In
@@ -456,7 +456,7 @@ const Layout = ({ children }) => {
                 }}>
                   <Link to="/login" style={{ textDecoration: 'none' }}>
                     <Button
-                      variant="primary"
+                      variant={location.pathname === '/login' ? 'primary' : 'secondary'}
                       size="md"
                       style={{ width: '100%' }}
                     >

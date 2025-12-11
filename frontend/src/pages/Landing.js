@@ -23,8 +23,8 @@ const Landing = () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <SEO
-        title="AI-Powered Project Planning & Code Generation"
-        description="Turn your project ideas into working code. Cahoots uses AI to create system blueprints, generate implementation tasks, and write production-ready code automatically."
+        title="AI-Powered Project Decomposition & Planning"
+        description="Transform complex project ideas into actionable plans. Cahoots uses AI to break down requirements into epics, stories, and implementation tasks with story points and dependencies."
       />
 
       {/* Navigation Bar */}
@@ -170,7 +170,7 @@ const HeroSection = ({ onGetStarted }) => {
             color: tokens.colors.primary[400],
           }}>
             <span style={{ fontSize: '12px' }}>NEW</span>
-            AI-Powered Code Generation Now Available
+            Multi-Persona Views & Advanced Export
           </span>
         </div>
 
@@ -184,13 +184,13 @@ const HeroSection = ({ onGetStarted }) => {
           color: 'var(--color-text)',
           letterSpacing: '-2px',
         }}>
-          Turn Your Ideas Into<br />
+          Turn Complex Ideas Into<br />
           <span style={{
             background: `linear-gradient(135deg, ${tokens.colors.primary[400]} 0%, ${tokens.colors.warning[500]} 100%)`,
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
-          }}>Production-Ready Code</span>
+          }}>Actionable Plans</span>
         </h1>
 
         {/* Subheadline */}
@@ -198,12 +198,12 @@ const HeroSection = ({ onGetStarted }) => {
           fontSize: '20px',
           textAlign: 'center',
           color: 'var(--color-text-muted)',
-          maxWidth: '700px',
+          maxWidth: '720px',
           margin: '0 auto 40px',
           lineHeight: '1.6',
         }}>
-          Describe your project in plain English. Cahoots creates a complete system blueprint,
-          breaks it into tasks, and generates working code with pull requests ready to merge.
+          Describe your project in plain English. Cahoots generates requirements, user stories with acceptance criteria,
+          and implementation-ready tasks—complete with story points, dependencies, and technical guidance.
         </p>
 
         {/* CTA Buttons */}
@@ -268,45 +268,17 @@ const HeroSection = ({ onGetStarted }) => {
               color: 'var(--color-text-muted)',
               textAlign: 'center',
             }}>
-              app.cahoots.dev
+              cahoots.cc
             </div>
           </div>
-
-          {/* Screenshot placeholder - you'll replace this with actual screenshot */}
-          <div style={{
-            backgroundColor: tokens.colors.neutral[950],
-            aspectRatio: '16/9',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-          }}>
-            {/* Placeholder - Replace with: <img src="/images/hero-screenshot.png" alt="Cahoots Dashboard" style={{ width: '100%' }} /> */}
-            <div style={{
-              textAlign: 'center',
-              color: 'var(--color-text-muted)',
-              padding: '40px',
-            }}>
-              <div style={{
-                width: '80px',
-                height: '80px',
-                margin: '0 auto 16px',
-                backgroundColor: `${tokens.colors.primary[500]}20`,
-                borderRadius: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '36px',
-              }}>
-                📸
-              </div>
-              <p style={{ fontSize: '18px', marginBottom: '8px' }}>Hero Screenshot</p>
-              <p style={{ fontSize: '14px', opacity: 0.7 }}>
-                Replace with a screenshot showing the dashboard<br />
-                with a project being analyzed or code being generated
-              </p>
+          <div className="flex items-center mb-4">
+              <img 
+                src="/images/hero-screenshot.png" 
+                alt="Create Task Screen" 
+                width="100%"
+                className="mr-3"
+              />
             </div>
-          </div>
         </div>
       </div>
     </section>
@@ -339,8 +311,8 @@ const ProductDemoSection = () => {
           maxWidth: '600px',
           margin: '0 auto 48px',
         }}>
-          Watch how a simple project description transforms into a complete codebase
-          with pull requests ready to review.
+          Watch how a simple project description transforms into a complete breakdown
+          with requirements, stories, and implementation-ready tasks.
         </p>
 
         {/* Video Player Container */}
@@ -385,10 +357,7 @@ const ProductDemoSection = () => {
                 </svg>
               </div>
               <p style={{ color: 'var(--color-text-muted)', fontSize: '16px' }}>
-                Click to play demo video
-              </p>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '14px', opacity: 0.7, marginTop: '8px' }}>
-                Replace with video embed or YouTube/Vimeo link
+                Demo Video Coming Soon!
               </p>
             </div>
           </div>
@@ -416,7 +385,7 @@ const FeatureShowcase = () => {
             color: 'var(--color-text)',
             marginBottom: '16px',
           }}>
-            Everything You Need to Ship Faster
+            Everything You Need to Plan Better
           </h2>
           <p style={{
             fontSize: '18px',
@@ -424,52 +393,72 @@ const FeatureShowcase = () => {
             maxWidth: '600px',
             margin: '0 auto',
           }}>
-            From idea to production code in minutes, not weeks.
+            From vague idea to detailed implementation plan in minutes.
           </p>
         </div>
 
-        {/* Feature 1: Project Breakdown */}
+        {/* Feature 1: Multi-Persona Views */}
         <FeatureBlock
-          badge="AI-Powered Analysis"
-          title="From Idea to Organized Plan"
-          description="Describe your project and watch as AI breaks it into Epics, User Stories, and organized Chapters. Everything structured and ready for development."
-          imagePlaceholder="Screenshot of the Summary tab showing project stats, epics count, stories, and chapters"
-          imageAlt="Project Summary Screenshot"
+          badge="Role-Based Views"
+          title="See What Matters to You"
+          description="Switch between PM, Developer, and Consultant perspectives. Each view shows the exact information that role needs - from task lists to technical specs to client proposals."
+          image="/images/feature-1.png"
+          imagePlaceholder="Screenshot showing the persona selector with PM/Dev/Consultant tabs and their different views"
+          imageAlt="Multi-Persona Views Screenshot"
           reversed={false}
           highlights={[
-            'Automatic Epic & Story generation',
-            'Organized into logical chapters',
-            'Editable and refinable with AI assistance',
+            'PM view: Tasks, story points & progress tracking',
+            'Dev view: Technical specs, test scenarios & system design',
+            'Consultant view: Scope analysis & proposal generation',
           ]}
         />
 
-        {/* Feature 2: Task Generation */}
+        {/* Feature 2: Implementation Tasks */}
         <FeatureBlock
           badge="Smart Decomposition"
           title="Tasks That Actually Make Sense"
-          description="No more vague tickets. Every task includes clear descriptions, story points, and fits into a proper hierarchy. Perfect for solo devs or teams."
-          imagePlaceholder="Screenshot of the All Tasks view showing the expandable task tree with story points"
-          imageAlt="Task Tree Screenshot"
+          description="Every task includes clear descriptions, story points, implementation details, and dependency tracking. Expand any task to see what it depends on and how to build it."
+          image="/images/feature-2.png"
+          imagePlaceholder="Screenshot of the Tasks tab showing expandable task cards with story points, dependencies, and implementation details"
+          imageAlt="Task List Screenshot"
           reversed={true}
           highlights={[
-            'Hierarchical task breakdown',
-            'Story point estimation',
-            'Export to Trello, JIRA, or GitHub',
+            'Story points & complexity scoring',
+            'Visual dependency tracking',
+            'Detailed implementation guidance',
           ]}
         />
 
-        {/* Feature 3: Code Generation */}
+        {/* Feature 3: System Design */}
         <FeatureBlock
-          badge="Code Generation"
-          title="From Tasks to Working Code"
-          description="One click generates production-ready code for your entire project. APIs, database schemas, frontend components - automatically created and pushed to your repository."
-          imagePlaceholder="Screenshot of code generation in progress or the tech stack selection modal"
-          imageAlt="Code Generation Screenshot"
+          badge="Technical Architecture"
+          title="System Design Included"
+          description="Cahoots doesn't just list tasks—it maps out how your system works. See what commands trigger what events, and how data flows through your application."
+          image="/images/feature-3.png"
+          imagePlaceholder="Screenshot of the Dev view showing system components organized by feature area"
+          imageAlt="System Design Screenshot"
           reversed={false}
           highlights={[
-            'Full-stack code generation',
-            'Automatic pull request creation',
-            'Multiple tech stack support',
+            'Commands, events & data flow',
+            'Test scenarios in Given-When-Then format',
+            'Organized by feature area',
+          ]}
+        />
+
+        {/* Feature 4: Flexible Export */}
+        <FeatureBlock
+          badge="Universal Export"
+          title="Export Anywhere, Any Format"
+          description="Export your project artifacts to JSON, CSV, Markdown, or YAML. Create LLM prompts for design reviews or implementation guides. Download as a single file or organized ZIP archive."
+          image="/images/feature-4.png"
+          imagePlaceholder="Screenshot of the Export modal showing artifact selection, format options, and download structure"
+          imageAlt="Export Modal Screenshot"
+          reversed={true}
+          highlights={[
+            'Multiple formats: JSON, CSV, Markdown, YAML',
+            'LLM prompt templates for AI assistance',
+            'Single document or ZIP with separate files',
+            'Export your project plan to JIRA or Trello'
           ]}
         />
       </div>
@@ -477,7 +466,7 @@ const FeatureShowcase = () => {
   );
 };
 
-const FeatureBlock = ({ badge, title, description, imagePlaceholder, imageAlt, reversed, highlights }) => (
+const FeatureBlock = ({ badge, title, description, image, imagePlaceholder, imageAlt, reversed, highlights }) => (
   <div style={{
     display: 'grid',
     gridTemplateColumns: 'repeat(2, 1fr)',
@@ -535,7 +524,6 @@ const FeatureBlock = ({ badge, title, description, imagePlaceholder, imageAlt, r
     </div>
 
     <div style={{ order: reversed ? 1 : 2 }}>
-      {/* Screenshot placeholder */}
       <div style={{
         backgroundColor: tokens.colors.neutral[900],
         borderRadius: '12px',
@@ -543,31 +531,43 @@ const FeatureBlock = ({ badge, title, description, imagePlaceholder, imageAlt, r
         boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.4)`,
         border: `1px solid ${tokens.colors.neutral[800]}`,
       }}>
-        <div style={{
-          backgroundColor: tokens.colors.neutral[950],
-          borderRadius: '8px',
-          aspectRatio: '4/3',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '24px' }}>
-            <div style={{
-              width: '48px',
-              height: '48px',
-              margin: '0 auto 12px',
-              backgroundColor: `${tokens.colors.primary[500]}20`,
+        {image ? (
+          <img
+            src={image}
+            alt={imageAlt || title}
+            style={{
+              width: '100%',
               borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '24px',
-            }}>
-              📸
+              display: 'block',
+            }}
+          />
+        ) : (
+          <div style={{
+            backgroundColor: tokens.colors.neutral[950],
+            borderRadius: '8px',
+            aspectRatio: '4/3',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <div style={{ textAlign: 'center', color: 'var(--color-text-muted)', padding: '24px' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                margin: '0 auto 12px',
+                backgroundColor: `${tokens.colors.primary[500]}20`,
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '24px',
+              }}>
+                📸
+              </div>
+              <p style={{ fontSize: '14px' }}>{imagePlaceholder}</p>
             </div>
-            <p style={{ fontSize: '14px' }}>{imagePlaceholder}</p>
           </div>
-        </div>
+        )}
       </div>
     </div>
   </div>
@@ -587,20 +587,20 @@ const HowItWorksSection = () => {
     },
     {
       number: '02',
-      title: 'AI Creates Your Blueprint',
-      description: 'Watch in real-time as AI analyzes your requirements and creates a complete system design.',
+      title: 'AI Breaks It Down',
+      description: 'Watch in real-time as AI creates epics, user stories, and maps out how your system should work.',
       icon: '🧠',
     },
     {
       number: '03',
-      title: 'Review & Refine',
-      description: 'Edit modules, add features, or ask AI to make changes. You\'re always in control.',
-      icon: '✨',
+      title: 'Generate Tasks',
+      description: 'Get detailed implementation tasks with story points, dependencies, and technical guidance.',
+      icon: '📋',
     },
     {
       number: '04',
-      title: 'Generate Code',
-      description: 'Select your tech stack and generate production-ready code with a single click.',
+      title: 'Export & Execute',
+      description: 'Export to JIRA, Trello, or your favorite tool. Share proposals with clients. Start building.',
       icon: '🚀',
     },
   ];
@@ -618,13 +618,13 @@ const HowItWorksSection = () => {
             color: 'var(--color-text)',
             marginBottom: '16px',
           }}>
-            From Idea to Code in 4 Steps
+            From Idea to Plan in 4 Steps
           </h2>
           <p style={{
             fontSize: '18px',
             color: 'var(--color-text-muted)',
           }}>
-            No complex setup. No learning curve. Just describe and build.
+            No complex setup. No learning curve. Just describe and plan.
           </p>
         </div>
 
@@ -704,22 +704,22 @@ const UseCasesSection = () => {
     {
       icon: '🚀',
       title: 'Side Projects',
-      description: 'Go from idea to MVP in a weekend. Perfect for indie hackers and hobbyists.',
+      description: 'Turn your weekend idea into a clear plan before writing a single line of code.',
     },
     {
       icon: '🏢',
       title: 'Startups',
-      description: 'Ship features faster with AI-generated boilerplate and clear task breakdowns.',
+      description: 'Break down features into manageable tasks. Keep the whole team aligned on what to build.',
     },
     {
       icon: '👨‍💻',
-      title: 'Freelancers',
-      description: 'Estimate projects accurately and deliver consistent quality every time.',
+      title: 'Freelancers & Consultants',
+      description: 'Generate professional proposals with scope analysis. Estimate projects accurately with story points.',
     },
     {
-      icon: '📚',
-      title: 'Learning',
-      description: 'Understand how production apps are structured by seeing the complete system design.',
+      icon: '📐',
+      title: 'Technical Architects',
+      description: 'Map out system behavior and data flows. Export technical specs for your team to implement.',
     },
   ];
 
@@ -826,7 +826,7 @@ const FinalCTASection = ({ onGetStarted }) => {
           marginBottom: '24px',
           lineHeight: '1.1',
         }}>
-          Ready to Build Something Amazing?
+          Ready to Plan Something Amazing?
         </h2>
         <p style={{
           fontSize: '20px',
@@ -834,7 +834,7 @@ const FinalCTASection = ({ onGetStarted }) => {
           marginBottom: '40px',
           lineHeight: '1.6',
         }}>
-          Stop planning. Start shipping. Your next project is waiting.
+          Stop guessing scope. Start with a clear plan. Your next project deserves it.
         </p>
         <button onClick={onGetStarted} style={{
           ...primaryButtonStyle,
