@@ -323,6 +323,107 @@ async def get_task_tree(
     return {"data": tree_data}
 
 
+@router.get("/{task_id}/questions")
+async def get_task_questions(
+    task_id: str,
+    storage: TaskStorage = Depends(get_task_storage)
+) -> dict:
+    """Get clarifying questions for a task.
+
+    Returns the list of clarifying questions generated during epic analysis.
+    These questions help refine understanding while decomposition continues.
+    """
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Get questions from task context
+    questions = task.context.get("clarifying_questions", []) if task.context else []
+
+    return {
+        "data": {
+            "task_id": task_id,
+            "questions": questions,
+            "question_count": len(questions),
+            "status": task.status.value if task.status else "unknown"
+        }
+    }
+
+
+from pydantic import BaseModel
+
+class AnswersRequest(BaseModel):
+    """Request body for submitting clarifying question answers."""
+    answers: Dict[str, Any]
+
+
+@router.post("/{task_id}/answers")
+async def submit_task_answers(
+    task_id: str,
+    request: AnswersRequest,
+    storage: TaskStorage = Depends(get_task_storage)
+) -> dict:
+    """Submit answers to clarifying questions.
+
+    Answers are stored in task context and can be used to refine
+    decomposition if it's still in progress.
+
+    Args:
+        task_id: The task ID
+        answers: Dict mapping question_id to answer value
+    """
+    from app.websocket.events import task_event_emitter
+
+    task = await storage.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Initialize context if needed
+    if not task.context:
+        task.context = {}
+
+    # Store answers in task context
+    if "clarifying_answers" not in task.context:
+        task.context["clarifying_answers"] = {}
+
+    # Merge new answers with existing ones
+    task.context["clarifying_answers"].update(request.answers)
+
+    # All answers are integrated at the end of processing (PASS 5)
+    is_completed = task.status == TaskStatus.COMPLETED
+    answers_already_integrated = task.context.get("answers_integrated", False)
+
+    if answers_already_integrated:
+        integration_status = "already_integrated"
+        integration_message = "Your previous answers have been integrated."
+    elif is_completed:
+        integration_status = "stored"
+        integration_message = "Saved. Use 'Refine' to regenerate with your input."
+    else:
+        integration_status = "will_integrate"
+        integration_message = "Will be integrated when analysis completes."
+
+    # Save the task
+    await storage.save_task(task)
+
+    # Emit event for real-time updates
+    await task_event_emitter.emit_answers_received(
+        task,
+        task.user_id,
+        request.answers
+    )
+
+    return {
+        "data": {
+            "task_id": task_id,
+            "answers_received": len(request.answers),
+            "total_answers": len(task.context.get("clarifying_answers", {})),
+            "integration_status": integration_status,
+            "message": integration_message
+        }
+    }
+
+
 @router.get("", response_model=TaskListResponse)
 async def list_tasks(
     page: int = Query(1, ge=1),

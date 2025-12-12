@@ -16,6 +16,7 @@ from app.analyzer import (
     CoverageValidator,
     CoverageReport
 )
+from app.analyzer.epic_analyzer import ClarifyingQuestion
 
 
 class EpicStoryProcessor:
@@ -62,7 +63,7 @@ class EpicStoryProcessor:
         self,
         root_task: Task,
         context: Optional[Dict[str, Any]] = None
-    ) -> Tuple[List[Epic], Dict[str, List[UserStory]]]:
+    ) -> Tuple[List[Epic], Dict[str, List[UserStory]], List[ClarifyingQuestion]]:
         """Initialize epics and core stories for a root task.
 
         This is called once at the beginning of task processing to set up
@@ -73,20 +74,22 @@ class EpicStoryProcessor:
             context: Optional context
 
         Returns:
-            Tuple of (epics, stories_by_epic)
+            Tuple of (epics, stories_by_epic, clarifying_questions)
         """
         # Reset all state to prevent cross-task contamination
         self.reset()
 
         print(f"[EpicStoryProcessor] Generating epics for root task: {root_task.description[:100]}...")
 
-        # Step 1: Generate comprehensive epics
-        epic_generation = await self.epic_analyzer.generate_epics(
+        # Step 1: Generate comprehensive epics AND clarifying questions
+        epic_generation, clarifying_questions = await self.epic_analyzer.generate_epics(
             root_task.description,
             root_task.id,
             context
         )
         self.current_epics = epic_generation.epics
+
+        print(f"[EpicStoryProcessor] Generated {len(clarifying_questions)} clarifying questions")
 
         # Save epics to storage
         for epic in self.current_epics:
@@ -120,7 +123,7 @@ class EpicStoryProcessor:
         root_task.epic_ids = [epic.id for epic in self.current_epics]
         await self.storage.save_task(root_task)
 
-        return self.current_epics, self.current_stories
+        return self.current_epics, self.current_stories, clarifying_questions
 
     async def process_task_with_stories(
         self,

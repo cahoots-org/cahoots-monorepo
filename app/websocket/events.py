@@ -25,6 +25,9 @@ class TaskEventType(str, Enum):
     EVENT_MODELING_COMPLETED = "event_modeling.completed"
     EVENT_MODELING_ERROR = "event_modeling.error"
     CONTEXT_UPDATED = "context.updated"
+    # Clarifying questions events
+    QUESTIONS_READY = "questions.ready"
+    ANSWERS_RECEIVED = "answers.received"
     # Code generation events
     CODEGEN_STARTED = "codegen.started"
     CODEGEN_PROGRESS = "codegen.progress"
@@ -171,6 +174,44 @@ class TaskEventEmitter:
         }
         await self._emit_task_event(
             TaskEventType.DECOMPOSITION_ERROR,
+            task,
+            user_id,
+            additional_data
+        )
+
+    async def emit_questions_ready(
+        self,
+        task: Task,
+        user_id: Optional[str] = None,
+        questions: list = None
+    ):
+        """Emit questions ready event when clarifying questions are generated."""
+        additional_data = {
+            "questions": [q.to_dict() if hasattr(q, 'to_dict') else q for q in (questions or [])],
+            "question_count": len(questions or []),
+            "message": f"Generated {len(questions or [])} clarifying questions"
+        }
+        await self._emit_task_event(
+            TaskEventType.QUESTIONS_READY,
+            task,
+            user_id,
+            additional_data
+        )
+
+    async def emit_answers_received(
+        self,
+        task: Task,
+        user_id: Optional[str] = None,
+        answers: dict = None
+    ):
+        """Emit answers received event when user submits clarifying answers."""
+        additional_data = {
+            "answers": answers or {},
+            "answer_count": len(answers or {}),
+            "message": f"Received {len(answers or {})} answers"
+        }
+        await self._emit_task_event(
+            TaskEventType.ANSWERS_RECEIVED,
             task,
             user_id,
             additional_data

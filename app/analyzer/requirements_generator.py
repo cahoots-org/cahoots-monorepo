@@ -47,7 +47,8 @@ async def generate_requirements(
     description: str,
     epics: List[Dict[str, Any]],
     stories: List[Dict[str, Any]],
-    tech_stack: Dict[str, Any]
+    tech_stack: Dict[str, Any],
+    user_clarifications: str = None
 ) -> Dict[str, Any]:
     """
     Generate functional and non-functional requirements.
@@ -58,6 +59,7 @@ async def generate_requirements(
         epics: List of epics
         stories: List of user stories
         tech_stack: Tech stack choices
+        user_clarifications: Optional user answers to clarifying questions
 
     Returns:
         Dict with functional_requirements and non_functional_requirements lists
@@ -80,6 +82,15 @@ async def generate_requirements(
         service_list = ", ".join([f"{k}: {v}" for k, v in services.items()])
         tech_info += f"\nServices: {service_list}"
 
+    # Build clarifications section
+    clarifications_section = ""
+    if user_clarifications:
+        clarifications_section = f"""
+USER CLARIFICATIONS (incorporate these into requirements):
+{user_clarifications}
+"""
+        print(f"[RequirementsGenerator] Including user clarifications in requirements generation")
+
     prompt = f"""Generate comprehensive requirements for this software project.
 
 PROJECT: {description}
@@ -91,7 +102,7 @@ USER STORIES ({len(stories)} total - derive requirements from these):
 {story_context or "Not specified"}
 
 TECH STACK: {tech_info}
-
+{clarifications_section}
 TASK: Generate COMPREHENSIVE requirements by analyzing ALL user stories and their acceptance criteria.
 
 Return JSON with two arrays:

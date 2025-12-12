@@ -36,11 +36,13 @@ import UnifiedEditModal from '../components/UnifiedEditModal';
 import UniversalExportModal from '../components/UniversalExportModal';
 import CodeGenerationProgress from '../components/CodeGenerationProgress';
 import TechStackSelectionModal from '../components/TechStackSelectionModal';
+import ClarifyingQuestions from '../components/ClarifyingQuestions';
 
 // Persona components
 import PersonaSelectorBar from '../components/persona/PersonaSelectorBar';
 import StoryPointDashboard from '../components/persona/pm/StoryPointDashboard';
-import EventModelFlow from '../components/persona/dev/EventModelFlow';
+import EventModelCarousel from '../components/EventModelCarousel';
+import EventModelTab from '../components/TaskBoard/EventModelTab';
 import ExecutiveSummary from '../components/persona/consultant/ExecutiveSummary';
 
 import {
@@ -70,6 +72,8 @@ const ProjectView = () => {
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [showUniversalExport, setShowUniversalExport] = useState(false);
   const [editModal, setEditModal] = useState({ open: false, type: null, artifact: null });
+  const [showQuestions, setShowQuestions] = useState(true);
+  const [questionsCompleted, setQuestionsCompleted] = useState(false);
 
   useEffect(() => {
     const tabs = getPersonaTabs(persona);
@@ -115,6 +119,19 @@ const ProjectView = () => {
     enabled: !!taskId && isAuthenticated(),
   });
 
+  // Fetch clarifying questions
+  const { data: questionsData } = useQuery({
+    queryKey: ['tasks', 'questions', taskId],
+    queryFn: async () => {
+      const response = await apiClient.get(`/tasks/${taskId}/questions`);
+      return response?.data || response;
+    },
+    enabled: !!taskId && isAuthenticated() && !questionsCompleted,
+  });
+
+  const questions = questionsData?.questions || [];
+  const hasQuestions = questions.length > 0;
+
   useProjectContext(taskId);
 
   useEffect(() => {
@@ -154,7 +171,41 @@ const ProjectView = () => {
     showSuccess('Changes saved successfully!');
   }, [handleRefresh, showSuccess]);
 
+  // Question handlers
+  const handleAnswerQuestion = useCallback(async (questionId, answer) => {
+    try {
+      const response = await apiClient.post(`/tasks/${taskId}/answers`, {
+        answers: { [questionId]: answer }
+      });
+      // Return data for integration feedback
+      return response?.data || response;
+    } catch (error) {
+      console.error('Failed to submit answer:', error);
+      return null;
+    }
+  }, [taskId]);
+
+  const handleSkipQuestion = useCallback((questionId) => {
+    console.log(`Skipped question: ${questionId}`);
+  }, []);
+
+  const handleSkipAllQuestions = useCallback(() => {
+    console.log('Skipped all questions');
+    setQuestionsCompleted(true);
+    setShowQuestions(false);
+  }, []);
+
+  const handleQuestionsComplete = useCallback((answers) => {
+    console.log('Questions completed with answers:', answers);
+    setQuestionsCompleted(true);
+    setShowQuestions(false);
+  }, []);
+
   const isProcessing = task?.status === 'submitted' || task?.status === 'processing';
+  const isProcessingComplete = task?.status === 'completed' || task?.status === 'failed';
+
+  // Show questions if: processing, has questions, user hasn't completed/skipped, and questions not hidden
+  const shouldShowQuestions = isProcessing && hasQuestions && !questionsCompleted && showQuestions;
   const tabs = getPersonaTabs(persona);
 
   if (taskLoading) {
@@ -199,7 +250,7 @@ const ProjectView = () => {
         )}
 
         <div style={styles.headerRight}>
-          {task && (
+          {task && !isProcessing && (
             <Button
               variant="secondary"
               size="sm"
@@ -222,8 +273,19 @@ const ProjectView = () => {
         </div>
       </header>
 
-      {/* Processing state */}
-      {isProcessing && (
+      {/* Processing state - show questions or progress */}
+      {isProcessing && shouldShowQuestions && (
+        <ClarifyingQuestions
+          questions={questions}
+          onAnswer={handleAnswerQuestion}
+          onSkip={handleSkipQuestion}
+          onSkipAll={handleSkipAllQuestions}
+          onComplete={handleQuestionsComplete}
+          isProcessingComplete={isProcessingComplete}
+          taskStatus={task?.status}
+        />
+      )}
+      {isProcessing && !shouldShowQuestions && (
         <ProjectSummary
           task={task}
           taskTree={taskTree}
@@ -236,7 +298,7 @@ const ProjectView = () => {
       {!isProcessing && (
         <>
           {persona === 'pm' && <StoryPointDashboard task={task} taskTree={taskTree} />}
-          {persona === 'dev' && <EventModelFlow task={task} />}
+          {persona === 'dev' && <EventModelCarousel task={task} />}
           {persona === 'consultant' && <ExecutiveSummary task={task} taskTree={taskTree} />}
         </>
       )}
@@ -280,7 +342,7 @@ const ProjectView = () => {
 
           {/* Dev Tabs */}
           {persona === 'dev' && activeTab === 'eventmodel' && (
-            <DevEventModelTab task={task} onEditArtifact={handleEditArtifact} />
+            <EventModelTab task={task} taskTree={taskTree} />
           )}
           {persona === 'dev' && activeTab === 'scenarios' && (
             <DevScenariosTab task={task} onEditArtifact={handleEditArtifact} />
@@ -688,58 +750,6 @@ const PMTasksTab = ({ task, taskTree, onEditArtifact }) => {
 
 /* ========== DEV TABS ========== */
 
-const DevEventModelTab = ({ task, onEditArtifact }) => {
-  const events = task?.metadata?.extracted_events || [];
-  const commands = task?.metadata?.commands || [];
-  const readModels = task?.metadata?.read_models || [];
-
-  const EditableBadge = ({ item, type, variant }) => {
-    const itemObj = typeof item === 'string' ? { name: item } : item;
-    return (
-      <div
-        style={styles.editableBadge}
-        onClick={() => onEditArtifact && onEditArtifact(type, itemObj)}
-        title={onEditArtifact ? `Click to edit ${type}` : undefined}
-      >
-        <Badge variant={variant}>
-          {itemObj.name}
-        </Badge>
-        {onEditArtifact && <span style={styles.editHint}>Edit</span>}
-      </div>
-    );
-  };
-
-  return (
-    <Card style={styles.tabCard}>
-      <Text style={styles.tabTitle}>Full Event Model</Text>
-      <div style={styles.modelSection}>
-        <Text style={styles.sectionHeader}>Commands ({commands.length})</Text>
-        <div style={styles.badgeGrid}>
-          {commands.map((cmd, i) => (
-            <EditableBadge key={i} item={cmd} type="command" variant="primary" />
-          ))}
-        </div>
-      </div>
-      <div style={styles.modelSection}>
-        <Text style={styles.sectionHeader}>Events ({events.length})</Text>
-        <div style={styles.badgeGrid}>
-          {events.map((evt, i) => (
-            <EditableBadge key={i} item={evt} type="event" variant="warning" />
-          ))}
-        </div>
-      </div>
-      <div style={styles.modelSection}>
-        <Text style={styles.sectionHeader}>Read Models ({readModels.length})</Text>
-        <div style={styles.badgeGrid}>
-          {readModels.map((rm, i) => (
-            <EditableBadge key={i} item={rm} type="read_model" variant="info" />
-          ))}
-        </div>
-      </div>
-    </Card>
-  );
-};
-
 const DevScenariosTab = ({ task, onEditArtifact }) => {
   const gwtScenarios = extractGWTScenarios(task);
 
@@ -773,7 +783,10 @@ const DevScenariosTab = ({ task, onEditArtifact }) => {
 
   return (
     <Card style={styles.tabCard}>
-      <Text style={styles.tabTitle}>Test Scenarios</Text>
+      <div style={styles.scenariosHeader}>
+        <Text style={styles.tabTitle}>Test Scenarios</Text>
+        <Badge variant="success">{hasGWT ? gwtScenarios.length : (testScenarios?.length || 0)} scenarios</Badge>
+      </div>
       {hasGWT ? (
         <div style={styles.scenarioList}>
           {gwtScenarios.map((s, i) => (
@@ -791,9 +804,18 @@ const DevScenariosTab = ({ task, onEditArtifact }) => {
                 )}
               </div>
               <div style={styles.gwtBlock}>
-                <Text style={styles.gwtLine}><strong>Given</strong> {s.given}</Text>
-                <Text style={styles.gwtLine}><strong>When</strong> {s.when}</Text>
-                <Text style={styles.gwtLine}><strong>Then</strong> {s.then}</Text>
+                <div style={styles.gwtRow}>
+                  <span style={styles.gwtLabel}>Given</span>
+                  <Text style={styles.gwtText}>{s.given}</Text>
+                </div>
+                <div style={styles.gwtRow}>
+                  <span style={styles.gwtLabel}>When</span>
+                  <Text style={styles.gwtText}>{s.when}</Text>
+                </div>
+                <div style={styles.gwtRow}>
+                  <span style={styles.gwtLabel}>Then</span>
+                  <Text style={styles.gwtText}>{s.then}</Text>
+                </div>
               </div>
             </div>
           ))}
@@ -822,7 +844,10 @@ const DevScenariosTab = ({ task, onEditArtifact }) => {
           ))}
         </div>
       ) : (
-        <Text style={styles.emptyText}>No test scenarios defined yet.</Text>
+        <div style={styles.emptyScenarios}>
+          <span style={styles.emptyScenariosIcon}>📋</span>
+          <Text style={styles.emptyText}>No test scenarios defined yet</Text>
+        </div>
       )}
     </Card>
   );
@@ -1702,41 +1727,81 @@ const styles = {
     opacity: 0,
     transition: 'opacity 0.15s ease',
   },
+  scenariosHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: tokens.spacing[4],
+  },
   scenarioList: {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[4],
+    gap: tokens.spacing[3],
   },
   scenarioItem: {
     padding: tokens.spacing[4],
-    backgroundColor: 'var(--color-bg)',
+    backgroundColor: 'white',
     borderRadius: tokens.borderRadius.lg,
     border: '1px solid var(--color-border)',
+    borderLeft: `3px solid ${tokens.colors.success[400]}`,
   },
   scenarioHeader: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: tokens.spacing[2],
+    marginBottom: tokens.spacing[3],
   },
   scenarioStory: {
     fontSize: tokens.typography.fontSize.sm[0],
-    fontWeight: tokens.typography.fontWeight.semibold,
-    color: tokens.colors.primary[400],
+    fontWeight: tokens.typography.fontWeight.medium,
+    color: tokens.colors.neutral[700],
   },
   gwtBlock: {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacing[1],
+    gap: tokens.spacing[2],
+    backgroundColor: tokens.colors.neutral[50],
+    borderRadius: tokens.borderRadius.md,
+    padding: tokens.spacing[3],
+  },
+  gwtRow: {
+    display: 'flex',
+    gap: tokens.spacing[3],
+  },
+  gwtLabel: {
+    fontSize: tokens.typography.fontSize.xs[0],
+    fontWeight: tokens.typography.fontWeight.semibold,
+    color: tokens.colors.success[600],
+    textTransform: 'uppercase',
+    minWidth: '50px',
+    flexShrink: 0,
+  },
+  gwtText: {
+    fontSize: tokens.typography.fontSize.sm[0],
+    color: tokens.colors.neutral[700],
+    lineHeight: 1.4,
   },
   gwtLine: {
     fontSize: tokens.typography.fontSize.sm[0],
   },
   testScenarioItem: {
     padding: tokens.spacing[4],
-    backgroundColor: 'var(--color-bg)',
+    backgroundColor: 'white',
     borderRadius: tokens.borderRadius.lg,
     border: '1px solid var(--color-border)',
+    borderLeft: `3px solid ${tokens.colors.success[400]}`,
+  },
+  emptyScenarios: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: tokens.spacing[8],
+    textAlign: 'center',
+  },
+  emptyScenariosIcon: {
+    fontSize: '40px',
+    marginBottom: tokens.spacing[3],
   },
   testCriterion: {
     display: 'flex',

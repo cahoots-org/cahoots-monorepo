@@ -149,10 +149,11 @@ class TaskProcessor:
         # Step 1: Generate Epics and Stories (if processor available)
         epics = []
         stories_by_epic = {}
+        clarifying_questions = []
         if self.epic_story_processor:
             phase_start = datetime.now(timezone.utc)
             print(f"[TaskProcessor] Generating Epics and Stories for root task")
-            epics, stories_by_epic = await self.epic_story_processor.initialize_epics_and_stories(
+            epics, stories_by_epic, clarifying_questions = await self.epic_story_processor.initialize_epics_and_stories(
                 root_task, context
             )
             phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
@@ -170,7 +171,7 @@ class TaskProcessor:
             self.stats["epics_created"] = len(epics)
             self.stats["stories_created"] = sum(len(stories) for stories in stories_by_epic.values())
 
-        # Store epics and stories in context for frontend
+        # Store epics, stories, and clarifying questions in context for frontend
         if epics or stories_by_epic:
             if not root_task.context:
                 root_task.context = {}
@@ -178,6 +179,17 @@ class TaskProcessor:
             root_task.context["user_stories"] = []
             for epic_stories in stories_by_epic.values():
                 root_task.context["user_stories"].extend([story.to_dict() for story in epic_stories])
+
+        # Store clarifying questions in context
+        if clarifying_questions:
+            if not root_task.context:
+                root_task.context = {}
+            root_task.context["clarifying_questions"] = [q.to_dict() for q in clarifying_questions]
+            print(f"[TaskProcessor] Stored {len(clarifying_questions)} clarifying questions")
+            # Emit questions ready event
+            await task_event_emitter.emit_questions_ready(root_task, user_id, clarifying_questions)
+
+        if epics or stories_by_epic or clarifying_questions:
             await self.storage.save_task(root_task)
 
         # Step 2: Process stories into tasks (story-driven decomposition)
@@ -582,10 +594,11 @@ class TaskProcessor:
             # STEP 1: Initialize Epics and Stories
             epics = []
             stories_by_epic = {}
+            clarifying_questions = []
             if self.epic_story_processor:
                 phase_start = datetime.now(timezone.utc)
                 print(f"[TaskProcessor] STEP 1: Initializing Epics and Stories")
-                epics, stories_by_epic = await self.epic_story_processor.initialize_epics_and_stories(
+                epics, stories_by_epic, clarifying_questions = await self.epic_story_processor.initialize_epics_and_stories(
                     root_task, context
                 )
                 phase_duration = (datetime.now(timezone.utc) - phase_start).total_seconds()
@@ -602,7 +615,7 @@ class TaskProcessor:
                 self.stats["epics_created"] = len(epics)
                 self.stats["stories_created"] = story_count
 
-            # Store epics and stories in context for frontend
+            # Store epics, stories, and clarifying questions in context for frontend
             if epics or stories_by_epic:
                 if not root_task.context:
                     root_task.context = {}
@@ -610,6 +623,17 @@ class TaskProcessor:
                 root_task.context["user_stories"] = []
                 for epic_stories in stories_by_epic.values():
                     root_task.context["user_stories"].extend([story.to_dict() for story in epic_stories])
+
+            # Store clarifying questions in context
+            if clarifying_questions:
+                if not root_task.context:
+                    root_task.context = {}
+                root_task.context["clarifying_questions"] = [q.to_dict() for q in clarifying_questions]
+                print(f"[TaskProcessor] Stored {len(clarifying_questions)} clarifying questions")
+                # Emit questions ready event
+                await task_event_emitter.emit_questions_ready(root_task, user_id, clarifying_questions)
+
+            if epics or stories_by_epic or clarifying_questions:
                 await self.storage.save_task(root_task)
 
                 # Publish user stories to Context Engine
@@ -744,6 +768,27 @@ class TaskProcessor:
                 stories_for_req = root_task.context.get('user_stories', []) if root_task.context else []
                 tech_stack_for_req = context.get('tech_stack', {}) if context else {}
 
+                # Check for clarifying answers to incorporate
+                clarifying_answers = root_task.context.get('clarifying_answers', {}) if root_task.context else {}
+                if clarifying_answers:
+                    # Get the original questions to provide context
+                    clarifying_questions = root_task.context.get('clarifying_questions', []) if root_task.context else []
+                    questions_map = {q.get('id'): q.get('question') for q in clarifying_questions}
+
+                    # Format answers for context injection
+                    formatted_answers = []
+                    for q_id, answer in clarifying_answers.items():
+                        question_text = questions_map.get(q_id, q_id)
+                        formatted_answers.append(f"Q: {question_text}\nA: {answer}")
+
+                    user_clarifications = "\n\n".join(formatted_answers)
+                    print(f"[TaskProcessor] Incorporating {len(clarifying_answers)} user clarifications into analysis")
+
+                    # Add to context for downstream use
+                    if not context:
+                        context = {}
+                    context['user_clarifications'] = user_clarifications
+
                 # Run event modeling AND requirements generation in parallel
                 print(f"[TaskProcessor] Running event modeling and requirements generation in parallel")
                 event_model_task = unified_analyzer.analyze_domain(
@@ -757,7 +802,8 @@ class TaskProcessor:
                     root_task.description,
                     epics_for_req,
                     stories_for_req,
-                    tech_stack_for_req
+                    tech_stack_for_req,
+                    user_clarifications=context.get('user_clarifications') if context else None
                 )
 
                 event_model_analysis, requirements_result = await asyncio.gather(
@@ -874,6 +920,12 @@ class TaskProcessor:
                 await self.storage.save_task(root_task)
 
                 print(f"[TaskProcessor] Associated tasks with {len(task_slice_map)} slices")
+
+            # PASS 5: Integrate any clarifying answers that were collected during processing
+            clarifying_answers = root_task.context.get('clarifying_answers', {}) if root_task.context else {}
+            if clarifying_answers:
+                print(f"[TaskProcessor] PASS 5: Integrating {len(clarifying_answers)} user clarifications")
+                await self._integrate_clarifying_answers(root_task, tree, clarifying_answers, user_id)
 
             # Mark root task as complete
             if root_task.status != TaskStatus.COMPLETED:
@@ -1523,6 +1575,185 @@ class TaskProcessor:
         if all_complete:
             task.status = TaskStatus.COMPLETED
             await self.storage.save_task(task)
+
+    async def _integrate_clarifying_answers(
+        self,
+        root_task: Task,
+        tree: TaskTree,
+        clarifying_answers: Dict[str, Any],
+        user_id: Optional[str] = None
+    ) -> None:
+        """Integrate user's clarifying answers into the project analysis.
+
+        This is called as PASS 5, after all other processing is complete,
+        to ensure any answers collected during processing are incorporated.
+        Uses the same refinement approach as the /refine endpoint.
+
+        Args:
+            root_task: Root task
+            tree: Task tree
+            clarifying_answers: Dict mapping question_id to answer
+            user_id: User ID for events
+        """
+        from app.websocket.events import task_event_emitter
+
+        try:
+            # Get original questions for context
+            clarifying_questions = root_task.context.get('clarifying_questions', []) if root_task.context else []
+            questions_map = {q.get('id'): q for q in clarifying_questions}
+
+            # Format answers with full question context
+            formatted_clarifications = []
+            for q_id, answer in clarifying_answers.items():
+                question_data = questions_map.get(q_id, {})
+                question_text = question_data.get('question', q_id)
+                category = question_data.get('category', 'general')
+                formatted_clarifications.append({
+                    'question': question_text,
+                    'answer': answer,
+                    'category': category
+                })
+
+            if not formatted_clarifications:
+                return
+
+            # Build context string for LLM refinement
+            clarification_text = "\n".join([
+                f"[{c['category'].upper()}] Q: {c['question']}\nA: {c['answer']}"
+                for c in formatted_clarifications
+            ])
+
+            print(f"[TaskProcessor] Refining analysis with {len(formatted_clarifications)} clarifications")
+
+            # Get current event model for refinement (same as /refine endpoint)
+            current_chapters = root_task.metadata.get("chapters", []) if isinstance(root_task.metadata, dict) else []
+            current_events = root_task.metadata.get("extracted_events", []) if isinstance(root_task.metadata, dict) else []
+            current_commands = root_task.metadata.get("commands", []) if isinstance(root_task.metadata, dict) else []
+
+            # Format chapters for the prompt (preserve structure)
+            def format_chapters(chapters):
+                import json
+                return json.dumps(chapters, indent=2) if chapters else "[]"
+
+            # Use same refinement approach as /refine endpoint
+            refinement_prompt = f"""You are refining an existing project plan based on user answers to clarifying questions.
+
+## Original Project Description
+{root_task.description}
+
+## User's Answers to Clarifying Questions
+{clarification_text}
+
+## Current Plan Summary
+- {len(current_chapters)} chapters: {', '.join(c.get('name', 'Unnamed') for c in current_chapters[:5])}{'...' if len(current_chapters) > 5 else ''}
+- {len(current_commands)} commands
+- {len(current_events)} events
+
+## Current Chapters (JSON - PRESERVE EXISTING SLICES)
+{format_chapters(current_chapters)}
+
+## Your Task
+Based on the user's answers, determine what specific changes should be made to the project plan.
+
+CRITICAL RULES:
+1. PRESERVE all existing slices that are not being modified - copy them exactly
+2. Only ADD new slices or MODIFY existing ones based on user answers
+3. If user indicated scale requirements, add appropriate slices for caching, scaling, etc.
+4. If user indicated integrations, add slices for those integration points
+5. Do NOT create generic placeholder slices - every slice must have a real purpose
+
+Return a JSON object with:
+1. "changes" - array of changes made, each with:
+   - "type": "add_chapter" | "modify_chapter" | "add_slice" | "modify_slice" | "no_change"
+   - "target": name of the chapter/slice being changed
+   - "description": what was changed and why (reference the user's answer)
+2. "summary" - a brief 1-2 sentence summary of changes for the user
+3. "updated_chapters" - the complete chapters array with changes applied (PRESERVE unchanged slices exactly)
+
+If the user's answers don't require any changes to the existing plan, return:
+{{"changes": [{{"type": "no_change", "target": "plan", "description": "User answers confirmed existing plan is appropriate"}}], "summary": "No changes needed", "updated_chapters": <existing chapters>}}
+
+Return ONLY valid JSON, no markdown formatting."""
+
+            try:
+                response = await self.analyzer.llm.chat_completion(
+                    messages=[{"role": "user", "content": refinement_prompt}],
+                    max_tokens=8000,
+                    temperature=0.3
+                )
+
+                import json
+                content = response["choices"][0]["message"]["content"].strip()
+                # Remove markdown code blocks if present
+                if content.startswith("```"):
+                    content = content.split("```")[1]
+                    if content.startswith("json"):
+                        content = content[4:]
+                    content = content.strip()
+
+                refinement_result = json.loads(content)
+
+                changes = refinement_result.get("changes", [])
+                summary = refinement_result.get("summary", "Plan updated based on your answers")
+                updated_chapters = refinement_result.get("updated_chapters")
+
+                # Apply changes if there are actual updates
+                actual_changes = [c for c in changes if c.get("type") != "no_change"]
+
+                if actual_changes and updated_chapters:
+                    # Update the chapters in metadata
+                    if not isinstance(root_task.metadata, dict):
+                        root_task.metadata = {}
+                    root_task.metadata["chapters"] = updated_chapters
+                    root_task.metadata["last_refined_at"] = datetime.now(timezone.utc).isoformat()
+                    root_task.metadata["refinement_source"] = "clarifying_answers"
+
+                    print(f"[TaskProcessor] ✓ Applied {len(actual_changes)} changes from clarifying answers")
+                else:
+                    print(f"[TaskProcessor] ✓ No changes needed based on clarifying answers")
+
+                # Store refinement history
+                root_task.metadata['answer_refinements'] = {
+                    'clarifications_count': len(formatted_clarifications),
+                    'changes': changes,
+                    'summary': summary
+                }
+
+                # Mark that answers were integrated
+                if not root_task.context:
+                    root_task.context = {}
+                root_task.context['answers_integrated'] = True
+                root_task.context['answers_integrated_at'] = datetime.now(timezone.utc).isoformat()
+
+                await self.storage.save_task(root_task)
+
+                # Emit event for frontend
+                await task_event_emitter.emit_custom_event(
+                    "answers.integrated",
+                    root_task,
+                    user_id,
+                    {
+                        "clarifications_count": len(formatted_clarifications),
+                        "changes_count": len(actual_changes),
+                        "summary": summary
+                    }
+                )
+
+            except Exception as llm_error:
+                print(f"[TaskProcessor] ⚠ LLM refinement failed (non-blocking): {llm_error}")
+                import traceback
+                traceback.print_exc()
+                # Still mark as processed even if LLM fails
+                if not root_task.context:
+                    root_task.context = {}
+                root_task.context['answers_integrated'] = True
+                root_task.context['answers_integration_error'] = str(llm_error)
+                await self.storage.save_task(root_task)
+
+        except Exception as e:
+            print(f"[TaskProcessor] Error integrating clarifying answers: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def get_processing_stats(self) -> Dict[str, Any]:
         """Get processing statistics.

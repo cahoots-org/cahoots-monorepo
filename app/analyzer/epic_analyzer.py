@@ -8,6 +8,36 @@ from app.models import Epic, EpicStatus, EpicGeneration, UserStory
 from .llm_client import LLMClient
 
 
+# Clarifying question schema
+class ClarifyingQuestion:
+    """A clarifying question to help refine project understanding."""
+    def __init__(
+        self,
+        id: str,
+        question: str,
+        question_type: str = "short_text",
+        options: List[str] = None,
+        category: str = "general",
+        importance: str = "medium"
+    ):
+        self.id = id
+        self.question = question
+        self.type = question_type  # multiple_choice, short_text, yes_no
+        self.options = options or []
+        self.category = category  # scale, users, integrations, constraints, tech
+        self.importance = importance  # high, medium, low
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "question": self.question,
+            "type": self.type,
+            "options": self.options,
+            "category": self.category,
+            "importance": self.importance
+        }
+
+
 class EpicAnalyzer:
     """Analyzes root tasks and generates comprehensive epics."""
 
@@ -24,11 +54,12 @@ class EpicAnalyzer:
         root_description: str,
         root_task_id: str,
         context: Optional[Dict[str, Any]] = None
-    ) -> EpicGeneration:
+    ) -> Tuple[EpicGeneration, List[ClarifyingQuestion]]:
         """Generate comprehensive epics from a root task description.
 
         This should identify ALL major functional areas upfront to ensure
-        complete coverage of the system.
+        complete coverage of the system. Also generates clarifying questions
+        to help refine understanding.
 
         Args:
             root_description: The root task description
@@ -36,14 +67,14 @@ class EpicAnalyzer:
             context: Optional context (tech stack, preferences, etc.)
 
         Returns:
-            EpicGeneration with all epics and coverage analysis
+            Tuple of (EpicGeneration with all epics, List of clarifying questions)
         """
         system_prompt = self._build_epic_generation_prompt(context)
-        user_prompt = f"""Generate the major functional areas (Epics) for this system.
+        user_prompt = f"""Generate the major functional areas (Epics) for this system, AND generate clarifying questions to better understand the requirements.
 
 Task: "{root_description}"
 
-Guidelines:
+Guidelines for Epics:
 - Apply the independence test: Could these be built as separate products?
 - Group features that share data, users, or workflows into the same epic
 - Only split if teams could work completely independently
@@ -57,24 +88,40 @@ For each epic, provide:
 - priority: 1-5 (1=critical for MVP, 5=nice to have)
 - estimated_complexity: low/medium/high
 
+Guidelines for Clarifying Questions:
+- Generate 10-15 questions that would help refine the project scope
+- Order by importance (most important first)
+- Focus on ambiguities, scale, user types, integrations, and constraints
+- Prefer multiple-choice questions (faster to answer)
+- Questions should be quick to answer (not essays)
+
+For each clarifying_question, provide:
+- id: Q-001, Q-002, etc.
+- question: The question text
+- type: "multiple_choice", "yes_no", or "short_text"
+- options: Array of options (for multiple_choice only, 2-5 options)
+- category: "scale", "users", "integrations", "constraints", "tech", or "features"
+- importance: "high", "medium", or "low"
+
 Also provide:
 - coverage_analysis: Brief analysis confirming all aspects are covered
 - generation_reasoning: Why you broke it down this way
 - suggested_priority_order: List of epic titles in implementation order
 
-Return as JSON."""
+Return as JSON with keys: epics, clarifying_questions, coverage_analysis, generation_reasoning, suggested_priority_order"""
 
         try:
             response = await self.llm.generate_json(
                 system_prompt,
                 user_prompt,
                 temperature=0.3,  # Lower temperature for consistency
-                max_tokens=8000  # Enough for comprehensive epic coverage
+                max_tokens=12000  # Increased for epics + questions
             )
 
             # Debug: Log response to understand what we got
             print(f"[EpicAnalyzer] LLM response keys: {list(response.keys())}")
             print(f"[EpicAnalyzer] Epics count in response: {len(response.get('epics', []))}")
+            print(f"[EpicAnalyzer] Questions count in response: {len(response.get('clarifying_questions', []))}")
 
             # Parse epics from response
             epics = []
@@ -98,12 +145,28 @@ Return as JSON."""
                 )
                 epics.append(epic)
 
-            return EpicGeneration(
+            # Parse clarifying questions from response
+            questions = []
+            questions_data = response.get("clarifying_questions", [])
+            for q_data in questions_data:
+                question = ClarifyingQuestion(
+                    id=q_data.get("id", f"Q-{len(questions)+1:03d}"),
+                    question=q_data.get("question", ""),
+                    question_type=q_data.get("type", "short_text"),
+                    options=q_data.get("options", []),
+                    category=q_data.get("category", "general"),
+                    importance=q_data.get("importance", "medium")
+                )
+                questions.append(question)
+
+            epic_generation = EpicGeneration(
                 epics=epics,
                 coverage_analysis=response.get("coverage_analysis", {}),
                 generation_reasoning=response.get("generation_reasoning", ""),
                 suggested_priority_order=response.get("suggested_priority_order", [])
             )
+
+            return epic_generation, questions
 
         except Exception as e:
             print(f"Error generating epics: {e}")
@@ -119,7 +182,7 @@ Return as JSON."""
             return EpicGeneration(
                 epics=[fallback_epic],
                 generation_reasoning=f"Fallback generation due to error: {str(e)}"
-            )
+            ), []  # Empty questions list on fallback
 
     async def classify_to_epic(
         self,

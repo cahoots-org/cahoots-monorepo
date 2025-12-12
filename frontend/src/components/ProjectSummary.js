@@ -226,6 +226,14 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume })
     );
   }
 
+  // Calculate stats
+  const epicCount = task?.context?.epics?.length || task?.metadata?.epics?.length || 0;
+  const storyCount = task?.context?.user_stories?.length || task?.metadata?.user_stories?.length || 0;
+  const featureCount = task?.metadata?.swimlanes?.length || 0;
+
+  // Only show stats section if we have some meaningful data
+  const hasAnyStats = taskCount > 0 || epicCount > 0 || storyCount > 0 || featureCount > 0;
+
   return (
     <div style={styles.processingSection}>
       {/* Progress Header */}
@@ -268,31 +276,33 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume })
         })}
       </div>
 
-      {/* Live Stats - what we've found so far */}
-      <div style={styles.liveStatsContainer}>
-        <div style={styles.liveStat}>
-          <Text style={styles.liveStatValue}>{taskCount}</Text>
-          <Text style={styles.liveStatLabel}>TASKS</Text>
+      {/* Live Stats - only show once we have data */}
+      {hasAnyStats ? (
+        <div style={styles.liveStatsContainer}>
+          <div style={styles.liveStat}>
+            <Text style={styles.liveStatValue}>{taskCount}</Text>
+            <Text style={styles.liveStatLabel}>TASKS</Text>
+          </div>
+          <div style={styles.liveStat}>
+            <Text style={styles.liveStatValue}>{epicCount}</Text>
+            <Text style={styles.liveStatLabel}>EPICS</Text>
+          </div>
+          <div style={styles.liveStat}>
+            <Text style={styles.liveStatValue}>{storyCount}</Text>
+            <Text style={styles.liveStatLabel}>STORIES</Text>
+          </div>
+          <div style={styles.liveStat}>
+            <Text style={styles.liveStatValue}>{featureCount}</Text>
+            <Text style={styles.liveStatLabel}>FEATURES</Text>
+          </div>
         </div>
-        <div style={styles.liveStat}>
-          <Text style={styles.liveStatValue}>
-            {task?.context?.epics?.length || task?.metadata?.epics?.length || 0}
+      ) : (
+        <div style={styles.analyzingMessage}>
+          <Text style={styles.analyzingText}>
+            Analyzing your project requirements...
           </Text>
-          <Text style={styles.liveStatLabel}>EPICS</Text>
         </div>
-        <div style={styles.liveStat}>
-          <Text style={styles.liveStatValue}>
-            {task?.context?.user_stories?.length || task?.metadata?.user_stories?.length || 0}
-          </Text>
-          <Text style={styles.liveStatLabel}>STORIES</Text>
-        </div>
-        <div style={styles.liveStat}>
-          <Text style={styles.liveStatValue}>
-            {task?.metadata?.swimlanes?.length || 0}
-          </Text>
-          <Text style={styles.liveStatLabel}>FEATURES</Text>
-        </div>
-      </div>
+      )}
 
       {/* Live Activity Feed */}
       <LiveActivityFeed taskId={task?.task_id} />
@@ -589,6 +599,21 @@ const styles = {
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     fontWeight: tokens.typography.fontWeight.medium,
+  },
+  analyzingMessage: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: tokens.spacing[8],
+    marginBottom: tokens.spacing[6],
+    background: 'var(--color-surface)',
+    borderRadius: tokens.borderRadius.lg,
+    border: '1px solid var(--color-border)',
+  },
+  analyzingText: {
+    fontSize: tokens.typography.fontSize.base[0],
+    color: 'var(--color-text-muted)',
+    fontStyle: 'italic',
   },
   interruptedHeader: {
     display: 'flex',
