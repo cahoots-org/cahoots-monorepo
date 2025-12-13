@@ -250,18 +250,27 @@ class EventModelValidator:
             trigger_event = automation.get('trigger_event')
             result_events = automation.get('result_events', [])
 
+            # Handle trigger_event being a list or string
+            trigger_events_to_check = []
+            if trigger_event:
+                if isinstance(trigger_event, list):
+                    trigger_events_to_check = trigger_event
+                else:
+                    trigger_events_to_check = [trigger_event]
+
             # Check trigger event exists
-            if trigger_event and trigger_event not in event_names:
-                self.issues.append(ValidationIssue(
-                    severity='error',
-                    category='mapping',
-                    message=f'Automation "{name}" triggered by non-existent event "{trigger_event}"',
-                    details={
-                        'automation': name,
-                        'missing_event': trigger_event,
-                        'available_events': list(event_names)
-                    }
-                ))
+            for te in trigger_events_to_check:
+                if te and te not in event_names:
+                    self.issues.append(ValidationIssue(
+                        severity='error',
+                        category='mapping',
+                        message=f'Automation "{name}" triggered by non-existent event "{te}"',
+                        details={
+                            'automation': name,
+                            'missing_event': te,
+                            'available_events': list(event_names)
+                        }
+                    ))
 
             # CRITICAL: Check if automation produces events (must have result_events)
             if not result_events or len(result_events) == 0:
@@ -556,9 +565,12 @@ class EventModelValidator:
             trigger_event = automation.get('trigger_event')
             name = automation.get('name', 'Unknown')
             if trigger_event:
-                if trigger_event not in event_graph:
-                    event_graph[trigger_event] = []
-                event_graph[trigger_event].append(('automation', name))
+                # Handle trigger_event being a list or string
+                triggers = trigger_event if isinstance(trigger_event, list) else [trigger_event]
+                for te in triggers:
+                    if te not in event_graph:
+                        event_graph[te] = []
+                    event_graph[te].append(('automation', name))
 
         # Get all events that are produced
         event_names = {e.name if hasattr(e, 'name') else e.get('name') for e in events}
@@ -627,7 +639,13 @@ class EventModelValidator:
                 if slice_ref.get('type') == 'automation':
                     auto = next((a for a in automations if a.get('name') == slice_ref.get('name')), None)
                     if auto:
-                        chapter_events[chapter_name].add(auto.get('trigger_event'))
+                        trigger = auto.get('trigger_event')
+                        if trigger:
+                            # Handle trigger_event being a list or string
+                            if isinstance(trigger, list):
+                                chapter_events[chapter_name].update(trigger)
+                            else:
+                                chapter_events[chapter_name].add(trigger)
                         chapter_events[chapter_name].update(auto.get('result_events', []))
 
         # Build automation trigger/result mapping
@@ -640,7 +658,12 @@ class EventModelValidator:
             results = auto.get('result_events', [])
 
             if trigger:
-                auto_triggers[trigger] = name
+                # Handle trigger_event being a list or string
+                if isinstance(trigger, list):
+                    for t in trigger:
+                        auto_triggers[t] = name
+                else:
+                    auto_triggers[trigger] = name
             auto_results[name] = results
 
         # Check for cross-chapter connections

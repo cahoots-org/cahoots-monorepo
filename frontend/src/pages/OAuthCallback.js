@@ -43,8 +43,9 @@ const OAuthCallback = () => {
         const storedState = sessionStorage.getItem('oauth_state');
         
         
-        // Use provider from URL params or fallback to 'google'
-        const providerName = provider || 'google';
+        // Use provider from URL params or fallback to 'google' (for logging only)
+        const providerForLog = provider || 'google';
+        console.debug(`OAuth callback for provider: ${providerForLog}`);
 
         if (!code) {
           throw new Error(`Missing required OAuth parameter: code`);
@@ -132,7 +133,7 @@ const OAuthCallback = () => {
         // Verify that we can make authenticated requests
         try {
           // Verify authentication by fetching current user
-          const userResponse = await apiClient.get('/auth/me');
+          await apiClient.get('/auth/me');
         } catch (verifyError) {
           console.error('Failed to verify authentication:', verifyError);
           // Continue anyway, as the main auth flow should still work

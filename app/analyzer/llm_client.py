@@ -126,17 +126,65 @@ class LLMClient(ABC):
         # Try to extract JSON from markdown code blocks
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', text)
         if json_match:
-            return json.loads(json_match.group(1).strip())
+            try:
+                return json.loads(json_match.group(1).strip())
+            except json.JSONDecodeError:
+                pass
 
-        # Try to find JSON object
-        json_match = re.search(r'\{[\s\S]*\}', text)
-        if json_match:
-            return json.loads(json_match.group(0))
+        # Try to find the first complete JSON object using brace matching
+        # This handles cases where LLM returns JSON followed by extra text
+        if '{' in text:
+            start = text.index('{')
+            depth = 0
+            in_string = False
+            escape_next = False
+            for i, char in enumerate(text[start:], start):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if char == '{':
+                        depth += 1
+                    elif char == '}':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return json.loads(text[start:i+1])
+                            except json.JSONDecodeError:
+                                break
 
-        # Try to find JSON array
-        json_match = re.search(r'\[[\s\S]*\]', text)
-        if json_match:
-            return json.loads(json_match.group(0))
+        # Try to find JSON array with similar approach
+        if '[' in text and ('{' not in text or text.index('[') < text.index('{')):
+            start = text.index('[')
+            depth = 0
+            in_string = False
+            escape_next = False
+            for i, char in enumerate(text[start:], start):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if char == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+                if not in_string:
+                    if char == '[':
+                        depth += 1
+                    elif char == ']':
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return json.loads(text[start:i+1])
+                            except json.JSONDecodeError:
+                                break
 
         raise json.JSONDecodeError(f"No valid JSON found in response", text, 0)
 

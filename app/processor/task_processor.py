@@ -833,6 +833,11 @@ class TaskProcessor:
                 # Store complete event model
                 self._store_event_model(root_task, event_model_analysis)
 
+                # Debug: log what's being stored
+                chapters_count = len(root_task.metadata.get("chapters", []))
+                swimlanes_count = len(root_task.metadata.get("swimlanes", []))
+                print(f"[TaskProcessor] DEBUG: About to save task with {chapters_count} chapters and {swimlanes_count} swimlanes in metadata")
+
                 await self.storage.save_task(root_task)
 
                 # Emit event modeling completed with counts
@@ -1311,7 +1316,7 @@ class TaskProcessor:
         context: Optional[Dict[str, Any]],
         max_depth: Optional[int]
     ) -> None:
-        """Process all stories into implementation tasks using batch processing.
+        """Process all stories into implementation tasks using PARALLEL batch processing.
 
         Args:
             root_task: Root task
@@ -1321,32 +1326,48 @@ class TaskProcessor:
             context: Processing context
             max_depth: Maximum depth for further decomposition
         """
+        import asyncio
+
         total_stories = sum(len(stories) for stories in stories_by_epic.values())
-        print(f"[TaskProcessor] Batch processing {total_stories} stories into tasks")
+        print(f"[TaskProcessor] PARALLEL processing {total_stories} stories into tasks across {len(epics)} epics")
 
-        for epic in epics:
-            epic_stories = stories_by_epic.get(epic.id, [])
+        # Filter epics that have stories
+        epics_with_stories = [(epic, stories_by_epic.get(epic.id, [])) for epic in epics]
+        epics_with_stories = [(e, s) for e, s in epics_with_stories if s]
 
-            if not epic_stories:
-                continue
+        if not epics_with_stories:
+            print("[TaskProcessor] No epics with stories to process")
+            return
 
-            print(f"[TaskProcessor] Batch decomposing {len(epic_stories)} stories for epic: {epic.title}")
-
-            # Batch decompose all stories for this epic in a single call
+        # Decompose all epics in PARALLEL
+        async def decompose_epic(epic, epic_stories):
+            """Decompose a single epic's stories - runs in parallel with other epics."""
+            print(f"[TaskProcessor] ⚡ Starting parallel decomposition: {epic.title} ({len(epic_stories)} stories)")
             try:
-                # Extract prompt config from context if present
                 prompt_config = context.get('prompt_config') if context else None
-                story_decompositions = await self.story_driven_analyzer.decompose_stories_to_tasks(
+                decompositions = await self.story_driven_analyzer.decompose_stories_to_tasks(
                     epic_stories, epic, context, config=prompt_config
                 )
+                print(f"[TaskProcessor] ✓ Completed: {epic.title}")
+                return (epic, epic_stories, decompositions)
             except Exception as e:
                 print(f"[TaskProcessor] ERROR: Story decomposition failed for epic {epic.title}: {e}")
                 import traceback
                 traceback.print_exc()
-                # Continue with next epic instead of failing entirely
+                return (epic, epic_stories, {})
+
+        # Run ALL epic decompositions in parallel
+        print(f"[TaskProcessor] ⚡ Launching {len(epics_with_stories)} parallel LLM calls...")
+        results = await asyncio.gather(*[
+            decompose_epic(epic, stories) for epic, stories in epics_with_stories
+        ])
+        print(f"[TaskProcessor] ✓ All {len(results)} epics decomposed in parallel")
+
+        # Process results sequentially (fast - just creating task objects)
+        for epic, epic_stories, story_decompositions in results:
+            if not story_decompositions:
                 continue
 
-            # Process the decompositions
             for story in epic_stories:
                 decomposition = story_decompositions.get(story.id)
                 if not decomposition:

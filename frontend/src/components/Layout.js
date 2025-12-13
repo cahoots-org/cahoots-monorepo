@@ -3,13 +3,12 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useApp } from '../contexts/AppContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 import NotificationContainer from './NotificationSystem';
-import Footer from './Footer';
 import apiClient from '../services/unifiedApiClient';
 import {
   Button,
   Text,
-  GradientText,
   HomeIcon,
   DocumentIcon,
   CogIcon,
@@ -17,7 +16,7 @@ import {
   PlusIcon,
   tokens,
 } from '../design-system';
-import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { Bars3Icon, XMarkIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
 // Badge component for notification count
 const NotificationBadge = ({ count }) => {
@@ -48,6 +47,7 @@ const NotificationBadge = ({ count }) => {
 const Layout = ({ children }) => {
   const { user, isAuthenticated, logout } = useAuth();
   const { globalLoading } = useApp();
+  const { isEnterprise } = useSubscription();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -239,6 +239,14 @@ const Layout = ({ children }) => {
                         Contact
                       </Button>
                     </Link>
+                    <Link to="/pricing" style={{ textDecoration: 'none' }}>
+                      <Button
+                        variant={location.pathname === '/pricing' ? 'primary' : 'ghost'}
+                        size="sm"
+                      >
+                        Pricing
+                      </Button>
+                    </Link>
                     <Link to="/blog" style={{ textDecoration: 'none' }}>
                       <Button
                         variant={location.pathname.startsWith('/blog') ? 'primary' : 'ghost'}
@@ -253,7 +261,7 @@ const Layout = ({ children }) => {
                         variant={location.pathname === '/login' ? 'primary' : 'secondary'}
                         size="sm"
                       >
-                        Sign In
+                        Try Cahoots
                       </Button>
                     </Link>
                   </>
@@ -300,6 +308,28 @@ const Layout = ({ children }) => {
                   }}>
                     {user.full_name || user.email}
                   </Text>
+                )}
+
+                {/* Upgrade Button - show for non-enterprise users */}
+                {!isEnterprise && (
+                  <Link
+                    to="/pricing"
+                    style={{
+                      textDecoration: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: tokens.colors.primary[400],
+                      fontSize: tokens.typography.fontSize.sm[0],
+                      fontWeight: tokens.typography.fontWeight.medium,
+                      padding: `${tokens.spacing[1]} ${tokens.spacing[2]}`,
+                      borderRadius: tokens.borderRadius.md,
+                      transition: 'color 0.2s ease',
+                    }}
+                  >
+                    <SparklesIcon style={{ width: '14px', height: '14px' }} />
+                    Upgrade
+                  </Link>
                 )}
 
                 <Button
@@ -398,7 +428,32 @@ const Layout = ({ children }) => {
                   marginTop: tokens.spacing[2],
                   paddingTop: tokens.spacing[2],
                   borderTop: `1px solid ${tokens.colors.dark.border}`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: tokens.spacing[2],
                 }}>
+                  {/* Upgrade Button - show for non-enterprise users */}
+                  {!isEnterprise && (
+                    <Link
+                      to="/pricing"
+                      style={{
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        color: tokens.colors.primary[400],
+                        fontSize: tokens.typography.fontSize.base[0],
+                        fontWeight: tokens.typography.fontWeight.medium,
+                        padding: `${tokens.spacing[3]} ${tokens.spacing[4]}`,
+                        borderRadius: tokens.borderRadius.md,
+                        border: `1px solid ${tokens.colors.primary[500]}30`,
+                      }}
+                    >
+                      <SparklesIcon style={{ width: '16px', height: '16px' }} />
+                      Upgrade to Pro
+                    </Link>
+                  )}
                   <Button
                     variant="secondary"
                     size="md"
@@ -437,6 +492,15 @@ const Layout = ({ children }) => {
                     style={{ width: '100%', justifyContent: 'flex-start' }}
                   >
                     Contact
+                  </Button>
+                </Link>
+                <Link to="/pricing" style={{ textDecoration: 'none' }}>
+                  <Button
+                    variant={location.pathname === '/pricing' ? 'primary' : 'ghost'}
+                    size="md"
+                    style={{ width: '100%', justifyContent: 'flex-start' }}
+                  >
+                    Pricing
                   </Button>
                 </Link>
                 <Link to="/blog" style={{ textDecoration: 'none' }}>

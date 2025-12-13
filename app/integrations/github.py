@@ -365,30 +365,41 @@ async def list_user_repositories(
     current_user: Dict = Depends(get_current_user)
 ):
     """List all repositories accessible to the connected GitHub account."""
+    import os
+
+    user_id = current_user.get("id", "dev-user")
+
+    # Get the token from Redis or environment (same as /status endpoint)
+    token = None
+    try:
+        from app.api.dependencies import get_redis_client
+        redis = await get_redis_client()
+        token = await redis.get(f"github_token:{user_id}")
+        if token:
+            token = token.decode() if isinstance(token, bytes) else token
+    except Exception:
+        pass
+
+    # Fall back to environment variable (dev mode)
+    if not token:
+        token = os.getenv("GITHUB_TOKEN")
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="GitHub account not connected"
+        )
+
     try:
         async with httpx.AsyncClient() as client:
-            # Get the user's token
-            status_response = await client.get(
-                f"http://github-integration:8095/status/{current_user.id}",
-                timeout=10.0
-            )
-            
-            if status_response.status_code != 200 or not status_response.json().get("connected"):
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="GitHub account not connected"
-                )
-            
-            token = status_response.json().get("access_token")
-            
             # Fetch repos from GitHub
             repos = []
             page = 1
             per_page = 100
-            
+
             while True:
                 github_response = await client.get(
-                    f"https://api.github.com/user/repos",
+                    "https://api.github.com/user/repos",
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Accept": "application/vnd.github+json",
@@ -397,36 +408,36 @@ async def list_user_repositories(
                     params={"per_page": per_page, "page": page, "sort": "updated"},
                     timeout=30.0
                 )
-                
+
                 if github_response.status_code != 200:
                     break
-                    
+
                 page_repos = github_response.json()
                 if not page_repos:
                     break
-                    
+
                 repos.extend(page_repos)
-                
+
                 # Limit to 300 repos for performance
                 if len(repos) >= 300 or len(page_repos) < per_page:
                     break
-                    
+
                 page += 1
-            
+
             # Format the response
             return [{
                 "id": str(repo["id"]),
                 "name": repo["name"],
                 "full_name": repo["full_name"],
                 "owner": repo["owner"]["login"],
-                "url": repo["html_url"],
+                "html_url": repo["html_url"],
                 "description": repo.get("description"),
                 "language": repo.get("language"),
                 "private": repo.get("private", False),
                 "default_branch": repo.get("default_branch", "main"),
                 "updated_at": repo.get("updated_at")
             } for repo in repos[:300]]
-            
+
     except HTTPException:
         raise
     except Exception as e:

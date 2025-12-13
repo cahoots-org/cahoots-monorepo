@@ -115,7 +115,7 @@ const OverviewTab = ({ task, taskTree, onNavigateToTab }) => {
           <CardContent style={styles.statsGrid}>
             <ClickableStatItem
               value={chapters.length}
-              label="Modules"
+              label="Chapters"
               onClick={() => onNavigateToTab?.('event-model')}
               disabled={!chapters.length}
             />

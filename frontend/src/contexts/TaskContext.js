@@ -2,9 +2,6 @@ import React, { createContext, useState, useEffect, useRef, useCallback } from '
 import useWebSocket from '../hooks/useWebSocket';
 import apiClient from '../services/unifiedApiClient';
 
-// Get API URL from runtime config (same as unifiedApiClient)
-const API_URL = window.CAHOOTS_CONFIG?.API_URL || '/api';
-
 // Function to get WebSocket URL for a specific task
 const getWebSocketUrl = (taskId) => {
   if (!taskId) {
@@ -362,6 +359,7 @@ export const TaskProvider = ({ children }) => {
       } catch (err) {
         console.error('Error handling WebSocket message:', err);
       }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Initialize WebSocket hook with a function to get the URL
@@ -393,6 +391,7 @@ export const TaskProvider = ({ children }) => {
       console.log('Cleaning up WebSocket connection');
       disconnect();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTaskId]); // Remove connect/disconnect from dependencies to prevent render loop
 
   // Initial data fetch
@@ -407,6 +406,7 @@ export const TaskProvider = ({ children }) => {
     } else {
       console.log('TaskContext: No authentication token found, skipping initial task fetch');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Remove fetchTasks from dependencies to prevent render loop
 
   // Create a task

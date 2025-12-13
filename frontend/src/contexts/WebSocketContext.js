@@ -178,6 +178,7 @@ export const WebSocketProvider = ({ children }) => {
   const subscriptionRef = useRef(null);
   const debouncerRef = useRef(null);
   const shouldConnectRef = useRef(false);
+  const connectionStateRef = useRef({ connected: false, connecting: false });
 
   // WebSocket URL construction
   const getWebSocketUrl = () => {
@@ -194,63 +195,90 @@ export const WebSocketProvider = ({ children }) => {
       case 'connected':
         setConnectionState({ connected: true, connecting: false, error: null });
         break;
-        
+
       case 'disconnected':
         setConnectionState({ connected: false, connecting: false, error: null });
         break;
-        
+
       case 'error':
         setConnectionState({ connected: false, connecting: false, error: data });
         // Don't show error toast - the Live indicator shows connection status
         break;
-        
+
       case 'message':
         handleTaskMessage(data);
+        break;
+
+      default:
+        // Unknown message type - log and ignore
+        console.debug('[WebSocket] Unknown message type:', type);
         break;
     }
   };
 
-  // Handle task-related messages
+  // Handle task-related messages with debouncing
   const handleTaskMessage = (data) => {
     console.log('[WebSocket] handleTaskMessage called with:', data);
     if (!data.type) return;
 
+    // Initialize debouncer if needed
+    if (!debouncerRef.current) {
+      debouncerRef.current = getQueryDebouncer(queryClient, 500);
+    }
+    const debouncer = debouncerRef.current;
 
     switch (data.type) {
       case 'task.created':
       case 'task.updated':
       case 'task.status_changed':
-        // Invalidate task list and stats
-        invalidateQueries.tasks.list();
-        invalidateQueries.tasks.stats();
+        // Debounce list/stats invalidations - these are expensive and can be batched
+        debouncer.invalidate('tasks.list', () => {
+          invalidateQueries.tasks.list();
+        });
+        debouncer.invalidate('tasks.stats', () => {
+          invalidateQueries.tasks.stats();
+        });
 
-        // Update specific task if we have the ID
+        // Debounce task-specific invalidations by ID
+        // During decomposition, we get many events for the same root task
         if (data.task_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.task_id)
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.task_id)
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
 
-        // Also invalidate parent task tree if this is a subtask
+        // Debounce parent task invalidations
         if (data.parent_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.parent_id)
+          debouncer.invalidate(`task.detail.${data.parent_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.parent_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.parent_id)
+          debouncer.invalidate(`task.tree.${data.parent_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.parent_id)
+            });
           });
         }
 
-        // Also invalidate root task tree if provided
+        // Debounce root task invalidations
         if (data.root_task_id && data.root_task_id !== data.task_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.root_task_id)
+          debouncer.invalidate(`task.detail.${data.root_task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.root_task_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.root_task_id)
+          debouncer.invalidate(`task.tree.${data.root_task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.root_task_id)
+            });
           });
         }
         break;
@@ -260,11 +288,15 @@ export const WebSocketProvider = ({ children }) => {
       case 'decomposition.error':
         // These events indicate changes to the task tree structure
         if (data.task_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.task_id)
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.task_id)
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
         break;
@@ -272,57 +304,69 @@ export const WebSocketProvider = ({ children }) => {
       case 'task.approved':
         // Show success notification
         showSuccess(`Task approved: ${data.task_id} by ${data.approved_by}`);
-        
-        // Invalidate task list and stats to refresh pending approvals
-        invalidateQueries.tasks.list();
-        invalidateQueries.tasks.stats();
-        
-        // Update specific task
+
+        // Invalidate task list and stats to refresh pending approvals (debounced)
+        debouncer.invalidate('tasks.list', () => invalidateQueries.tasks.list());
+        debouncer.invalidate('tasks.stats', () => invalidateQueries.tasks.stats());
+
+        // Update specific task (debounced)
         if (data.task_id) {
-          queryClient.invalidateQueries({ 
-            queryKey: queryKeys.tasks.detail(data.task_id) 
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({ 
-            queryKey: queryKeys.tasks.tree(data.task_id) 
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
         break;
-        
+
       case 'task.rejected':
         // Show rejection notification
-        const message = data.new_description 
+        const message = data.new_description
           ? `Task rejected and resubmitted: ${data.task_id} by ${data.rejected_by}`
           : `Task rejected: ${data.task_id} by ${data.rejected_by}`;
         showError(message);
-        
-        // Invalidate task list and stats to refresh pending approvals
-        invalidateQueries.tasks.list();
-        invalidateQueries.tasks.stats();
-        
-        // Update specific task
+
+        // Invalidate task list and stats to refresh pending approvals (debounced)
+        debouncer.invalidate('tasks.list', () => invalidateQueries.tasks.list());
+        debouncer.invalidate('tasks.stats', () => invalidateQueries.tasks.stats());
+
+        // Update specific task (debounced)
         if (data.task_id) {
-          queryClient.invalidateQueries({ 
-            queryKey: queryKeys.tasks.detail(data.task_id) 
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({ 
-            queryKey: queryKeys.tasks.tree(data.task_id) 
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
         break;
-        
+
       case 'task.completed':
         // Don't show notification - too noisy for task completions
 
-        // Just invalidate related queries
-        invalidateQueries.tasks.list();
-        invalidateQueries.tasks.stats();
+        // Invalidate related queries (debounced)
+        debouncer.invalidate('tasks.list', () => invalidateQueries.tasks.list());
+        debouncer.invalidate('tasks.stats', () => invalidateQueries.tasks.stats());
 
         if (data.task_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.task_id)
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.task_id)
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
         break;
@@ -359,17 +403,20 @@ export const WebSocketProvider = ({ children }) => {
         
       case 'service.status':
         // Handle detailed service status updates
-
         // Don't show notifications - let individual components handle service.status events
         // This allows DecompositionStatus to display them as status messages instead
 
-        // Still invalidate queries to refresh UI if needed
+        // Debounce query invalidation - service.status events can be very frequent
         if (data.task_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.task_id)
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.task_id)
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
         break;
@@ -383,13 +430,17 @@ export const WebSocketProvider = ({ children }) => {
         // Show success notification
         showSuccess(data.message || 'Event model generated successfully');
 
-        // Invalidate task queries to refresh the event model data
+        // Invalidate task queries to refresh the event model data (debounced)
         if (data.task_id) {
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.detail(data.task_id)
+          debouncer.invalidate(`task.detail.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.detail(data.task_id)
+            });
           });
-          queryClient.invalidateQueries({
-            queryKey: queryKeys.tasks.tree(data.task_id)
+          debouncer.invalidate(`task.tree.${data.task_id}`, () => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.tasks.tree(data.task_id)
+            });
           });
         }
         break;
@@ -398,62 +449,79 @@ export const WebSocketProvider = ({ children }) => {
         // Show error notification
         showError(data.message || 'Event model generation failed');
         break;
+
+      default:
+        // Unknown task event - log for debugging
+        console.debug('[WebSocket] Unknown task event:', data.type);
+        break;
     }
   };
 
+  // Helper to update both state and ref
+  const updateConnectionState = React.useCallback((newState) => {
+    connectionStateRef.current = {
+      connected: newState.connected,
+      connecting: newState.connecting
+    };
+    setConnectionState(newState);
+  }, []);
+
   // Manual connection control - only connect when explicitly requested
+  // Uses refs for state checking to avoid dependency loops
   const connect = React.useCallback(() => {
     if (!isAuthenticated() || !user) {
       console.log('Cannot connect WebSocket: not authenticated');
       return Promise.reject(new Error('Not authenticated'));
     }
 
-    if (connectionState.connected || connectionState.connecting) {
+    // Check ref instead of state to avoid dependency loops
+    if (connectionStateRef.current.connected || connectionStateRef.current.connecting) {
       console.log('WebSocket already connected or connecting');
       return Promise.resolve();
     }
 
     const token = localStorage.getItem('token') || 'dev-bypass-token';
-    setConnectionState({ connected: false, connecting: true, error: null });
-    
+    updateConnectionState({ connected: false, connecting: true, error: null });
+
     // Subscribe to WebSocket events
     subscriptionRef.current = wsManager.subscribe(
       'app-context',
       handleWebSocketMessage
     );
-    
+
     // Connect
     return wsManager.connect(getWebSocketUrl(), token)
       .then(() => {
-        setConnectionState({ connected: true, connecting: false, error: null });
+        updateConnectionState({ connected: true, connecting: false, error: null });
         shouldConnectRef.current = true;
       })
       .catch(error => {
         console.error('WebSocket connection failed:', error);
-        setConnectionState({ connected: false, connecting: false, error });
+        updateConnectionState({ connected: false, connecting: false, error });
         if (subscriptionRef.current) {
           subscriptionRef.current();
           subscriptionRef.current = null;
         }
         throw error;
       });
-  }, [isAuthenticated, user, connectionState.connected, connectionState.connecting, getWebSocketUrl, handleWebSocketMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user, updateConnectionState]);
 
   const disconnect = React.useCallback(() => {
     if (subscriptionRef.current) {
       subscriptionRef.current();
       subscriptionRef.current = null;
     }
-    
+
     // Flush any pending debounced invalidations
     if (debouncerRef.current) {
       debouncerRef.current.flush();
     }
-    
+
     wsManager.disconnect();
-    setConnectionState({ connected: false, connecting: false, error: null });
+    updateConnectionState({ connected: false, connecting: false, error: null });
     shouldConnectRef.current = false;
-  }, []);
+  }, [updateConnectionState]);
 
   // Only disconnect when user logs out (don't auto-connect)
   useEffect(() => {

@@ -31,7 +31,23 @@ const CodeGenerationProgress = ({
 
   // Fetch initial status
   useEffect(() => {
-    fetchStatus();
+    const fetchInitialStatus = async () => {
+      setLoading(true);
+      try {
+        const response = await apiClient.getGenerationStatus(projectId);
+        setStatus(response);
+        setError(null);
+      } catch (err) {
+        if (err.response?.status === 404) {
+          setError('No generation in progress');
+        } else {
+          setError(err.userMessage || 'Failed to fetch status');
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchInitialStatus();
   }, [projectId]);
 
   // Subscribe to WebSocket messages for real-time updates

@@ -75,6 +75,15 @@ const Footer = () => {
               </li>
               <li>
                 <button
+                  onClick={() => navigate('/pricing')}
+                  className="hover:text-brand-vibrant-orange transition-colors cursor-pointer text-left"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  Pricing
+                </button>
+              </li>
+              <li>
+                <button
                   onClick={() => navigate('/login')}
                   className="hover:text-brand-vibrant-orange transition-colors cursor-pointer text-left"
                   style={{ color: 'var(--color-text-muted)' }}

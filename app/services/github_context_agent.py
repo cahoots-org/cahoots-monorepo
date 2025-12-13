@@ -111,24 +111,37 @@ class GitHubContextEnrichmentAgent:
             print("[GitHubContextAgent] Phase 3: Summarizing context...")
             repo_summary = await self._summarize_context(critical_files)
 
-            # Phase 4: Check sufficiency
-            print("[GitHubContextAgent] Phase 4: Checking context sufficiency...")
-            sufficiency = await self._check_context_sufficiency(user_prompt, repo_summary)
+            # Phase 4: Identify relevant pattern files to read
+            print("[GitHubContextAgent] Phase 4: Identifying relevant files to read...")
+            file_analysis = await self._identify_relevant_files(user_prompt, repo_summary)
 
-            # Phase 5: Iterative enrichment if needed
-            if not sufficiency["sufficient"] and sufficiency.get("suggested_files"):
-                print(f"[GitHubContextAgent] Phase 5: Fetching {len(sufficiency['suggested_files'])} additional files...")
+            # Phase 5: ALWAYS read pattern files if any were identified
+            # This is critical - we need to understand actual code patterns, not just file names
+            files_to_read = []
+            if file_analysis.get("pattern_files"):
+                files_to_read.extend(file_analysis["pattern_files"])
+            if file_analysis.get("suggested_files"):
+                files_to_read.extend(file_analysis["suggested_files"])
+
+            # Dedupe and limit
+            files_to_read = list(dict.fromkeys(files_to_read))[:15]
+
+            if files_to_read:
+                print(f"[GitHubContextAgent] Phase 5: Reading {len(files_to_read)} relevant files...")
+                for file_path in files_to_read:
+                    print(f"  → {file_path}")
                 await self._fetch_additional_files(
                     github=github,
                     owner=owner,
                     repo=repo,
                     user_prompt=user_prompt,
-                    initial_suggested_files=sufficiency["suggested_files"],
-                    max_iterations=max_iterations
+                    initial_suggested_files=files_to_read,
+                    max_iterations=1  # Just one pass - we already know what to read
                 )
-                self.final_confidence = sufficiency.get("confidence", 0.5)
+                self.final_confidence = file_analysis.get("confidence", 0.8)
             else:
-                self.final_confidence = sufficiency.get("confidence", 0.9)
+                print("[GitHubContextAgent] Phase 5: No additional files identified")
+                self.final_confidence = file_analysis.get("confidence", 0.6)
 
             # Phase 6: Build final context
             print("[GitHubContextAgent] Phase 6: Building final context...")
@@ -242,12 +255,12 @@ Focus on information relevant for planning implementation tasks.
         self.context["repo_summary"] = summary
         return summary
 
-    async def _check_context_sufficiency(
+    async def _identify_relevant_files(
         self,
         user_prompt: str,
         repo_summary: str
     ) -> Dict[str, Any]:
-        """LLM determines if we have enough context to proceed."""
+        """Identify which files from the repo should be read to understand patterns."""
         # Build intelligent file tree showing directory structure
         file_tree_by_directory = defaultdict(list)
         for file_path in self.file_tree["by_path"].keys():
@@ -268,57 +281,61 @@ Focus on information relevant for planning implementation tasks.
             if len(files) > 20:
                 tree_display.append(f"  ... and {len(files) - 20} more files")
 
-        prompt = f"""You are helping plan implementation for this task:
+        system_prompt = """You are a senior developer analyzing a codebase to find relevant files for implementing a new feature.
+Your job is to identify which existing files should be READ to understand the patterns and architecture.
+Respond ONLY with valid JSON."""
 
-USER TASK: {user_prompt}
+        user_prompt_text = f"""FEATURE TO IMPLEMENT: {user_prompt}
 
-REPOSITORY CONTEXT:
+REPOSITORY OVERVIEW:
 {repo_summary}
 
-FILE TREE (organized by directory):
+COMPLETE FILE TREE:
 {chr(10).join(tree_display)}
 
-Question: Do we have sufficient context to create a detailed implementation plan?
+YOUR TASK: Identify the most important files to READ before implementing this feature.
 
-Consider:
-1. Do we understand the codebase architecture?
-2. Do we know where new code should be added?
-3. Based on the USER TASK, what SIMILAR EXISTING implementations exist in the codebase?
-   - Look at the file tree and find files/modules that solve similar problems
-   - Identify naming patterns that suggest related functionality
-   - Read those files to understand the established patterns
-4. Do we understand the tech stack and dependencies?
+Think step by step:
+1. What existing features are SIMILAR to what's being requested?
+   - If user says "similar to X" or "like X", find the files that implement X
+   - If user wants "notifications", find existing notification/alert/email code
+   - If user wants "integration", find existing integration examples
 
-CRITICAL: Use the file tree to find existing code that's similar to what the user wants to build.
-If the task is "build X", look for existing implementations of similar features Y and Z.
+2. What are the CORE architectural files?
+   - Main entry points, routers, services
+   - Event handlers, processors
+   - Configuration files
 
-Respond in JSON:
+3. What PATTERNS should be followed?
+   - How are similar services structured?
+   - How do existing integrations work?
+   - Where do new features get hooked in?
+
+RESPOND WITH JSON:
 {{
-  "sufficient": true/false,
-  "confidence": 0.0-1.0,
-  "reasoning": "Why sufficient or not",
-  "missing_info": ["What information is missing"],
-  "suggested_files": ["Specific file paths to read for general context"],
-  "pattern_files": ["Existing files showing similar patterns to follow"]
+  "reasoning": "Brief explanation of why these files are relevant",
+  "pattern_files": [
+    "path/to/file1.py",  // Files showing patterns to COPY/FOLLOW
+    "path/to/file2.py"   // e.g., existing integrations, similar services
+  ],
+  "suggested_files": [
+    "path/to/file3.py",  // Files for understanding architecture
+    "path/to/file4.py"   // e.g., where to hook in, config, main handlers
+  ],
+  "confidence": 0.0-1.0  // How confident you are these files are relevant
 }}
 
-Be specific with file paths. Prioritize pattern_files that show how similar features are implemented.
-Limit to 5-10 most important files total.
-Return ONLY valid JSON, no explanation.
-"""
+IMPORTANT:
+- List 5-10 files total (pattern_files are most important)
+- Use EXACT file paths from the tree above
+- If the task mentions "similar to X", you MUST find files implementing X
+- Prioritize actual implementation files over config/docs"""
 
-        response = await self.llm.chat_completion(
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
+        result = await self.llm.generate_json(
+            system_prompt,
+            user_prompt_text,
             temperature=0.1
         )
-
-        if isinstance(response, dict) and "choices" in response:
-            content = response["choices"][0]["message"]["content"]
-        else:
-            content = str(response)
-
-        result = self.llm._parse_json(content)
         return result
 
     async def _fetch_additional_files(
@@ -353,22 +370,9 @@ Return ONLY valid JSON, no explanation.
                 else:
                     print(f"    ✗ File not found: {file_path}")
 
-            # Re-check sufficiency with new context
-            enriched_summary = self._build_enriched_summary()
-            sufficiency = await self._check_context_sufficiency(user_prompt, enriched_summary)
-
-            if sufficiency["sufficient"]:
-                print(f"[GitHubContextAgent]   ✓ Context sufficient after {self.iteration_count} iteration(s)")
-                self.final_confidence = sufficiency.get("confidence", 0.8)
-                break
-
-            # Get new file suggestions
-            suggested_files = sufficiency.get("suggested_files", [])
-
-            if not suggested_files:
-                print(f"[GitHubContextAgent]   ⚠ No more files suggested, stopping")
-                self.final_confidence = sufficiency.get("confidence", 0.6)
-                break
+            # After reading files, we're done (single pass approach)
+            print(f"[GitHubContextAgent]   ✓ Completed reading {len(self.context['file_summaries'])} files")
+            break
 
     async def _summarize_file(self, file_path: str, content: str) -> str:
         """Summarize a single file's content."""

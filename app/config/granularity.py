@@ -43,15 +43,13 @@ Create fewer, larger tasks suitable for experienced developers:
         display_name="Medium Tasks",
         min_story_points=2,
         max_story_points=8,
-        tasks_per_story_hint="4-8",
+        tasks_per_story_hint="1-5",
         implementation_detail_level="standard",
         prompt_guidance="""
 Create balanced tasks suitable for most development teams:
 - Each task should be 2-8 story points
-- Balance between granularity and cohesion
-- Include enough detail for mid-level developers
-- 4-8 tasks per user story is typical
-- Provide moderate implementation guidance
+- Combine related work into single tasks
+- 1-5 tasks per user story depending on complexity
 """
     ),
     "small": GranularityConfig(
@@ -59,17 +57,13 @@ Create balanced tasks suitable for most development teams:
         display_name="Small Tasks",
         min_story_points=1,
         max_story_points=3,
-        tasks_per_story_hint="8-15",
+        tasks_per_story_hint="1-8",
         implementation_detail_level="detailed",
         prompt_guidance="""
-Create granular, detailed tasks for maximum clarity:
+Create granular tasks for junior developers:
 - Each task should be 1-3 story points
-- Break work into small, clearly-defined units
 - Include specific implementation guidance
-- Reference patterns and examples where helpful
-- Minimize assumptions about prior knowledge
-- 8-15 tasks per user story is typical
-- Provide detailed step-by-step implementation notes
+- 1-8 tasks per user story depending on complexity
 """
     ),
 }

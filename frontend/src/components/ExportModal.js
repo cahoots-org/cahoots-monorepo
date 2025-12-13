@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
-import apiClient from '../services/unifiedApiClient';
 import JiraExportProgress from './JiraExportProgress';
 import TrelloExportProgress from './TrelloExportProgress';
 import { Modal, tokens } from '../design-system';
@@ -151,31 +150,6 @@ const ExportModal = ({
     setCurrentTrelloExportId(null);
   };
 
-  // Function to handle adding a new user to JIRA config
-  const handleAddUser = () => {
-    setJiraConfig(prev => ({
-      ...prev,
-      users: [...prev.users, { username: '', email: '' }]
-    }));
-  };
-
-  // Function to handle removing a user from JIRA config
-  const handleRemoveUser = (index) => {
-    setJiraConfig(prev => ({
-      ...prev,
-      users: prev.users.filter((_, i) => i !== index)
-    }));
-  };
-
-  // Function to handle updating user data
-  const handleUpdateUser = (index, field, value) => {
-    setJiraConfig(prev => ({
-      ...prev,
-      users: prev.users.map((user, i) => 
-        i === index ? { ...user, [field]: value } : user
-      )
-    }));
-  };
 
   // Function to validate email format
   const isValidEmail = (email) => {

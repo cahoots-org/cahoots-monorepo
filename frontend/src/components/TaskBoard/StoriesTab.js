@@ -7,7 +7,6 @@ import {
   Heading3,
   Badge,
   ChevronDownIcon,
-  ChevronRightIcon,
   EditIcon,
   tokens,
 } from '../../design-system';

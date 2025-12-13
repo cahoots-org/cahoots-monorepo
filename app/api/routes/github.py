@@ -6,6 +6,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 from app.storage import get_redis_client
+from app.api.dependencies import require_feature
+
+# Feature gate for GitHub integration
+require_github = require_feature("github_integration")
 
 router = APIRouter(prefix="/api/github", tags=["github"])
 
@@ -20,7 +24,9 @@ github_tokens: Dict[str, str] = {}
 
 
 @router.get("/status")
-async def get_github_status() -> Dict[str, Any]:
+async def get_github_status(
+    current_user: dict = Depends(require_github),
+) -> Dict[str, Any]:
     """Check if GitHub is connected and get user info.
 
     For now, checks environment variable. In production,
@@ -63,7 +69,10 @@ async def get_github_status() -> Dict[str, Any]:
 
 
 @router.post("/connect")
-async def connect_github(request: GitHubConnectRequest) -> Dict[str, Any]:
+async def connect_github(
+    request: GitHubConnectRequest,
+    current_user: dict = Depends(require_github),
+) -> Dict[str, Any]:
     """Connect a GitHub account using personal access token.
 
     In production, this would store the token per-user in a database.
@@ -125,7 +134,9 @@ async def connect_github(request: GitHubConnectRequest) -> Dict[str, Any]:
 
 
 @router.delete("/disconnect")
-async def disconnect_github() -> Dict[str, Any]:
+async def disconnect_github(
+    current_user: dict = Depends(require_github),
+) -> Dict[str, Any]:
     """Disconnect GitHub account.
 
     In production, this would remove the user's token from the database.

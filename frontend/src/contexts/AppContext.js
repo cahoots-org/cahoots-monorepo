@@ -220,6 +220,7 @@ export const AppProvider = ({ children }) => {
     if (savedTheme && savedTheme !== state.theme) {
       actions.setTheme(savedTheme);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Context value

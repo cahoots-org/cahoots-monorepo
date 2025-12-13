@@ -46,6 +46,10 @@ class ContextEngineClient:
         self.registered_agents: Dict[str, str] = {}  # agent_id -> notification_channel
         self._client: Optional[ContexAsyncClient] = None
         self._is_available = False
+        # Cache for context received via pub/sub - keyed by (agent_id, project_id)
+        self._context_cache: Dict[str, Dict[str, Any]] = {}
+        # Active pub/sub subscriptions
+        self._subscriptions: Dict[str, asyncio.Task] = {}
 
     async def _get_client(self) -> Optional[ContexAsyncClient]:
         """Get or create the SDK client"""
@@ -61,7 +65,17 @@ class ContextEngineClient:
         return self._client
 
     async def close(self):
-        """Close the client"""
+        """Close the client and cancel all subscriptions"""
+        # Cancel all pub/sub subscriptions
+        for cache_key, task in self._subscriptions.items():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        self._subscriptions.clear()
+        self._context_cache.clear()
+
         if self._client:
             await self._client.__aexit__(None, None, None)
             self._client = None
@@ -140,13 +154,13 @@ class ContextEngineClient:
         notification_channel: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Register an agent with semantic data needs.
+        Register an agent with semantic data needs and start pub/sub subscription.
 
         The Context Engine will:
         1. Match agent needs to available data via semantic similarity
         2. Send initial context for all matches
         3. Catch up agent with missed events
-        4. Subscribe agent to real-time updates
+        4. Subscribe agent to real-time updates via Redis pub/sub
 
         Args:
             agent_id: Unique agent identifier
@@ -170,7 +184,9 @@ class ContextEngineClient:
             response = await client.register_agent(
                 agent_id=agent_id,
                 project_id=project_id,
-                data_needs=data_needs
+                data_needs=data_needs,
+                notification_method="redis",  # Use Redis pub/sub
+                last_seen_sequence=last_seen_sequence
             )
 
             # Extract response data from SDK response object
@@ -182,7 +198,12 @@ class ContextEngineClient:
             matched_count = sum(matched_needs.values()) if matched_needs else 0
 
             # Store registration
-            self.registered_agents[agent_id] = notification_ch
+            cache_key = f"{agent_id}:{project_id}"
+            self.registered_agents[cache_key] = notification_ch
+
+            # Start pub/sub subscription if Redis is available
+            if self.redis and cache_key not in self._subscriptions:
+                self._start_subscription(cache_key, notification_ch)
 
             print(f"[ContextEngine] ✓ Registered agent {agent_id}")
             print(f"[ContextEngine]   Matched needs: {matched_count}")
@@ -198,6 +219,36 @@ class ContextEngineClient:
         except Exception as e:
             print(f"[ContextEngine] ✗ Failed to register agent: {e}")
             raise
+
+    def _start_subscription(self, cache_key: str, channel: str):
+        """Start a background task to listen for pub/sub updates."""
+        async def listen_for_updates():
+            """Background task that listens to Redis pub/sub channel."""
+            try:
+                pubsub = self.redis.pubsub()
+                await pubsub.subscribe(channel)
+                print(f"[ContextEngine] ✓ Subscribed to pub/sub channel: {channel}")
+
+                async for message in pubsub.listen():
+                    if message['type'] == 'message':
+                        try:
+                            data = json.loads(message['data'])
+                            # Update the context cache
+                            self._context_cache[cache_key] = {
+                                "data": data,
+                                "updated_at": asyncio.get_event_loop().time()
+                            }
+                            print(f"[ContextEngine] ✓ Received context update for {cache_key}")
+                        except json.JSONDecodeError as e:
+                            print(f"[ContextEngine] ⚠ Invalid JSON in pub/sub message: {e}")
+            except asyncio.CancelledError:
+                print(f"[ContextEngine] Subscription cancelled for {channel}")
+            except Exception as e:
+                print(f"[ContextEngine] ⚠ Pub/sub error for {channel}: {e}")
+
+        # Start the listener as a background task
+        task = asyncio.create_task(listen_for_updates())
+        self._subscriptions[cache_key] = task
 
     async def query(
         self,
@@ -264,44 +315,41 @@ class ContextEngineClient:
     async def subscribe_to_updates(
         self,
         agent_id: str,
-        callback: callable
+        project_id: str,
+        callback: callable = None
     ):
         """
         Subscribe to real-time updates for an agent.
 
+        Note: Subscriptions are automatically started when register_agent() is called.
+        This method is provided for explicit subscription management or custom callbacks.
+
         Args:
             agent_id: Agent identifier
-            callback: Async function to call with updates
+            project_id: Project identifier
+            callback: Optional async function to call with updates
                 Signature: async def callback(update: Dict[str, Any])
+                If None, updates are cached and available via get_agent_context()
         """
+        cache_key = f"{agent_id}:{project_id}"
+
         if not self.redis:
             print(f"[ContextEngine] ⚠ Redis client not available, cannot subscribe")
             return
 
-        channel = self.registered_agents.get(agent_id)
+        channel = self.registered_agents.get(cache_key)
         if not channel:
-            print(f"[ContextEngine] ⚠ Agent {agent_id} not registered")
+            print(f"[ContextEngine] ⚠ Agent {agent_id} not registered for project {project_id}")
             return
 
-        pubsub = self.redis.pubsub()
-        await pubsub.subscribe(channel)
+        # If already subscribed, nothing to do
+        if cache_key in self._subscriptions:
+            print(f"[ContextEngine] Already subscribed to {channel}")
+            return
 
+        # Start the subscription
+        self._start_subscription(cache_key, channel)
         print(f"[ContextEngine] ✓ Subscribed to updates for {agent_id} on {channel}")
-
-        try:
-            while True:
-                message = await pubsub.get_message(ignore_subscribe_messages=True)
-                if message:
-                    try:
-                        update = json.loads(message['data'])
-                        await callback(update)
-                    except Exception as e:
-                        print(f"[ContextEngine] ✗ Error processing update: {e}")
-
-                await asyncio.sleep(0.1)
-
-        finally:
-            await pubsub.unsubscribe(channel)
 
     async def get_project_data(
         self,
@@ -368,10 +416,10 @@ class ContextEngineClient:
         project_id: str
     ) -> Optional[Dict[str, Any]]:
         """
-        Get current context for an agent.
+        Get current context for an agent from the pub/sub cache.
 
-        This retrieves the agent's context based on registered needs
-        and currently available data.
+        Context is delivered via Redis pub/sub after registration.
+        This method returns cached context - it does NOT make HTTP calls.
 
         Args:
             agent_id: Agent identifier
@@ -380,31 +428,21 @@ class ContextEngineClient:
         Returns:
             Agent context or None if not available
         """
-        try:
-            # Query for all data relevant to this agent using our HTTP-based query method
-            results = await self.query(
-                project_id=project_id,
-                query=f"context for agent {agent_id}"
-            )
+        cache_key = f"{agent_id}:{project_id}"
 
-            if not results:
-                return None
-
+        # Check if we have cached context from pub/sub
+        cached = self._context_cache.get(cache_key)
+        if cached:
             return {
                 "agent_id": agent_id,
                 "project_id": project_id,
-                "context_items": [
-                    {
-                        "data_key": r.get('data_key', ''),
-                        "data": r.get('data', {})
-                    }
-                    for r in results
-                ]
+                "context_items": cached.get("data", {}).get("context_items", []),
+                "data": cached.get("data", {})
             }
 
-        except Exception as e:
-            print(f"[ContextEngine] ✗ Failed to get agent context: {e}")
-            return None
+        # No cached context yet - this is normal for newly registered agents
+        # Context will arrive via pub/sub when data is published
+        return None
 
 
 # Global instance

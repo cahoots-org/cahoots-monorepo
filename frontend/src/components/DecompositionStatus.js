@@ -29,114 +29,143 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
     composer: 'Finalizing Plan'
   };
 
-  // More detailed descriptions for each stage
-  const stageDescriptions = {
-    source: 'Carefully reading through your requirements',
-    context_fetch: 'Figuring out how different parts connect',
-    complexity_scorer: 'Calculating how much work each part needs',
-    root_processor: 'Designing the technical structure',
-    decomposer: 'Breaking down into specific, actionable tasks',
-    composer: 'Organizing everything into a complete plan'
-  };
-
-  const handleDecompositionEvent = (event) => {
-    switch (event.type) {
-      // Handle real-time service status events
-      case 'service.status':
-        if (event.task_id === taskId) {
-          const { stage, status, message, timestamp } = event;
-          const stepTitle = stageLabels[stage] || stage;
-          const stepId = `${stage}-${status}`;
-
-          // Update current step
-          setCurrentStep(message);
-
-          if (status === 'started') {
-            // Add or update the step
-            const existingStepIndex = decompositionSteps.findIndex(s => s.id.startsWith(stage));
-            if (existingStepIndex >= 0) {
-              updateStep(stepTitle, 'in_progress', message);
-            } else {
-              addStep(stepTitle, 'in_progress', message);
-            }
-          } else if (status === 'processing') {
-            setCurrentStep(message);
-            updateStepDescription(stepTitle, message);
-          } else if (status === 'completed') {
-            updateStep(stepTitle, 'completed', message);
-          } else if (status === 'error') {
-            updateStep(stepTitle, 'error', message);
-            setError(message);
-          }
-        }
-        break;
-
-      // Handle task decomposition completed
-      case 'task.decomposed':
-        if (event.task_id === taskId) {
-          setCurrentStep('Task decomposed into subtasks successfully!');
-        }
-        break;
-
-      // Handle event modeling started
-      case 'event_modeling.started':
-        if (event.task_id === taskId) {
-          addStep('Designing System Blueprint', 'in_progress', 'Mapping out how users will interact with your app...');
-          setCurrentStep('Creating your system blueprint...');
-        }
-        break;
-
-      // Handle event modeling progress
-      case 'event_modeling.progress':
-        if (event.task_id === taskId) {
-          const { events, commands, read_models, user_interactions, automations } = event;
-          const totalItems = (events || 0) + (commands || 0) + (read_models || 0) + (user_interactions || 0) + (automations || 0);
-          updateStep(
-            'Designing System Blueprint',
-            'in_progress',
-            `Found ${totalItems} elements: ${commands || 0} user actions, ${read_models || 0} screens, ${events || 0} background processes...`
-          );
-          setCurrentStep(`Discovered ${totalItems} features so far`);
-        }
-        break;
-
-      // Handle event modeling completed
-      case 'event_modeling.completed':
-        if (event.task_id === taskId) {
-          const { events, commands, read_models, user_interactions, automations } = event;
-          updateStep(
-            'Designing System Blueprint',
-            'completed',
-            `Complete: ${commands || 0} user actions, ${read_models || 0} screens, ${events || 0} background processes`
-          );
-          setCurrentStep('System blueprint complete! Wrapping up...');
-          setTimeout(() => {
-            if (onDecompositionComplete) {
-              onDecompositionComplete();
-            }
-          }, 2000);
-        }
-        break;
-
-      // Handle task completion (final fallback)
-      case 'task.updated':
-        if (event.task_id === taskId && event.status === 'completed') {
-          setCurrentStep('Task processing completed!');
-          setTimeout(() => {
-            if (onDecompositionComplete) {
-              onDecompositionComplete();
-            }
-          }, 2000);
-        }
-        break;
-
-      default:
-        break;
-    }
-  };
-
   useEffect(() => {
     if (taskId && connected) {
+      const handleDecompositionEvent = (event) => {
+        switch (event.type) {
+          // Handle real-time service status events
+          case 'service.status':
+            if (event.task_id === taskId) {
+              const { stage, status, message } = event;
+              const stepTitle = stageLabels[stage] || stage;
+
+              // Update current step
+              setCurrentStep(message);
+
+              if (status === 'started') {
+                // Add or update the step
+                setDecompositionSteps(prev => {
+                  const existingStepIndex = prev.findIndex(s => s.id.startsWith(stage));
+                  if (existingStepIndex >= 0) {
+                    return prev.map(step =>
+                      step.title === stepTitle
+                        ? { ...step, status: 'in_progress', description: message || step.description, timestamp: new Date().toLocaleTimeString() }
+                        : step
+                    );
+                  } else {
+                    return [...prev, {
+                      id: stepTitle.toLowerCase().replace(/\s+/g, '-'),
+                      title: stepTitle,
+                      status: 'in_progress',
+                      description: message,
+                      timestamp: new Date().toLocaleTimeString(),
+                    }];
+                  }
+                });
+              } else if (status === 'processing') {
+                setCurrentStep(message);
+                setDecompositionSteps(prev =>
+                  prev.map(step =>
+                    step.title === stepTitle
+                      ? { ...step, description: message }
+                      : step
+                  )
+                );
+              } else if (status === 'completed') {
+                setDecompositionSteps(prev =>
+                  prev.map(step =>
+                    step.title === stepTitle
+                      ? { ...step, status: 'completed', description: message || step.description, timestamp: new Date().toLocaleTimeString() }
+                      : step
+                  )
+                );
+              } else if (status === 'error') {
+                setDecompositionSteps(prev =>
+                  prev.map(step =>
+                    step.title === stepTitle
+                      ? { ...step, status: 'error', description: message || step.description, timestamp: new Date().toLocaleTimeString() }
+                      : step
+                  )
+                );
+                setError(message);
+              }
+            }
+            break;
+
+          // Handle task decomposition completed
+          case 'task.decomposed':
+            if (event.task_id === taskId) {
+              setCurrentStep('Task decomposed into subtasks successfully!');
+            }
+            break;
+
+          // Handle event modeling started
+          case 'event_modeling.started':
+            if (event.task_id === taskId) {
+              setDecompositionSteps(prev => [...prev, {
+                id: 'designing-system-blueprint',
+                title: 'Designing System Blueprint',
+                status: 'in_progress',
+                description: 'Mapping out how users will interact with your app...',
+                timestamp: new Date().toLocaleTimeString(),
+              }]);
+              setCurrentStep('Creating your system blueprint...');
+            }
+            break;
+
+          // Handle event modeling progress
+          case 'event_modeling.progress':
+            if (event.task_id === taskId) {
+              const { events, commands, read_models } = event;
+              const totalItems = (events || 0) + (commands || 0) + (read_models || 0);
+              setDecompositionSteps(prev =>
+                prev.map(step =>
+                  step.title === 'Designing System Blueprint'
+                    ? { ...step, status: 'in_progress', description: `Found ${totalItems} elements: ${commands || 0} user actions, ${read_models || 0} screens, ${events || 0} background processes...`, timestamp: new Date().toLocaleTimeString() }
+                    : step
+                )
+              );
+              setCurrentStep(`Discovered ${totalItems} features so far`);
+            }
+            break;
+
+          // Handle event modeling completed
+          case 'event_modeling.completed':
+            if (event.task_id === taskId) {
+              const { events, commands, read_models } = event;
+              setDecompositionSteps(prev =>
+                prev.map(step =>
+                  step.title === 'Designing System Blueprint'
+                    ? { ...step, status: 'completed', description: `Complete: ${commands || 0} user actions, ${read_models || 0} screens, ${events || 0} background processes`, timestamp: new Date().toLocaleTimeString() }
+                    : step
+                )
+              );
+              setCurrentStep('System blueprint complete! Wrapping up...');
+              setTimeout(() => {
+                if (onDecompositionComplete) {
+                  onDecompositionComplete();
+                }
+              }, 2000);
+            }
+            break;
+
+          // Handle task completion (final fallback)
+          case 'task.updated':
+            if (event.task_id === taskId && event.status === 'completed') {
+              setCurrentStep('Task processing completed!');
+              setTimeout(() => {
+                if (onDecompositionComplete) {
+                  onDecompositionComplete();
+                }
+              }, 2000);
+            }
+            break;
+
+          default:
+            break;
+        }
+      };
+
       const unsubscribe = subscribe((event) => {
         // Listen to events for this task or its subtasks
         if (event.task_id === taskId || event.task?.parent_id === taskId) {
@@ -146,7 +175,8 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
 
       return unsubscribe;
     }
-  }, [taskId, connected, subscribe, handleDecompositionEvent]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId, connected, subscribe, onDecompositionComplete]);
 
   // Fallback: If decomposing but no steps after 5 seconds, show initial step
   useEffect(() => {
@@ -170,26 +200,6 @@ const DecompositionStatus = ({ taskId, isDecomposing, onDecompositionComplete })
       description,
       timestamp: new Date().toLocaleTimeString(),
     }]);
-  };
-
-  const updateStep = (title, status, description) => {
-    setDecompositionSteps(prev => 
-      prev.map(step => 
-        step.title === title 
-          ? { ...step, status, description: description || step.description, timestamp: new Date().toLocaleTimeString() }
-          : step
-      )
-    );
-  };
-
-  const updateStepDescription = (title, description) => {
-    setDecompositionSteps(prev => 
-      prev.map(step => 
-        step.title === title 
-          ? { ...step, description }
-          : step
-      )
-    );
   };
 
   const getStepIcon = (status) => {

@@ -568,7 +568,7 @@ TECHNICAL ARCHITECTURE
 - Deployment: AWS or GCP with auto-scaling
 
 ### 3. Music Streaming Platform
-Build a Spotify-like music streaming service with social features and artist tools.
+Build a music streaming service with social features and artist tools.
 
 (Include artist uploads, playlists, discovery algorithms, social following, lyrics, podcasts, offline downloads, family plans, analytics for artists, recommendation engine, collaborative playlists, integration with smart speakers, concert listings, merchandise store, etc.)
 

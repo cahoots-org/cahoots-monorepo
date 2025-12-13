@@ -11,7 +11,6 @@ import {
   Button,
   Text,
   Badge,
-  Spinner,
   tokens,
 } from '../design-system';
 import ChangePreview from './ChangePreview';

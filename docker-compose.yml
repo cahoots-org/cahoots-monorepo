@@ -48,6 +48,13 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CONTEXT_ENGINE_URL=http://context-engine:8001
       - CONTEXT_ENGINE_API_KEY=${CONTEXT_ENGINE_API_KEY:-}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_PRICE_PRO_MONTHLY=${STRIPE_PRICE_PRO_MONTHLY:-}
+      - STRIPE_PRICE_PRO_YEARLY=${STRIPE_PRICE_PRO_YEARLY:-}
+      - STRIPE_SUCCESS_URL=${STRIPE_SUCCESS_URL:-http://localhost:3000/settings?success=true}
+      - STRIPE_CANCEL_URL=${STRIPE_CANCEL_URL:-http://localhost:3000/pricing?canceled=true}
     volumes:
       - ./app:/app/app:ro
     depends_on:

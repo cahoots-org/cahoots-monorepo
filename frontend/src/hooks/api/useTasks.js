@@ -129,8 +129,6 @@ export const useTaskStats = (topLevelOnly = true, options = {}) => {
 
 // Create task mutation
 export const useCreateTask = () => {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (taskData) => {
       return await apiClient.post('/tasks', taskData);

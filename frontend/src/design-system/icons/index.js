@@ -152,6 +152,10 @@ export const ExternalLinkIcon = createIcon(
   "M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"
 );
 
+export const CreditCardIcon = createIcon(
+  "M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z"
+);
+
 // Utility function to get complexity icon
 export const getComplexityIcon = (complexity) => {
   if (complexity >= 8) return TreeIcon; // High complexity - stable structure needed

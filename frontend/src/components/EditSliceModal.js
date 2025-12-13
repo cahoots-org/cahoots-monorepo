@@ -91,10 +91,10 @@ const EditSliceModal = ({
       size="lg"
     >
       <div style={styles.content}>
-        {/* Module context */}
+        {/* Chapter context */}
         {chapterName && (
           <div style={styles.contextBadge}>
-            <Text style={styles.contextLabel}>Module:</Text>
+            <Text style={styles.contextLabel}>Chapter:</Text>
             <Badge variant="default">{chapterName}</Badge>
           </div>
         )}

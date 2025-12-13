@@ -56,23 +56,43 @@ class UnifiedDomainAnalyzer:
         event_modeling_llm_calls_per_subphase.labels(subphase="analyze_description").inc()
         print(f"[UnifiedDomainAnalyzer] Sub-phase analyze_description took {duration:.2f}s")
 
-        # Sub-phase 2: Swimlanes and chapters
-        start_time = time.time()
-        print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
-        analysis = await self._detect_swimlanes_and_chapters(root_task, analysis)
-        duration = time.time() - start_time
-        event_modeling_subphase_duration.labels(subphase="swimlanes_chapters").observe(duration)
-        event_modeling_llm_calls_per_subphase.labels(subphase="swimlanes_chapters").inc()
-        print(f"[UnifiedDomainAnalyzer] Sub-phase swimlanes_chapters took {duration:.2f}s")
+        # Sub-phases 2 & 3: Run swimlanes/chapters AND wireframes/dataflow in PARALLEL
+        # These are independent operations that both read from analysis and add new keys
+        import asyncio
 
-        # Sub-phase 3: Wireframes and data flow
-        start_time = time.time()
-        print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
-        analysis = await self._generate_wireframes_and_dataflow(root_task, analysis)
-        duration = time.time() - start_time
-        event_modeling_subphase_duration.labels(subphase="wireframes_dataflow").observe(duration)
-        event_modeling_llm_calls_per_subphase.labels(subphase="wireframes_dataflow").inc()
-        print(f"[UnifiedDomainAnalyzer] Sub-phase wireframes_dataflow took {duration:.2f}s")
+        async def run_swimlanes():
+            start = time.time()
+            print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
+            result = await self._detect_swimlanes_and_chapters(root_task, analysis)
+            duration = time.time() - start
+            event_modeling_subphase_duration.labels(subphase="swimlanes_chapters").observe(duration)
+            event_modeling_llm_calls_per_subphase.labels(subphase="swimlanes_chapters").inc()
+            print(f"[UnifiedDomainAnalyzer] Sub-phase swimlanes_chapters took {duration:.2f}s")
+            return result
+
+        async def run_wireframes():
+            start = time.time()
+            print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
+            result = await self._generate_wireframes_and_dataflow(root_task, analysis)
+            duration = time.time() - start
+            event_modeling_subphase_duration.labels(subphase="wireframes_dataflow").observe(duration)
+            event_modeling_llm_calls_per_subphase.labels(subphase="wireframes_dataflow").inc()
+            print(f"[UnifiedDomainAnalyzer] Sub-phase wireframes_dataflow took {duration:.2f}s")
+            return result
+
+        print(f"[UnifiedDomainAnalyzer] ⚡ Running swimlanes and wireframes in parallel...")
+        swimlanes_result, wireframes_result = await asyncio.gather(
+            run_swimlanes(),
+            run_wireframes()
+        )
+
+        # Merge results - each adds different keys to the analysis
+        analysis.update({
+            'swimlanes': swimlanes_result.get('swimlanes', []),
+            'chapters': swimlanes_result.get('chapters', []),
+            'wireframes': wireframes_result.get('wireframes', []),
+            'data_flow': wireframes_result.get('data_flow', {})
+        })
 
         # Skip data flow validation - too slow with retry loops
         # Final validation will catch major issues
@@ -168,31 +188,50 @@ class UnifiedDomainAnalyzer:
                 })
             batches.append(task_descriptions)
 
-        # Process each batch and combine results
+        # Process batches in PARALLEL for performance
+        # Process up to 4 batches concurrently to avoid overwhelming the LLM API
+        import asyncio
+        MAX_CONCURRENT_BATCHES = 4
+
         all_events = []
         all_commands = []
         all_read_models = []
         all_user_interactions = []
         all_automations = []
 
-        for batch_idx, task_descriptions in enumerate(batches):
-            print(f"[UnifiedDomainAnalyzer] Processing batch {batch_idx + 1}/{len(batches)} ({len(task_descriptions)} tasks)")
-
-            # Generate batch without validation (validation happens once at the end)
+        async def process_batch(batch_idx: int, task_descs: list) -> dict:
+            """Process a single batch and return results."""
+            print(f"[UnifiedDomainAnalyzer] Processing batch {batch_idx + 1}/{len(batches)} ({len(task_descs)} tasks)")
             batch_start = time.time()
-            batch_result = await self._analyze_batch(root_task, task_descriptions, len(atomic_tasks), None)
+            result = await self._analyze_batch(root_task, task_descs, len(atomic_tasks), None)
             batch_duration = time.time() - batch_start
             event_modeling_subphase_duration.labels(subphase="analyze_description").observe(batch_duration)
             event_modeling_llm_calls_per_subphase.labels(subphase="analyze_description").inc()
             print(f"[UnifiedDomainAnalyzer] Sub-phase analyze_description (batch {batch_idx + 1}) took {batch_duration:.2f}s")
+            return result
 
-            all_events.extend(batch_result.get("events", []))
-            all_commands.extend(batch_result.get("commands", []))
-            all_read_models.extend(batch_result.get("read_models", []))
-            all_user_interactions.extend(batch_result.get("user_interactions", []))
-            all_automations.extend(batch_result.get("automations", []))
+        # Process batches in parallel chunks
+        for chunk_start in range(0, len(batches), MAX_CONCURRENT_BATCHES):
+            chunk_end = min(chunk_start + MAX_CONCURRENT_BATCHES, len(batches))
+            chunk_batches = [(i, batches[i]) for i in range(chunk_start, chunk_end)]
 
-            # Emit progress after each batch
+            if len(chunk_batches) > 1:
+                print(f"[UnifiedDomainAnalyzer] ⚡ Processing batches {chunk_start + 1}-{chunk_end} in parallel...")
+
+            # Run this chunk of batches in parallel
+            chunk_results = await asyncio.gather(*[
+                process_batch(idx, task_descs) for idx, task_descs in chunk_batches
+            ])
+
+            # Collect results from this chunk
+            for batch_result in chunk_results:
+                all_events.extend(batch_result.get("events", []))
+                all_commands.extend(batch_result.get("commands", []))
+                all_read_models.extend(batch_result.get("read_models", []))
+                all_user_interactions.extend(batch_result.get("user_interactions", []))
+                all_automations.extend(batch_result.get("automations", []))
+
+            # Emit progress after each chunk completes
             if self.task_event_emitter and root_task and user_id:
                 await self.task_event_emitter.emit_event_modeling_progress(
                     root_task,
@@ -234,23 +273,41 @@ class UnifiedDomainAnalyzer:
             event_modeling_llm_calls_per_subphase.labels(subphase="consolidation").inc()
             print(f"[UnifiedDomainAnalyzer] Sub-phase consolidation took {consolidation_duration:.2f}s")
 
-        # Sub-phase: Swimlanes and chapters
-        start_time = time.time()
-        print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
-        combined_result = await self._detect_swimlanes_and_chapters(root_task, combined_result)
-        duration = time.time() - start_time
-        event_modeling_subphase_duration.labels(subphase="swimlanes_chapters").observe(duration)
-        event_modeling_llm_calls_per_subphase.labels(subphase="swimlanes_chapters").inc()
-        print(f"[UnifiedDomainAnalyzer] Sub-phase swimlanes_chapters took {duration:.2f}s")
+        # Sub-phases: Run swimlanes/chapters AND wireframes/dataflow in PARALLEL
+        # These are independent operations that both read from combined_result and add new keys
+        async def run_swimlanes_batch():
+            start = time.time()
+            print(f"[UnifiedDomainAnalyzer] Detecting swimlanes and chapters...")
+            result = await self._detect_swimlanes_and_chapters(root_task, combined_result)
+            duration = time.time() - start
+            event_modeling_subphase_duration.labels(subphase="swimlanes_chapters").observe(duration)
+            event_modeling_llm_calls_per_subphase.labels(subphase="swimlanes_chapters").inc()
+            print(f"[UnifiedDomainAnalyzer] Sub-phase swimlanes_chapters took {duration:.2f}s")
+            return result
 
-        # Sub-phase: Wireframes and data flow
-        start_time = time.time()
-        print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
-        combined_result = await self._generate_wireframes_and_dataflow(root_task, combined_result)
-        duration = time.time() - start_time
-        event_modeling_subphase_duration.labels(subphase="wireframes_dataflow").observe(duration)
-        event_modeling_llm_calls_per_subphase.labels(subphase="wireframes_dataflow").inc()
-        print(f"[UnifiedDomainAnalyzer] Sub-phase wireframes_dataflow took {duration:.2f}s")
+        async def run_wireframes_batch():
+            start = time.time()
+            print(f"[UnifiedDomainAnalyzer] Generating wireframes and data flow...")
+            result = await self._generate_wireframes_and_dataflow(root_task, combined_result)
+            duration = time.time() - start
+            event_modeling_subphase_duration.labels(subphase="wireframes_dataflow").observe(duration)
+            event_modeling_llm_calls_per_subphase.labels(subphase="wireframes_dataflow").inc()
+            print(f"[UnifiedDomainAnalyzer] Sub-phase wireframes_dataflow took {duration:.2f}s")
+            return result
+
+        print(f"[UnifiedDomainAnalyzer] ⚡ Running swimlanes and wireframes in parallel...")
+        swimlanes_result, wireframes_result = await asyncio.gather(
+            run_swimlanes_batch(),
+            run_wireframes_batch()
+        )
+
+        # Merge results - each adds different keys to the combined_result
+        combined_result.update({
+            'swimlanes': swimlanes_result.get('swimlanes', []),
+            'chapters': swimlanes_result.get('chapters', []),
+            'wireframes': wireframes_result.get('wireframes', []),
+            'data_flow': wireframes_result.get('data_flow', {})
+        })
 
         # Skip data flow validation - too slow with retry loops
         # Final validation will catch major issues

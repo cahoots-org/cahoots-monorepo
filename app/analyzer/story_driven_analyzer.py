@@ -102,9 +102,12 @@ Generate implementation tasks that satisfy ALL the user stories' acceptance crit
 {granularity_config.prompt_guidance}
 
 TASK GENERATION GUIDELINES:
-- Complex stories may need MULTIPLE tasks (e.g., a story about "user authentication" might need: data model task, API endpoints task, UI components task)
-- Simple related stories can be CONSOLIDATED into fewer tasks (e.g., two stories about "viewing" and "filtering" a list can share a task)
 - Think like a tech lead assigning work - what are the logical units of implementation?
+- CONSOLIDATE related functionality into single tasks
+- A "task" should be a meaningful unit of work, not a single function or file
+- Avoid micro-tasks - combine related work into cohesive features
+- A single task can implement multiple related acceptance criteria
+- Match the number of tasks to the actual complexity of the work
 
 Return as JSON with structure:
 {{
@@ -115,7 +118,7 @@ Return as JSON with structure:
           "task_index": 0,
           "description": "Specific implementation task with file paths",
           "is_atomic": true,
-          "implementation_details": "Technical approach referencing specific files",
+          "implementation_details": "Technical approach (describe patterns to use, NOT file names)",
           "story_points": <{sp_min}-{sp_max}>,
           "depends_on_indices": [],
           "also_implements": []  // other story IDs this task helps satisfy
@@ -124,6 +127,13 @@ Return as JSON with structure:
     }}
   }}
 }}
+
+CRITICAL - IMPLEMENTATION DETAILS RULES:
+- DO NOT reference specific file names that don't exist yet (like "slack_service.py")
+- DO describe patterns to follow: "Follow the same async client pattern as existing integrations"
+- DO describe approaches: "Use Redis for caching with TTL-based expiration"
+- DO NOT invent file paths - the task description already specifies where to create files
+- If referencing existing files, ONLY reference files shown in the codebase structure above
 
 STORY POINT GUIDELINES (target range: {sp_min}-{sp_max} SP per task):
 - Tasks should be sized within {sp_min}-{sp_max} story points
@@ -415,8 +425,11 @@ Is this task atomic and ready for implementation?"""
         # Check if we have event model context
         has_event_model = context and context.get("event_model") and not is_small_model
 
-        # Check if we have repository context
+        # Check if we have repository context (from GitHubZipAnalyzer)
         has_repo_context = context and context.get("repository_architecture")
+
+        # Check if we have GitHub context enrichment (from GitHubContextEnrichmentAgent)
+        has_github_context = context and context.get("github") and context["github"].get("file_summaries")
 
         # Start with event model context if available
         base_prompt = ""
@@ -553,10 +566,56 @@ ALL tasks MUST reference specific files and follow patterns from the existing co
 - "Build the frontend components for [feature]"
 - "Handle [feature] logic in the backend service layer"
 
+## CRITICAL - NO HALLUCINATED FILE REFERENCES:
+- ONLY reference files that are shown in the codebase structure above
+- DO NOT invent file names like "some_service.py" if they don't exist
+- For implementation_details, describe PATTERNS not file names: "Follow the async client pattern from existing integrations"
+- If a file doesn't exist in the structure above, DON'T reference it
+
 ## IMPORTANT:
 Balance between avoiding micro-tasks and providing adequate detail.
 """
-        elif not has_event_model:
+
+        # Add GitHub context enrichment if available (from GitHubContextEnrichmentAgent)
+        if has_github_context:
+            github = context["github"]
+            file_summaries = github.get("file_summaries", {})
+
+            if not base_prompt:
+                base_prompt = """You are a senior software engineer working with an EXISTING CODEBASE.
+You must break down user stories into implementation tasks that integrate with the current architecture.
+
+"""
+
+            base_prompt += """
+## EXISTING FILES IN THIS CODEBASE (ACTUAL CODE - DO NOT HALLUCINATE):
+The following files ACTUALLY EXIST in the repository. Reference ONLY these files or describe patterns without specific filenames.
+
+"""
+            # List the actual files that were read
+            base_prompt += "### Files analyzed from the repository:\n"
+            for file_path, summary in list(file_summaries.items())[:20]:  # Limit to 20
+                base_prompt += f"\n**{file_path}**:\n{summary}\n"
+
+            # Also include the file tree if available
+            if github.get("file_tree_summary"):
+                tree_summary = github["file_tree_summary"]
+                directories = tree_summary.get("directories", [])
+                if directories:
+                    base_prompt += "\n### Repository directory structure:\n"
+                    for dir_path in directories[:30]:  # Limit directories
+                        base_prompt += f"- {dir_path}/\n"
+
+            base_prompt += """
+## CRITICAL - FILE REFERENCE RULES:
+- ONLY reference files listed above - they are the ACTUAL files in this repository
+- If you need to suggest a new file, say "Create new file at..." - don't pretend it exists
+- For implementation_details, describe patterns: "Follow the pattern in [existing_file]"
+- NEVER invent file paths like "app/config/settings.py" if not shown above
+- If unsure, describe the approach without specific file names
+
+"""
+        elif not has_event_model and not has_repo_context:
             # Only use this fallback if we have NEITHER event model NOR repo context
             base_prompt = """You are a senior software engineer breaking down user stories into implementation tasks.
 

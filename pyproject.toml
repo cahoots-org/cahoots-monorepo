@@ -33,6 +33,9 @@ dependencies = [
     "duckduckgo-search==4.1.0",
     "email-validator==2.1.0",
 
+    # Payment processing
+    "stripe>=7.0.0",
+
     # Caching and embeddings
     "numpy<2.0",
     "scikit-learn==1.3.2",

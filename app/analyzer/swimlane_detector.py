@@ -101,15 +101,93 @@ def _generate_fallback_structure(event_model: Dict[str, Any]) -> Dict[str, Any]:
                 "gwt_scenarios": gwt_scenarios
             })
 
-    # Create one chapter with all slices
-    event_model['chapters'] = [{
-        "name": "Core Functionality",
-        "description": "Main system workflows",
-        "slices": slices
-    }]
+    # Try to group slices into meaningful chapters using heuristics
+    chapters = _group_slices_into_chapters(slices, commands)
 
-    print(f"[SwimlaneDetector] Generated fallback: 1 swimlane, 1 chapter with {len(slices)} slices (with GWT scenarios)")
+    event_model['chapters'] = chapters
+
+    print(f"[SwimlaneDetector] Generated fallback: 1 swimlane, {len(chapters)} chapters with {len(slices)} slices (with GWT scenarios)")
     return event_model
+
+
+def _group_slices_into_chapters(slices: List[Dict], commands: List[Dict]) -> List[Dict]:
+    """Group slices into chapters based on naming patterns and common prefixes."""
+
+    # Common domain groupings and their keywords
+    CHAPTER_PATTERNS = {
+        "User Registration & Authentication": ["register", "login", "logout", "password", "auth", "verify", "mfa", "2fa", "session"],
+        "User Profile Management": ["profile", "avatar", "account", "settings", "preference"],
+        "Project & Listing Management": ["project", "listing", "post", "publish", "draft", "archive", "job"],
+        "Search & Discovery": ["search", "filter", "browse", "discover", "explore", "category"],
+        "Booking & Scheduling": ["book", "schedule", "appointment", "slot", "calendar", "reserve", "cancel"],
+        "Bidding & Proposals": ["bid", "proposal", "offer", "quote", "negotiate"],
+        "Contracts & Agreements": ["contract", "agreement", "accept", "decline", "terms"],
+        "Payments & Escrow": ["payment", "pay", "escrow", "fund", "release", "refund", "transfer", "payout", "credit", "debit"],
+        "Messaging & Communication": ["message", "chat", "notification", "email", "alert", "inbox"],
+        "Reviews & Ratings": ["review", "rating", "feedback", "star", "score"],
+        "Disputes & Resolution": ["dispute", "complaint", "resolve", "mediate", "arbitrate"],
+        "Admin & Moderation": ["admin", "moderate", "ban", "suspend", "report", "flag", "warn"],
+        "Analytics & Reporting": ["report", "analytic", "metric", "dashboard", "stat"],
+    }
+
+    # Group commands by chapter
+    chapter_slices = {name: [] for name in CHAPTER_PATTERNS.keys()}
+    chapter_slices["Other Workflows"] = []
+
+    for slice_data in slices:
+        # Get the name to match against (command name or read_model name)
+        name = slice_data.get("command") or slice_data.get("read_model") or ""
+        name_lower = name.lower()
+
+        # Find matching chapter
+        matched_chapter = None
+        for chapter_name, keywords in CHAPTER_PATTERNS.items():
+            for keyword in keywords:
+                if keyword in name_lower:
+                    matched_chapter = chapter_name
+                    break
+            if matched_chapter:
+                break
+
+        if matched_chapter:
+            chapter_slices[matched_chapter].append(slice_data)
+        else:
+            chapter_slices["Other Workflows"].append(slice_data)
+
+    # Build chapters list (only non-empty chapters)
+    chapters = []
+    for chapter_name, slices_list in chapter_slices.items():
+        if slices_list:
+            # Generate a description based on the chapter name
+            description_map = {
+                "User Registration & Authentication": "User sign-up, login, and identity verification flows",
+                "User Profile Management": "Managing user profiles, avatars, and account settings",
+                "Project & Listing Management": "Creating and managing projects or listings",
+                "Search & Discovery": "Finding and filtering content",
+                "Booking & Scheduling": "Scheduling appointments and managing availability",
+                "Bidding & Proposals": "Submitting and managing bids or proposals",
+                "Contracts & Agreements": "Formalizing agreements between parties",
+                "Payments & Escrow": "Processing payments, managing escrow, and fund transfers",
+                "Messaging & Communication": "In-app messaging and notifications",
+                "Reviews & Ratings": "Leaving and viewing ratings and reviews",
+                "Disputes & Resolution": "Handling disputes and conflict resolution",
+                "Admin & Moderation": "Administrative tools and content moderation",
+                "Analytics & Reporting": "Viewing reports and analytics data",
+                "Other Workflows": "Additional system functionality",
+            }
+
+            chapters.append({
+                "name": chapter_name,
+                "description": description_map.get(chapter_name, "System workflows"),
+                "slices": slices_list
+            })
+
+    # If only "Other Workflows" has content, rename it
+    if len(chapters) == 1 and chapters[0]["name"] == "Other Workflows":
+        chapters[0]["name"] = "Core Functionality"
+        chapters[0]["description"] = "Main system workflows"
+
+    return chapters
 
 
 def _extract_swimlanes_from_reasoning(content: str, event_model: Dict[str, Any]) -> Dict[str, Any]:
@@ -123,11 +201,17 @@ def _extract_swimlanes_from_reasoning(content: str, event_model: Dict[str, Any])
     """
     import re
 
+    # Get known command/event names for validation
+    known_commands = {c.get('name') for c in event_model.get('commands', []) if isinstance(c, dict) and c.get('name')}
+    known_events = {(e.name if hasattr(e, 'name') else e.get('name', '')) for e in event_model.get('events', [])}
+    known_read_models = {rm.get('name') for rm in event_model.get('read_models', []) if isinstance(rm, dict) and rm.get('name')}
+    known_names = known_commands | known_events | known_read_models
+
     # Look for patterns like "CommandName - Category" or "N. CommandName - Category"
-    # Common patterns from reasoning models
+    # Must start with PascalCase (capital letter followed by letters)
     patterns = [
-        r'(\w+)\s*[-–—]\s*(\w+(?:\s+\w+)?)',  # "CommandName - Category" or "CommandName - Two Words"
-        r'\d+\.\s*(\w+)\s*[-–—]\s*(\w+(?:\s+\w+)?)',  # "1. CommandName - Category"
+        r'\b([A-Z][a-zA-Z0-9]+)\s*[-–—:]\s*([A-Z][a-zA-Z\s&]+?)(?=[,\.\n\r]|$)',  # "CommandName - Category" ending at punctuation
+        r'\d+\.\s*([A-Z][a-zA-Z0-9]+)\s*[-–—:]\s*([A-Z][a-zA-Z\s&]+?)(?=[,\.\n\r]|$)',  # "1. CommandName - Category"
     ]
 
     assignments = {}  # command/event -> swimlane name
@@ -135,10 +219,19 @@ def _extract_swimlanes_from_reasoning(content: str, event_model: Dict[str, Any])
     for pattern in patterns:
         matches = re.findall(pattern, content)
         for name, swimlane in matches:
+            # Only use if name is a known command/event/read_model
+            if name not in known_names:
+                continue
             # Normalize swimlane name
             swimlane = swimlane.strip().title()
-            if swimlane not in ['We', 'The', 'This', 'That', 'Or', 'And', 'If']:  # Skip common words
-                assignments[name] = swimlane
+            # Skip common words that aren't swimlane names
+            skip_words = ['We', 'The', 'This', 'That', 'Or', 'And', 'If', 'It', 'Is', 'To', 'For', 'With', 'From', 'By', 'In', 'On', 'At']
+            if swimlane in skip_words:
+                continue
+            # Skip very short names or names that are just numbers
+            if len(swimlane) < 3 or swimlane.isdigit():
+                continue
+            assignments[name] = swimlane
 
     if not assignments:
         return None
@@ -361,7 +454,8 @@ async def _generate_chapters_with_gwt(llm_client, root_task, event_model: Dict[s
 
     # For small event models, process all at once
     if len(commands) + len(read_models) <= 30:
-        return await _generate_chapters_batch(llm_client, root_task, commands, read_models, user_stories=user_stories)
+        chapters = await _generate_chapters_batch(llm_client, root_task, commands, read_models, user_stories=user_stories)
+        return _deduplicate_chapters(chapters) if chapters else None
 
     # For large event models, process by swimlane
     all_chapters = []
@@ -378,7 +472,84 @@ async def _generate_chapters_with_gwt(llm_client, root_task, event_model: Dict[s
             if chapters:
                 all_chapters.extend(chapters)
 
-    return all_chapters if all_chapters else None
+    # Deduplicate chapters and slices after batch processing
+    return _deduplicate_chapters(all_chapters) if all_chapters else None
+
+
+def _deduplicate_chapters(chapters: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate chapters by merging similar ones and removing duplicate slices.
+
+    This handles the case where large event models processed by swimlane
+    generate overlapping chapters with the same features.
+    """
+    if not chapters:
+        return chapters
+
+    # Track which commands/read_models have already been assigned to a slice
+    assigned_commands = set()
+    assigned_read_models = set()
+
+    # First pass: identify chapters that should be merged (same base name without prefix)
+    chapter_groups = {}
+    for chapter in chapters:
+        # Extract base name (remove swimlane prefix like "GameControl: ")
+        name = chapter.get('name', '')
+        base_name = name.split(': ', 1)[-1] if ': ' in name else name
+
+        # Normalize the base name for grouping
+        normalized = base_name.lower().strip()
+
+        if normalized not in chapter_groups:
+            chapter_groups[normalized] = {
+                'name': base_name,  # Use clean name without prefix
+                'description': chapter.get('description', ''),
+                'slices': []
+            }
+
+        # Add slices from this chapter
+        for slice_data in chapter.get('slices', []):
+            chapter_groups[normalized]['slices'].append(slice_data)
+
+    # Second pass: deduplicate slices within each merged chapter
+    deduplicated_chapters = []
+    for normalized, merged_chapter in chapter_groups.items():
+        unique_slices = []
+
+        for slice_data in merged_chapter['slices']:
+            cmd_name = slice_data.get('command')
+            rm_name = slice_data.get('read_model')
+
+            # Skip if this command/read_model was already added
+            if cmd_name and cmd_name in assigned_commands:
+                continue
+            if rm_name and rm_name in assigned_read_models:
+                continue
+
+            # Mark as assigned and add to unique slices
+            if cmd_name:
+                assigned_commands.add(cmd_name)
+            if rm_name:
+                assigned_read_models.add(rm_name)
+
+            unique_slices.append(slice_data)
+
+        # Only add chapter if it has slices after deduplication
+        if unique_slices:
+            deduplicated_chapters.append({
+                'name': merged_chapter['name'],
+                'description': merged_chapter['description'],
+                'slices': unique_slices
+            })
+
+    # Sort chapters to maintain consistent order
+    deduplicated_chapters.sort(key=lambda c: c.get('name', ''))
+
+    original_count = sum(len(ch.get('slices', [])) for ch in chapters)
+    deduped_count = sum(len(ch.get('slices', [])) for ch in deduplicated_chapters)
+    if original_count != deduped_count:
+        print(f"[SwimlaneDetector] Deduplicated: {original_count} slices → {deduped_count} slices ({len(chapters)} chapters → {len(deduplicated_chapters)} chapters)")
+
+    return deduplicated_chapters
 
 
 async def _generate_chapters_batch(
@@ -435,11 +606,11 @@ async def _generate_chapters_batch(
                         story_snippets.append(f"  • {c}")
         if story_snippets:
             story_context = f"""
-USER STORIES & ACCEPTANCE CRITERIA (use these for scenario specifics):
+USER STORIES & ACCEPTANCE CRITERIA (use these to inform chapters and scenarios):
 {chr(10).join(story_snippets)}
 """
 
-    prompt = f"""Generate BDD test scenarios (Given-When-Then) for these commands and read models.
+    prompt = f"""Organize these commands and read models into USER JOURNEY CHAPTERS, then generate BDD test scenarios for each.
 
 PROJECT: {root_task.description if root_task else "Unknown"}
 {story_context}
@@ -449,63 +620,68 @@ COMMANDS:
 READ MODELS:
 {chr(10).join(rm_info) if rm_info else "None"}
 
-CRITICAL REQUIREMENTS FOR HIGH-QUALITY SCENARIOS:
+=== CHAPTER DEFINITION (CRITICAL) ===
+
+A CHAPTER is a USER JOURNEY - a coherent flow of actions a user performs to accomplish a specific goal.
+
+GOOD chapter examples:
+- "User Registration & Onboarding" - RegisterUser → VerifyEmail → CompleteProfile
+- "Booking an Appointment" - SearchSlots → BookAppointment → ConfirmBooking
+- "Making a Purchase" - AddToCart → Checkout → ProcessPayment → ConfirmOrder
+- "Provider Consultation" - StartSession → ReviewChart → CreateNotes → EndSession
+
+BAD chapter examples (avoid these):
+- "User Commands" (just groups by type, not by journey)
+- "Core Functionality" (too vague, not a journey)
+- "Database Operations" (technical, not user-focused)
+
+Chapter naming rules:
+1. Name should describe the USER'S GOAL (e.g., "Scheduling a Visit", not "Appointment Commands")
+2. Each chapter tells a STORY with a beginning, middle, and end
+3. 3-8 slices per chapter is ideal (not too few, not too many)
+4. Aim for 4-10 chapters total depending on system complexity
+5. Commands that serve multiple journeys should go in their PRIMARY journey
+
+=== GWT SCENARIO REQUIREMENTS ===
+
+For each command/read model, generate 2-4 BDD scenarios:
 
 1. **NAMED ACTORS with specific identifiers**:
-   - BAD: "Given a user wants to..."
-   - GOOD: "Given Client 'acme-corp' (clientId: 'client-123') owns project 'website-redesign'"
+   - GOOD: "Given Patient 'john-doe' (patientId: 'p-123') has appointment at 2pm"
 
-2. **CONCRETE ENTITY IDs and VALUES**:
-   - BAD: "When the command is executed"
-   - GOOD: "When AcceptBid is executed with bidId='bid-456', projectId='proj-789'"
+2. **CONCRETE VALUES**:
+   - GOOD: "When BookAppointment is executed with slotId='slot-456', patientId='p-123'"
 
-3. **SPECIFIC EVENT PAYLOADS in Then clause**:
-   - BAD: "Then events are emitted"
-   - GOOD: "Then BidAccepted is emitted with contractId='contract-001', amount=$2000"
+3. **SPECIFIC OUTCOMES**:
+   - GOOD: "Then AppointmentBooked is emitted with appointmentId='apt-789', confirmationCode='ABC123'"
 
-4. **MULTIPLE SCENARIO TYPES per command** (aim for 3-5 scenarios each):
-   a. Happy path with full specifics
-   b. Authorization failure (wrong user tries action)
-   c. Business rule violation (e.g., insufficient funds, invalid state)
-   d. Edge case (concurrent access, expiration, boundary values)
+4. **SCENARIO TYPES** per command:
+   - Happy path with specifics
+   - Authorization/validation failure
+   - Business rule edge case
 
-5. **READ MODEL SCENARIOS must show specific data**:
-   - BAD: "Then the read model displays data"
-   - GOOD: "Then EscrowBalance shows totalHeld=$5000, released=$1500, pending=$3500"
+=== OUTPUT FORMAT ===
 
-EXAMPLE SCENARIOS FOR REFERENCE:
-
-For AcceptBid command:
-{{
-  "given": "Client 'acme-corp' (clientId: 'c-123') has project 'website-redesign' (projectId: 'p-456') with budget $5000. Freelancer 'jane-dev' (freelancerId: 'f-789') submitted bid 'bid-001' for $4500",
-  "when": "Client executes AcceptBid with bidId='bid-001', clientId='c-123'",
-  "then": "BidAccepted is emitted with contractId='contract-new', acceptedAmount=$4500. EscrowFundsHeld is emitted with amount=$4500, contractId='contract-new'. All other bids on project 'p-456' are marked rejected"
-}}
-
-For authorization failure:
-{{
-  "given": "Freelancer 'jane-dev' (freelancerId: 'f-789') submitted bid 'bid-001' on project owned by 'acme-corp'",
-  "when": "Different client 'other-corp' (clientId: 'c-999') attempts AcceptBid with bidId='bid-001'",
-  "then": "BidAcceptanceFailed is emitted with reason='UnauthorizedAccess'. No escrow funds are held. Bid remains in 'pending' status"
-}}
-
-For a read model:
-{{
-  "given": "EscrowFundsHeld event occurred with amount=$5000 for contract 'contract-123'. MilestoneReleased events occurred for $1500 total",
-  "then": "EscrowBalanceDetails for contract 'contract-123' shows totalHeld=$5000, released=$1500, remaining=$3500, with breakdown by milestone"
-}}
-
-Return JSON with chapters containing slices:
+Return JSON with chapters organized by user journey:
 
 {{"chapters": [
-  {{"name": "Chapter Name", "description": "...", "slices": [
-    {{"type": "state_change", "command": "CmdName", "events": ["Event1"], "gwt_scenarios": [
-      {{"given": "detailed precondition with named actors and IDs", "when": "specific action with parameter values", "then": "specific outcome with event payloads"}}
-    ]}},
-    {{"type": "state_view", "read_model": "RMName", "source_events": ["Event1"], "gwt_scenarios": [
-      {{"given": "specific events that occurred with values", "then": "exact data shown with field values"}}
-    ]}}
-  ]}}
+  {{
+    "name": "User Registration & Onboarding",
+    "description": "New user creates account and completes initial setup",
+    "slices": [
+      {{"type": "state_change", "command": "RegisterUser", "events": ["UserRegistered"], "gwt_scenarios": [
+        {{"given": "New user 'alice' provides email 'alice@example.com' and password", "when": "RegisterUser is executed with email='alice@example.com'", "then": "UserRegistered is emitted with userId='u-new', verificationToken='tok-abc'"}}
+      ]}},
+      {{"type": "state_view", "read_model": "UserProfile", "source_events": ["UserRegistered"], "gwt_scenarios": [
+        {{"given": "UserRegistered event occurred for userId='u-123'", "then": "UserProfile shows name, email, registrationDate, verificationStatus='pending'"}}
+      ]}}
+    ]
+  }},
+  {{
+    "name": "Booking an Appointment",
+    "description": "User finds available time and schedules an appointment",
+    "slices": [...]
+  }}
 ]}}
 
 Return ONLY valid JSON."""
@@ -688,6 +864,8 @@ async def detect_swimlanes_and_chapters(llm_client, root_task, event_model: Dict
         print("[SwimlaneDetector] Phase 2 failed, generating basic chapters from swimlanes")
         # Generate basic chapters from swimlanes with GWT
         chapters = _generate_chapters_from_swimlanes(event_model, swimlanes)
+        # Also deduplicate fallback chapters
+        chapters = _deduplicate_chapters(chapters) if chapters else []
 
     print(f"[SwimlaneDetector] Phase 2 complete: {len(chapters)} chapters generated")
     event_model['chapters'] = chapters

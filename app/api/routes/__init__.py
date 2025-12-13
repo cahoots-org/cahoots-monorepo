@@ -13,6 +13,7 @@ from .metrics import router as metrics_router
 from .projects import router as projects_router
 from .codegen import router as codegen_router
 from .edit import router as edit_router
+from .subscriptions import router as subscriptions_router
 
 __all__ = [
     "task_router",
@@ -28,4 +29,5 @@ __all__ = [
     "projects_router",
     "codegen_router",
     "edit_router",
+    "subscriptions_router",
 ]

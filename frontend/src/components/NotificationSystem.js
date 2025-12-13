@@ -1,14 +1,13 @@
 // Professional Notification System - Replaces scattered toast notifications
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { 
-  Button, 
+import {
+  Button,
   Text,
   tokens,
   CheckCircleIcon,
   ExclamationCircleIcon,
   InformationCircleIcon,
-  ClockIcon,
 } from '../design-system';
 import { useApp } from '../contexts/AppContext';
 

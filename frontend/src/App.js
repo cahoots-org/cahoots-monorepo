@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { HelmetProvider } from 'react-helmet-async';
 import { queryClient } from './lib/query-client';
@@ -9,6 +9,7 @@ import { AppProvider } from './contexts/AppContext';
 import { WebSocketProvider } from './contexts/WebSocketContext';
 import { SettingsProvider } from './contexts/SettingsContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { SubscriptionProvider } from './contexts/SubscriptionContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -22,8 +23,10 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
+import Pricing from './pages/Pricing';
+import CheckoutReturn from './pages/CheckoutReturn';
 import Settings from './pages/Settings';
-import Login from './pages/Login';
+// Login page no longer used - login form is on landing page
 import Register from './pages/Register';
 import OAuthCallback from './pages/OAuthCallback';
 import OAuthCallbackSecure from './pages/OAuthCallbackSecure';
@@ -71,6 +74,7 @@ function App() {
     <HelmetProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <SubscriptionProvider>
           <SettingsProvider>
             <UserSettingsSync />
             <ThemeProvider>
@@ -81,7 +85,7 @@ function App() {
             {/* Public routes */}
             <Route path="/" element={<AuthRoute />} />
             <Route path="/landing" element={<Landing />} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/login" element={<Navigate to="/" replace />} />
             <Route path="/register" element={<Register />} />
             <Route path="/oauth-callback" element={<OAuthCallbackSecure />} />
             <Route path="/oauth/:provider/callback" element={<OAuthCallback />} />
@@ -90,6 +94,12 @@ function App() {
             <Route path="/contact" element={<Contact />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsOfService />} />
+            <Route path="/pricing" element={<Pricing />} />
+            <Route path="/checkout/return" element={
+              <ProtectedRoute>
+                <CheckoutReturn />
+              </ProtectedRoute>
+            } />
             <Route path="/blog" element={<BlogPage />} />
             <Route path="/blog/:slug" element={<BlogPage />} />
 
@@ -137,6 +147,7 @@ function App() {
               </AppProvider>
             </ThemeProvider>
         </SettingsProvider>
+          </SubscriptionProvider>
       </AuthProvider>
       <ToasterComponent />
       <ReactQueryDevtools initialIsOpen={false} />

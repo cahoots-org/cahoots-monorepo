@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -10,7 +9,6 @@ import { useSettings } from '../contexts/SettingsContext';
 export const UserSettingsSync = () => {
   const { user, loading } = useAuth();
   const { loadUserSettings } = useSettings();
-  const location = useLocation();
 
   // Sync settings whenever user ID or loading state changes
   useEffect(() => {

@@ -12,19 +12,21 @@ import {
   Heading1,
   Badge,
   Modal,
-  LoadingSpinner,
   CogIcon,
   CheckIcon,
   ExclamationCircleIcon,
   ArrowRightIcon,
+  CreditCardIcon,
   tokens,
 } from '../design-system';
 import apiClient from '../services/unifiedApiClient';
 import GitHubIntegration from '../components/GitHubIntegration';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 const Settings = () => {
   const { settings, updateSettings } = useSettings();
   const { logout, user } = useAuth();
+  const { subscription, openBillingPortal, isPro, isEnterprise, isFree, loading: billingLoading } = useSubscription();
   const { setGlobalLoading } = useApp();
   const { showNotification } = useNotification();
   const navigate = useNavigate();
@@ -119,6 +121,7 @@ const Settings = () => {
 
   const sections = [
     { id: 'general', label: 'General', icon: CogIcon },
+    { id: 'billing', label: 'Billing', icon: CreditCardIcon },
     { id: 'integrations', label: 'Integrations', icon: ArrowRightIcon },
     { id: 'account', label: 'Account', icon: user?.id ? CheckIcon : ExclamationCircleIcon },
   ];
@@ -226,6 +229,154 @@ const Settings = () => {
                     onChange={(checked) => handleChange('general', 'darkMode', checked)}
                   />
                   
+                </div>
+              </Card>
+            )}
+
+            {/* Billing */}
+            {activeSection === 'billing' && (
+              <Card title="Subscription & Billing">
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: tokens.spacing[6],
+                }}>
+                  {/* Current Plan */}
+                  <div>
+                    <Text style={{
+                      fontSize: tokens.typography.fontSize.sm[0],
+                      fontWeight: tokens.typography.fontWeight.semibold,
+                      color: tokens.colors.dark.text,
+                      margin: 0,
+                      marginBottom: tokens.spacing[2],
+                    }}>
+                      Current Plan
+                    </Text>
+
+                    <div style={{
+                      padding: tokens.spacing[4],
+                      backgroundColor: tokens.colors.dark.surface,
+                      borderRadius: tokens.borderRadius.md,
+                      border: `1px solid ${tokens.colors.dark.border}`,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: tokens.spacing[2], marginBottom: tokens.spacing[1] }}>
+                          <Text style={{
+                            fontSize: tokens.typography.fontSize.lg[0],
+                            fontWeight: tokens.typography.fontWeight.bold,
+                            color: tokens.colors.dark.text,
+                            margin: 0,
+                          }}>
+                            {isEnterprise ? 'Enterprise' : isPro ? 'Pro' : 'Free'}
+                          </Text>
+                          {(isPro || isEnterprise) && (
+                            <Badge variant="success" size="sm">Active</Badge>
+                          )}
+                        </div>
+                        <Text style={{
+                          fontSize: tokens.typography.fontSize.sm[0],
+                          color: tokens.colors.dark.muted,
+                          margin: 0,
+                        }}>
+                          {isEnterprise
+                            ? 'Full access to all features including SSO and priority support'
+                            : isPro
+                            ? 'Code generation, GitHub integration, and exports'
+                            : 'Task decomposition and event modeling'}
+                        </Text>
+                      </div>
+                      {isFree && (
+                        <Button
+                          variant="primary"
+                          onClick={() => navigate('/pricing')}
+                        >
+                          Upgrade
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Billing Management - Only for Pro users */}
+                  {(isPro || isEnterprise) && subscription?.stripe_subscription_id && (
+                    <div>
+                      <Text style={{
+                        fontSize: tokens.typography.fontSize.sm[0],
+                        fontWeight: tokens.typography.fontWeight.semibold,
+                        color: tokens.colors.dark.text,
+                        margin: 0,
+                        marginBottom: tokens.spacing[2],
+                      }}>
+                        Billing Management
+                      </Text>
+
+                      <div style={{
+                        padding: tokens.spacing[4],
+                        backgroundColor: tokens.colors.dark.surface,
+                        borderRadius: tokens.borderRadius.md,
+                        border: `1px solid ${tokens.colors.dark.border}`,
+                      }}>
+                        <Text style={{
+                          fontSize: tokens.typography.fontSize.sm[0],
+                          color: tokens.colors.dark.muted,
+                          margin: 0,
+                          marginBottom: tokens.spacing[3],
+                        }}>
+                          Manage your subscription, update payment methods, and view invoices.
+                        </Text>
+                        <Button
+                          variant="secondary"
+                          onClick={() => openBillingPortal()}
+                          disabled={billingLoading}
+                        >
+                          {billingLoading ? 'Loading...' : 'Manage Subscription'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Feature Comparison - For Free users */}
+                  {isFree && (
+                    <div>
+                      <Text style={{
+                        fontSize: tokens.typography.fontSize.sm[0],
+                        fontWeight: tokens.typography.fontWeight.semibold,
+                        color: tokens.colors.dark.text,
+                        margin: 0,
+                        marginBottom: tokens.spacing[2],
+                      }}>
+                        Upgrade to Pro for More Features
+                      </Text>
+
+                      <div style={{
+                        padding: tokens.spacing[4],
+                        backgroundColor: `${tokens.colors.primary[500]}10`,
+                        borderRadius: tokens.borderRadius.md,
+                        border: `1px solid ${tokens.colors.primary[500]}30`,
+                      }}>
+                        <ul style={{
+                          margin: 0,
+                          padding: 0,
+                          paddingLeft: tokens.spacing[4],
+                          color: tokens.colors.dark.text,
+                        }}>
+                          <li style={{ marginBottom: tokens.spacing[2] }}>Code Generation from Event Models</li>
+                          <li style={{ marginBottom: tokens.spacing[2] }}>GitHub Integration</li>
+                          <li style={{ marginBottom: tokens.spacing[2] }}>Export to JSON, Markdown, YAML</li>
+                        </ul>
+                        <div style={{ marginTop: tokens.spacing[4] }}>
+                          <Button
+                            variant="primary"
+                            onClick={() => navigate('/pricing')}
+                          >
+                            View Pricing
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </Card>
             )}

@@ -28,6 +28,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import { useProjectContext } from '../hooks/api/useProjectContext';
 import { useApp } from '../contexts/AppContext';
+import { useSubscription } from '../contexts/SubscriptionContext';
 
 import ProjectSummary from '../components/ProjectSummary';
 import RefineModal from '../components/RefineModal';
@@ -36,12 +37,13 @@ import UnifiedEditModal from '../components/UnifiedEditModal';
 import UniversalExportModal from '../components/UniversalExportModal';
 import CodeGenerationProgress from '../components/CodeGenerationProgress';
 import TechStackSelectionModal from '../components/TechStackSelectionModal';
+import { UpgradePrompt } from '../components/UpgradeModal';
 import ClarifyingQuestions from '../components/ClarifyingQuestions';
 
 // Persona components
 import PersonaSelectorBar from '../components/persona/PersonaSelectorBar';
 import StoryPointDashboard from '../components/persona/pm/StoryPointDashboard';
-import EventModelCarousel from '../components/EventModelCarousel';
+import EventModelExplorer from '../components/EventModelExplorer';
 import EventModelTab from '../components/TaskBoard/EventModelTab';
 import ExecutiveSummary from '../components/persona/consultant/ExecutiveSummary';
 
@@ -51,7 +53,6 @@ import {
   extractGWTScenarios,
   groupStoriesByEpic,
   aggregateByBusinessDomain,
-  generateExecutiveSummary,
 } from '../utils/personaDataTransforms';
 import apiClient from '../services/unifiedApiClient';
 
@@ -61,7 +62,7 @@ const ProjectView = () => {
   const { taskId } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { connected, connect, disconnect, subscribe } = useWebSocket();
+  const { connected, connect, disconnect } = useWebSocket();
   const queryClient = useQueryClient();
   const { showSuccess, showError } = useApp();
 
@@ -91,10 +92,14 @@ const ProjectView = () => {
     }
   }, [isAuthenticated, navigate]);
 
+  // Connect to WebSocket on mount (once)
+  // Note: We intentionally exclude connect/disconnect from deps to avoid reconnection loops
+  // These functions internally check authentication state
   useEffect(() => {
     if (!isAuthenticated()) return;
     connect().catch(err => console.error('[ProjectView] WebSocket error:', err));
     return () => disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
   const {
@@ -134,22 +139,14 @@ const ProjectView = () => {
 
   useProjectContext(taskId);
 
-  useEffect(() => {
-    if (!connected || !taskId) return;
-    const unsubscribe = subscribe((data) => {
-      if (data.task_id === taskId || data.root_task_id === taskId) {
-        queryClient.invalidateQueries(['tasks', 'detail', taskId]);
-        queryClient.invalidateQueries(['tasks', 'tree', taskId]);
-      }
-    });
-    return () => unsubscribe?.();
-  }, [connected, subscribe, taskId, queryClient]);
+  // NOTE: Query invalidation is handled centrally by WebSocketContext.js
+  // Do NOT add duplicate invalidation here - it causes request flooding
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     if (!connected) connect().catch(console.error);
     queryClient.invalidateQueries(['tasks', 'detail', taskId]);
     queryClient.invalidateQueries(['tasks', 'tree', taskId]);
-  };
+  }, [connected, connect, queryClient, taskId]);
 
   const handleResume = async () => {
     try {
@@ -165,7 +162,7 @@ const ProjectView = () => {
     setEditModal({ open: true, type: artifactType, artifact });
   }, []);
 
-  const handleEditComplete = useCallback((updatedTask) => {
+  const handleEditComplete = useCallback(() => {
     setEditModal({ open: false, type: null, artifact: null });
     handleRefresh();
     showSuccess('Changes saved successfully!');
@@ -298,7 +295,7 @@ const ProjectView = () => {
       {!isProcessing && (
         <>
           {persona === 'pm' && <StoryPointDashboard task={task} taskTree={taskTree} />}
-          {persona === 'dev' && <EventModelCarousel task={task} />}
+          {persona === 'dev' && <EventModelExplorer task={task} />}
           {persona === 'consultant' && <ExecutiveSummary task={task} taskTree={taskTree} />}
         </>
       )}
@@ -854,16 +851,12 @@ const DevScenariosTab = ({ task, onEditArtifact }) => {
 };
 
 const DevCodeGenTab = ({ taskId, onSuccess, onError }) => {
+  const { canUseCodeGen } = useSubscription();
   const [showTechStackModal, setShowTechStackModal] = useState(false);
   const [generationStatus, setGenerationStatus] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check for existing generation status on mount
-  useEffect(() => {
-    checkGenerationStatus();
-  }, [taskId]);
-
-  const checkGenerationStatus = async () => {
+  const checkGenerationStatus = useCallback(async () => {
     setLoading(true);
     try {
       const status = await apiClient.getGenerationStatus(taskId);
@@ -877,7 +870,12 @@ const DevCodeGenTab = ({ taskId, onSuccess, onError }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [taskId]);
+
+  // Check for existing generation status on mount
+  useEffect(() => {
+    checkGenerationStatus();
+  }, [checkGenerationStatus]);
 
   const handleGenerationStarted = (response) => {
     setGenerationStatus(response);
@@ -893,6 +891,16 @@ const DevCodeGenTab = ({ taskId, onSuccess, onError }) => {
     ['pending', 'initializing', 'generating', 'integrating'].includes(generationStatus.status);
 
   const hasCompletedGeneration = generationStatus?.status === 'complete';
+
+  // Check subscription first
+  if (!canUseCodeGen()) {
+    return (
+      <Card style={styles.tabCard}>
+        <Text style={styles.tabTitle}>Code Generation</Text>
+        <UpgradePrompt feature="code_generation" />
+      </Card>
+    );
+  }
 
   if (loading) {
     return (

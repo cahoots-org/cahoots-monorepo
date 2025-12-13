@@ -33,9 +33,9 @@ const FEEDBACK_CHIPS = [
 
 // Change type styling
 const CHANGE_STYLES = {
-  add_chapter: { icon: '📗', color: tokens.colors.success[500], label: 'Add Module' },
-  remove_chapter: { icon: '📕', color: tokens.colors.error[500], label: 'Remove Module' },
-  modify_chapter: { icon: '📘', color: tokens.colors.primary[500], label: 'Modify Module' },
+  add_chapter: { icon: '📗', color: tokens.colors.success[500], label: 'Add Chapter' },
+  remove_chapter: { icon: '📕', color: tokens.colors.error[500], label: 'Remove Chapter' },
+  modify_chapter: { icon: '📘', color: tokens.colors.primary[500], label: 'Modify Chapter' },
   add_slice: { icon: '➕', color: tokens.colors.success[500], label: 'Add Feature' },
   remove_slice: { icon: '➖', color: tokens.colors.error[500], label: 'Remove Feature' },
   modify_slice: { icon: '✏️', color: tokens.colors.primary[500], label: 'Modify Feature' },
@@ -108,7 +108,7 @@ const RefineModal = ({
           })),
           event_count: task?.metadata?.extracted_events?.length || 0,
           command_count: task?.metadata?.commands?.length || 0,
-          task_count: taskTree?.tasks ? Object.keys(taskTree.tasks).length : 0,
+          task_count: taskTree?.total_tasks || taskTree?.children?.length || 0,
         },
       };
 
@@ -172,10 +172,8 @@ const RefineModal = ({
   const chapterCount = task?.metadata?.chapters?.length || 0;
   const eventCount = task?.metadata?.extracted_events?.length || 0;
   const commandCount = task?.metadata?.commands?.length || 0;
-  // Handle different taskTree structures: array, object, or fall back to children_count
-  const taskCount = taskTree?.tasks
-    ? (Array.isArray(taskTree.tasks) ? taskTree.tasks.length : Object.keys(taskTree.tasks).length)
-    : (task?.children_count || 0);
+  // Handle different taskTree structures - use total_tasks, children, or fall back to children_count
+  const taskCount = taskTree?.total_tasks || taskTree?.children?.length || (task?.children_count || 0);
   const storyCount = task?.context?.user_stories?.length || task?.metadata?.user_stories?.length || 0;
   const epicCount = task?.context?.epics?.length || task?.metadata?.epics?.length || 0;
 
@@ -203,7 +201,7 @@ const RefineModal = ({
                 <Badge variant="default">{epicCount} {epicCount === 1 ? 'epic' : 'epics'}</Badge>
                 <Badge variant="default">{storyCount} {storyCount === 1 ? 'story' : 'stories'}</Badge>
                 <Badge variant="default">{taskCount} {taskCount === 1 ? 'task' : 'tasks'}</Badge>
-                <Badge variant="default">{chapterCount} {chapterCount === 1 ? 'module' : 'modules'}</Badge>
+                <Badge variant="default">{chapterCount} {chapterCount === 1 ? 'chapter' : 'chapters'}</Badge>
                 <Badge variant="default">{commandCount} {commandCount === 1 ? 'action' : 'actions'}</Badge>
                 <Badge variant="default">{eventCount} {eventCount === 1 ? 'event' : 'events'}</Badge>
               </div>
@@ -239,7 +237,7 @@ const RefineModal = ({
 
 Examples:
 - Add user authentication with OAuth
-- Split the 'User Management' module into separate admin and user flows
+- Split the 'User Management' chapter into separate admin and user flows
 - Remove the mobile app features, focus on web only
 - Add more detail to the payment processing tasks"
                 style={styles.textarea}

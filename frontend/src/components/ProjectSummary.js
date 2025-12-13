@@ -35,9 +35,7 @@ const ProjectSummary = ({
   // Code generation state
   const [showTechStackModal, setShowTechStackModal] = useState(false);
   const [showGenerationProgress, setShowGenerationProgress] = useState(false);
-  const [generationStatus, setGenerationStatus] = useState(null);
   const [existingGeneration, setExistingGeneration] = useState(null);
-  const [loadingGeneration, setLoadingGeneration] = useState(true);
 
   // Check if project has event model (required for code generation)
   const hasEventModel = task?.metadata?.extracted_events?.length > 0 ||
@@ -46,13 +44,29 @@ const ProjectSummary = ({
 
   // Check for existing generation on mount
   useEffect(() => {
+    const checkGeneration = async () => {
+      try {
+        const status = await apiClient.getGenerationStatus(task.task_id);
+        setExistingGeneration(status);
+        // If generation is in progress, show progress view
+        if (['pending', 'initializing', 'generating', 'integrating'].includes(status?.status)) {
+          setShowGenerationProgress(true);
+        }
+      } catch (err) {
+        // 404 means no generation exists, which is fine
+        if (err.response?.status !== 404) {
+          console.error('Failed to check generation status:', err);
+        }
+        setExistingGeneration(null);
+      }
+    };
+
     if (task?.task_id) {
-      checkExistingGeneration();
+      checkGeneration();
     }
   }, [task?.task_id]);
 
   const checkExistingGeneration = async () => {
-    setLoadingGeneration(true);
     try {
       const status = await apiClient.getGenerationStatus(task.task_id);
       setExistingGeneration(status);
@@ -66,8 +80,6 @@ const ProjectSummary = ({
         console.error('Failed to check generation status:', err);
       }
       setExistingGeneration(null);
-    } finally {
-      setLoadingGeneration(false);
     }
   };
 
@@ -76,14 +88,12 @@ const ProjectSummary = ({
   };
 
   const handleGenerationStarted = (status) => {
-    setGenerationStatus(status);
     setExistingGeneration(status);
     setShowTechStackModal(false);
     setShowGenerationProgress(true);
   };
 
   const handleGenerationComplete = (result) => {
-    setGenerationStatus(result);
     setExistingGeneration(result);
   };
 
@@ -197,7 +207,10 @@ const ProcessingStatus = ({ task, taskTree, context, contextLoading, onResume })
   const currentStageIndex = stages.findIndex(s => s.key === currentStage);
 
   // Calculate progress from taskTree (real-time data)
-  const taskCount = taskTree?.tasks ? Object.keys(taskTree.tasks).length : (task?.children_count || 0);
+  // taskTree from API has: total_tasks, children[], atomic_tasks (count)
+  const taskCount = taskTree?.total_tasks || taskTree?.atomic_tasks ||
+                    (taskTree?.children?.length ? taskTree.children.length : 0) ||
+                    (task?.children_count || 0);
   const hasEpics = task?.context?.epics?.length > 0 || task?.metadata?.epics?.length > 0;
 
   // Detect if processing was interrupted (status is submitted but has partial data)
@@ -475,7 +488,7 @@ function determineCurrentStage(context, task, taskTree) {
   // Check task/taskTree data first (more reliable than Context Engine)
   const hasEventModel = task?.metadata?.extracted_events?.length > 0 ||
                         task?.metadata?.commands?.length > 0;
-  const hasTasks = taskTree?.tasks ? Object.keys(taskTree.tasks).length > 1 :
+  const hasTasks = (taskTree?.total_tasks > 0) || (taskTree?.children?.length > 0) ||
                    (task?.children_count > 0);
   const hasEpics = task?.context?.epics?.length > 0 || task?.metadata?.epics?.length > 0;
 

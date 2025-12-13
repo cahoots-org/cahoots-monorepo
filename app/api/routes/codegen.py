@@ -16,13 +16,16 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_task_storage, get_redis_client
+from app.api.dependencies import get_task_storage, get_redis_client, require_feature
 
 def _is_dev_admin(current_user: Dict) -> bool:
     """Check if user is admin in development environment only."""
     is_dev = os.environ.get("ENVIRONMENT", "development") == "development"
     return is_dev and current_user.get("is_admin", False)
 from app.api.routes.auth import get_current_user
+
+# Feature gate for code generation - requires Pro or Enterprise
+require_codegen = require_feature("code_generation")
 from app.storage import TaskStorage
 from app.services.context_engine_client import ContextEngineClient
 from app.codegen.orchestrator import (
@@ -269,7 +272,7 @@ async def start_generation(
     background_tasks: BackgroundTasks,
     storage: TaskStorage = Depends(get_task_storage),
     state_store: GenerationStateStore = Depends(get_generation_state_store),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_codegen),  # Requires Pro+ subscription
 ) -> GenerationStatusResponse:
     """
     Start or resume code generation for a project.
@@ -484,7 +487,7 @@ async def cancel_generation(
     project_id: str,
     storage: TaskStorage = Depends(get_task_storage),
     state_store: GenerationStateStore = Depends(get_generation_state_store),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_codegen),  # Requires Pro+ subscription
 ) -> Dict[str, str]:
     """
     Cancel an in-progress code generation.
@@ -536,7 +539,7 @@ async def retry_generation(
     background_tasks: BackgroundTasks,
     storage: TaskStorage = Depends(get_task_storage),
     state_store: GenerationStateStore = Depends(get_generation_state_store),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_codegen),  # Requires Pro+ subscription
 ) -> GenerationStatusResponse:
     """
     Retry a failed code generation.
@@ -622,7 +625,7 @@ async def add_retries(
     project_id: str,
     storage: TaskStorage = Depends(get_task_storage),
     state_store: GenerationStateStore = Depends(get_generation_state_store),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_codegen),  # Requires Pro+ subscription
 ) -> Dict[str, Any]:
     """
     Add additional retry attempts to a failed generation.

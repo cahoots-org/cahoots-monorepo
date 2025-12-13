@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import CottageIcon from '../components/CottageIcon';
 import Footer from '../components/Footer';
+import { tokens } from '../design-system';
 
 const About = () => {
   const navigate = useNavigate();
@@ -9,193 +9,213 @@ const About = () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       {/* Hero Section */}
-      <div style={{ background: 'linear-gradient(to bottom, var(--color-bg), var(--color-surface))' }}>
-        <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-          <CottageIcon size="text-6xl" className="mb-6" />
-          <h1 className="heading-1 gradient-text mb-4">About Cahoots</h1>
-          <p className="text-xl max-w-2xl mx-auto" style={{ color: 'var(--color-text)' }}>
-            Revolutionizing software development through intelligent AI-human collaboration
+      <div style={{
+        background: 'linear-gradient(to bottom, var(--color-bg), var(--color-surface))',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Background decoration */}
+        <div style={{
+          position: 'absolute',
+          top: '10%',
+          right: '10%',
+          width: '400px',
+          height: '400px',
+          background: `radial-gradient(circle, ${tokens.colors.primary[500]}15 0%, transparent 70%)`,
+          filter: 'blur(60px)',
+          pointerEvents: 'none',
+        }} />
+
+        <div className="max-w-4xl mx-auto px-4 py-20 relative z-10">
+          <div style={{ textAlign: 'center' }}>
+            <span style={{
+              display: 'inline-block',
+              padding: '8px 16px',
+              backgroundColor: `${tokens.colors.primary[500]}15`,
+              color: tokens.colors.primary[400],
+              borderRadius: '9999px',
+              fontSize: '14px',
+              fontWeight: '600',
+              marginBottom: '24px',
+            }}>
+              About Cahoots
+            </span>
+            <h1 style={{
+              fontSize: 'clamp(36px, 5vw, 56px)',
+              fontWeight: '800',
+              lineHeight: '1.1',
+              marginBottom: '24px',
+              color: 'var(--color-text)',
+              letterSpacing: '-1px',
+            }}>
+              Turn Ideas Into{' '}
+              <span style={{
+                background: `linear-gradient(135deg, ${tokens.colors.primary[400]} 0%, ${tokens.colors.warning[500]} 100%)`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>Actionable Plans</span>
+            </h1>
+            <p style={{
+              fontSize: '20px',
+              color: 'var(--color-text-muted)',
+              maxWidth: '600px',
+              margin: '0 auto',
+              lineHeight: '1.6',
+            }}>
+              Cahoots turns project ideas into actionable plans. Describe what you want to build,
+              and get back a structured breakdown with user stories, tasks, and technical specs.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* What It Does */}
+      <div className="py-20" style={{ backgroundColor: 'var(--color-surface)' }}>
+        <div className="max-w-5xl mx-auto px-4">
+          <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+            <h2 style={{
+              fontSize: '36px',
+              fontWeight: '700',
+              color: 'var(--color-text)',
+              marginBottom: '16px',
+            }}>
+              What Cahoots Does
+            </h2>
+            <p style={{ fontSize: '18px', color: 'var(--color-text-muted)' }}>
+              Everything you need to go from idea to implementation
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '24px',
+          }}>
+            <FeatureCard
+              icon="📋"
+              title="Task Decomposition"
+              description="Write a project description in plain English. Cahoots breaks it down into epics, user stories with acceptance criteria, and implementation tasks with story points."
+            />
+            <FeatureCard
+              icon="🔄"
+              title="Event Modeling"
+              description="Get a system design that shows how users interact with your app—what commands they can run, what events happen, and what data gets displayed."
+            />
+            <FeatureCard
+              icon="💻"
+              title="Code Generation"
+              description="Generate a working codebase from your event model. Push it to GitHub and start building immediately."
+            />
+            <FeatureCard
+              icon="📤"
+              title="Export Anywhere"
+              description="Export your project plan to JSON, Markdown, or CSV. Import into Jira, Trello, or whatever tools you use."
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Who It's For */}
+      <div className="py-20" style={{ backgroundColor: 'var(--color-bg)' }}>
+        <div className="max-w-5xl mx-auto px-4">
+          <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+            <h2 style={{
+              fontSize: '36px',
+              fontWeight: '700',
+              color: 'var(--color-text)',
+              marginBottom: '16px',
+            }}>
+              Who It's For
+            </h2>
+            <p style={{ fontSize: '18px', color: 'var(--color-text-muted)' }}>
+              Built for anyone who builds software
+            </p>
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '32px',
+          }}>
+            <PersonaCard
+              icon="👨‍💻"
+              title="Developers"
+              description="Plan before you code. See the full picture of what you're building before writing a single line."
+            />
+            <PersonaCard
+              icon="💼"
+              title="Freelancers"
+              description="Scope projects accurately and generate professional proposals with detailed breakdowns."
+            />
+            <PersonaCard
+              icon="📊"
+              title="Product Managers"
+              description="Break down features into tasks your team can execute. Track story points and dependencies."
+            />
+            <PersonaCard
+              icon="💡"
+              title="Anyone with an Idea"
+              description="See what building your software idea would actually involve before committing resources."
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* CTA */}
+      <div className="py-20" style={{
+        backgroundColor: 'var(--color-surface)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Background decoration */}
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '600px',
+          height: '600px',
+          background: `radial-gradient(circle, ${tokens.colors.primary[500]}10 0%, transparent 60%)`,
+          pointerEvents: 'none',
+        }} />
+
+        <div className="max-w-3xl mx-auto px-4 text-center relative z-10">
+          <h2 style={{
+            fontSize: '40px',
+            fontWeight: '700',
+            color: 'var(--color-text)',
+            marginBottom: '16px',
+          }}>
+            Ready to try it out?
+          </h2>
+          <p style={{
+            fontSize: '18px',
+            color: 'var(--color-text-muted)',
+            marginBottom: '32px',
+          }}>
+            Free tier available. No credit card required.
           </p>
-        </div>
-      </div>
-
-      {/* Mission Section */}
-      <div className="py-16" style={{ backgroundColor: 'var(--color-surface)' }}>
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-            <div>
-              <h2 className="text-3xl font-bold mb-6" style={{ color: 'var(--color-text)' }}>Our Mission</h2>
-              <p className="text-lg mb-4" style={{ color: 'var(--color-text)' }}>
-                <strong>Cahoots</strong> is about augmenting human software development teams with AI capabilities.
-              </p>
-              <p className="mb-6" style={{ color: 'var(--color-text-muted)' }}>
-                Our vision is to create a collaborative ecosystem where AI and humans work side-by-side, enhancing productivity, creativity, and project outcomes.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <span className="px-3 py-1 bg-brand-vibrant-orange bg-opacity-20 text-brand-vibrant-orange rounded-full text-sm font-medium">
-                  AI-Powered
-                </span>
-                <span className="px-3 py-1 bg-brand-vibrant-blue bg-opacity-20 text-brand-vibrant-blue rounded-full text-sm font-medium">
-                  Human-Centered
-                </span>
-                <span className="px-3 py-1 bg-brand-vibrant-green bg-opacity-20 text-brand-vibrant-green rounded-full text-sm font-medium">
-                  Collaborative
-                </span>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-brand-vibrant-orange bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-3xl">🎯</span>
-                </div>
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Smart Planning</h3>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>AI-powered task decomposition</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-brand-vibrant-blue bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-3xl">🤝</span>
-                </div>
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Human Collaboration</h3>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Seamless AI-human handoffs</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-brand-vibrant-green bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-3xl">🚀</span>
-                </div>
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Productivity</h3>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Enhanced team capacity</p>
-              </div>
-              <div className="text-center">
-                <div className="w-16 h-16 bg-purple-500 bg-opacity-20 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <span className="text-3xl">🌿</span>
-                </div>
-                <h3 className="font-semibold" style={{ color: 'var(--color-text)' }}>Flow</h3>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Fill in the gaps in your team's workflow</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Philosophy Section */}
-      <div className="py-16" style={{ backgroundColor: 'var(--color-bg)' }}>
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-6" style={{ color: 'var(--color-text)' }}>Our Philosophy</h2>
-          <p className="text-lg mb-8" style={{ color: 'var(--color-text)' }}>
-            Provide AI assistance to teams where it is needed most.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="card card-hover p-6">
-              <div className="text-4xl mb-4">🌳</div>
-              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>Growth & Stability</h3>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                Building systems that grow with your team's needs while maintaining reliability.
-              </p>
-            </div>
-            <div className="card card-hover p-6">
-              <div className="text-4xl mb-4">🕸️</div>
-              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>Interconnection</h3>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                Creating networks of collaboration where AI and humans strengthen each other's capabilities.
-              </p>
-            </div>
-            <div className="card card-hover p-6">
-              <div className="text-4xl mb-4">🦋</div>
-              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--color-text)' }}>Transformation</h3>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                Enabling teams to evolve and adapt to new challenges with intelligent support systems.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Current Focus Section */}
-      <div className="py-16" style={{ backgroundColor: 'var(--color-surface)' }}>
-        <div className="max-w-4xl mx-auto px-4">
-          <h2 className="text-3xl font-bold mb-6 text-center" style={{ color: 'var(--color-text)' }}>What We're Building Today</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="card p-6">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-brand-vibrant-orange bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-2xl">🧩</span>
-                </div>
-                <h3 className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>Task Decomposition</h3>
-              </div>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                AI-powered breakdown of complex projects into atomic, actionable tasks with clear acceptance criteria.
-              </p>
-            </div>
-            <div className="card p-6">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-brand-vibrant-blue bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-2xl">📊</span>
-                </div>
-                <h3 className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>Team Integration</h3>
-              </div>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                Seamless export to Trello, JIRA, and other project management tools your team already uses.
-              </p>
-            </div>
-            <div className="card p-6">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-2xl">🎯</span>
-                </div>
-                <h3 className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>Smart Estimation</h3>
-              </div>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                AI-driven complexity scoring and story point estimation to help teams plan more effectively.
-              </p>
-            </div>
-            <div className="card p-6">
-              <div className="flex items-center mb-4">
-                <div className="w-12 h-12 bg-brand-vibrant-green bg-opacity-20 rounded-lg flex items-center justify-center mr-4">
-                  <span className="text-2xl">⚡</span>
-                </div>
-                <h3 className="text-xl font-semibold" style={{ color: 'var(--color-text)' }}>Customization</h3>
-              </div>
-              <p style={{ color: 'var(--color-text-muted)' }}>
-                Receive task breakdowns that are tailored to your team's needs and preferences.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Future Vision Section */}
-      <div className="py-16" style={{ backgroundColor: 'var(--color-bg)' }}>
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-6" style={{ color: 'var(--color-text)' }}>The Future of Development</h2>
-          <p className="text-lg mb-8" style={{ color: 'var(--color-text-muted)' }}>
-            We believe the next leap in software development will come from intelligent, context-aware collaboration—not just automation.
-          </p>
-          <div className="rounded-lg p-8 mb-8" style={{ backgroundColor: 'var(--color-surface)' }}>
-            <h3 className="text-xl font-semibold mb-4" style={{ color: 'var(--color-text)' }}>Coming Soon</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>🔗 Deeper Integrations</h4>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Slack, GitHub, and CI/CD pipeline connections</p>
-              </div>
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>🎨 UX & Design AI</h4>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>AI agents specialized in user experience design</p>
-              </div>
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>🔍 QA Automation</h4>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Intelligent testing and quality assurance workflows</p>
-              </div>
-              <div>
-                <h4 className="font-medium mb-2" style={{ color: 'var(--color-text)' }}>📈 Project Intelligence</h4>
-                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>Advanced analytics and predictive project insights</p>
-              </div>
-            </div>
-          </div>
           <button
-            className="btn btn-primary text-lg px-8 py-3"
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '16px 32px',
+              backgroundColor: tokens.colors.primary[500],
+              color: 'white',
+              fontSize: '18px',
+              fontWeight: '600',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+            }}
           >
-            Join the Future
+            Try Cahoots
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '8px' }}>
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
           </button>
         </div>
       </div>
@@ -204,5 +224,88 @@ const About = () => {
     </div>
   );
 };
+
+// Feature Card Component
+const FeatureCard = ({ icon, title, description }) => (
+  <div style={{
+    padding: '32px',
+    backgroundColor: 'var(--color-bg)',
+    borderRadius: '16px',
+    border: '1px solid var(--color-border)',
+    transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+  }}>
+    <div style={{
+      width: '56px',
+      height: '56px',
+      backgroundColor: `${tokens.colors.primary[500]}15`,
+      borderRadius: '12px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '28px',
+      marginBottom: '20px',
+    }}>
+      {icon}
+    </div>
+    <h3 style={{
+      fontSize: '20px',
+      fontWeight: '600',
+      color: 'var(--color-text)',
+      marginBottom: '12px',
+    }}>
+      {title}
+    </h3>
+    <p style={{
+      fontSize: '16px',
+      color: 'var(--color-text-muted)',
+      lineHeight: '1.6',
+    }}>
+      {description}
+    </p>
+  </div>
+);
+
+// Persona Card Component
+const PersonaCard = ({ icon, title, description }) => (
+  <div style={{
+    display: 'flex',
+    gap: '20px',
+    padding: '24px',
+    backgroundColor: 'var(--color-surface)',
+    borderRadius: '12px',
+    border: '1px solid var(--color-border)',
+  }}>
+    <div style={{
+      width: '48px',
+      height: '48px',
+      backgroundColor: `${tokens.colors.secondary[500]}15`,
+      borderRadius: '10px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: '24px',
+      flexShrink: 0,
+    }}>
+      {icon}
+    </div>
+    <div>
+      <h3 style={{
+        fontSize: '18px',
+        fontWeight: '600',
+        color: 'var(--color-text)',
+        marginBottom: '8px',
+      }}>
+        {title}
+      </h3>
+      <p style={{
+        fontSize: '15px',
+        color: 'var(--color-text-muted)',
+        lineHeight: '1.5',
+      }}>
+        {description}
+      </p>
+    </div>
+  </div>
+);
 
 export default About;

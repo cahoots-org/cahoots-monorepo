@@ -7,7 +7,6 @@ import {
   Heading1,
   Heading2,
   Text,
-  GradientText,
   Progress,
   PlusIcon,
   HomeIcon,
@@ -15,7 +14,6 @@ import {
 } from '../design-system';
 import { useTasks, useTaskStats } from '../hooks/api/useTasks';
 import { useApp } from '../contexts/AppContext';
-import { useAuth } from '../contexts/AuthContext';
 import TaskCard from '../components/TaskCard';
 
 const Dashboard = () => {
@@ -23,7 +21,6 @@ const Dashboard = () => {
   const [pageSize] = useState(9); // 3x3 grid
   const [isMobileMain, setIsMobileMain] = useState(window.innerWidth < 768);
   const { showError } = useApp();
-  const { isAuthenticated } = useAuth();
 
   useEffect(() => {
     const handleResize = () => setIsMobileMain(window.innerWidth < 768);

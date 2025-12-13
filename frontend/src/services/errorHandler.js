@@ -111,11 +111,15 @@ export const handleApiError = (error, options = {}) => {
         }
       }
       break;
-    
+
     case ErrorTypes.VALIDATION:
       if (onValidationError) {
         onValidationError(parsedError);
       }
+      break;
+
+    default:
+      // No special handling for other error types
       break;
   }
 

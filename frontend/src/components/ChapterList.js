@@ -52,7 +52,7 @@ const ChapterList = ({
     return (
       <div style={styles.emptyState}>
         <Text style={styles.emptyStateText}>
-          No modules generated yet. Create a system blueprint to see the project breakdown.
+          No chapters generated yet. Create a system blueprint to see the project breakdown.
         </Text>
       </div>
     );
@@ -112,7 +112,7 @@ const ChapterList = ({
               <div style={styles.chapterContent}>
                 {chapterSlices.length === 0 ? (
                   <div style={styles.noSlices}>
-                    <Text style={styles.noSlicesText}>No features in this module</Text>
+                    <Text style={styles.noSlicesText}>No features in this chapter</Text>
                     <Button
                       variant="outline"
                       size="sm"

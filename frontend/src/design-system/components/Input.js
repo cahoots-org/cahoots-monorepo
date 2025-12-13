@@ -25,13 +25,6 @@ const Input = ({
     fontFamily: tokens.typography.fontFamily.sans.join(', '),
   };
 
-  const focusStyles = {
-    '&:focus': {
-      borderColor: tokens.colors.primary[500],
-      boxShadow: `0 0 0 3px ${tokens.colors.primary[500]}20`,
-    },
-  };
-
   const disabledStyles = disabled ? {
     opacity: 0.6,
     cursor: 'not-allowed',

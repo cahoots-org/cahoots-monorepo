@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Card,
-  CardHeader,
   CardContent,
   Button,
   Text,
@@ -14,9 +13,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   PlusIcon,
-  EditIcon,
   TrashIcon,
-  PlayIcon,
   tokens,
 } from '../../design-system';
 import { useApp } from '../../contexts/AppContext';
@@ -201,7 +198,7 @@ const EventModelTab = ({ task, taskTree }) => {
   const handleSaveSlice = async (sliceData) => {
     try {
       // Call backend to add slice with LLM analysis
-      const response = await unifiedApiClient.post(`/tasks/${task.task_id}/slices`, sliceData);
+      await unifiedApiClient.post(`/tasks/${task.task_id}/slices`, sliceData);
 
       showSuccess('Feature created and analyzed successfully!');
 
@@ -246,7 +243,7 @@ const EventModelTab = ({ task, taskTree }) => {
           </div>
           <div style={styles.loadingStep}>
             <div style={styles.stepDot} />
-            <Text style={styles.stepText}>Organizing into modules</Text>
+            <Text style={styles.stepText}>Organizing into chapters</Text>
           </div>
         </div>
       </div>
@@ -322,7 +319,7 @@ const EventModelTab = ({ task, taskTree }) => {
                 <div>
                   <div style={styles.chapterTitle}>
                     <span style={styles.chapterIcon}>📦</span>
-                    <Heading2 style={{ margin: 0 }}>Module: {chapter.name}</Heading2>
+                    <Heading2 style={{ margin: 0 }}>{chapter.name}</Heading2>
                   </div>
                   <Text style={styles.chapterDescription}>{chapter.description}</Text>
                 </div>
@@ -346,7 +343,7 @@ const EventModelTab = ({ task, taskTree }) => {
             {isChapterExpanded && (
               <CardContent style={styles.chapterContent}>
                 {chapterSlices.length === 0 ? (
-                  <Text style={styles.noSlicesText}>No features in this module yet</Text>
+                  <Text style={styles.noSlicesText}>No features in this chapter yet</Text>
                 ) : (
                   chapterSlices.map((slice) => (
                     <SliceCard
@@ -369,14 +366,14 @@ const EventModelTab = ({ task, taskTree }) => {
         );
       })}
 
-      {/* Orphaned features (not in any module) */}
+      {/* Orphaned features (not in any chapter) */}
       {slices.filter(s => !s.chapter || !chapters.find(c => c.name === s.chapter)).length > 0 && (
         <Card style={styles.chapterCard}>
           <div style={styles.chapterHeader}>
             <div style={styles.chapterHeaderLeft}>
               <div>
                 <Heading2 style={{ margin: 0 }}>Unassigned Features</Heading2>
-                <Text style={styles.chapterDescription}>Features not assigned to a module</Text>
+                <Text style={styles.chapterDescription}>Features not assigned to a chapter</Text>
               </div>
             </div>
             <Badge variant="warning">
@@ -557,15 +554,12 @@ const SliceCard = ({
                 <div style={styles.automationSection}>
                   <Text style={styles.automationLabel}>Triggered by:</Text>
                   <div style={styles.eventList}>
-                    {slice.trigger_events.map((eventName, idx) => {
-                      const evt = events.find(e => e.name === eventName);
-                      return (
+                    {slice.trigger_events.map((eventName, idx) => (
                         <div key={idx} style={styles.eventBadge}>
                           <span>🟠</span>
                           <Text style={styles.eventName}>{eventName}</Text>
                         </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
               )}
@@ -579,15 +573,12 @@ const SliceCard = ({
                 <div style={styles.automationSection}>
                   <Text style={styles.automationLabel}>Produces:</Text>
                   <div style={styles.eventList}>
-                    {slice.result_events.map((eventName, idx) => {
-                      const evt = events.find(e => e.name === eventName);
-                      return (
+                    {slice.result_events.map((eventName, idx) => (
                         <div key={idx} style={styles.eventBadge}>
                           <span>🟠</span>
                           <Text style={styles.eventName}>{eventName}</Text>
                         </div>
-                      );
-                    })}
+                    ))}
                   </div>
                 </div>
               )}

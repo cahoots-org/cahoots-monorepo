@@ -20,6 +20,7 @@ from app.api.routes import (
     metrics_router,
     projects_router,
     edit_router,
+    subscriptions_router,
 )
 from app.api.dependencies import cleanup_dependencies
 
@@ -212,6 +213,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router)
     app.include_router(projects_router)
     app.include_router(edit_router)
+    app.include_router(subscriptions_router)
 
     # Include code generation router
     from app.api.routes import codegen_router

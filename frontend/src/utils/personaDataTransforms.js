@@ -220,40 +220,6 @@ const toBusinessCapability = (technicalName) => {
 };
 
 /**
- * Extract domain/aggregate from a technical name
- * "UserRegistered" → "User"
- * "RecipeCreated" → "Recipe"
- * "MealPlanGenerated" → "Meal Plan"
- */
-const extractDomain = (name) => {
-  if (!name) return 'General';
-
-  // Common domain patterns - extract the first noun
-  const domainPatterns = [
-    /^(User|Account|Profile|Auth)/i,
-    /^(Recipe|Ingredient|Cuisine)/i,
-    /^(Meal|Menu|Plan|Schedule)/i,
-    /^(Grocery|Shopping|Cart|List)/i,
-    /^(Cookbook|Collection|Favorite)/i,
-    /^(Email|Notification|Alert)/i,
-    /^(Payment|Subscription|Billing)/i,
-    /^(Admin|Settings|Config)/i,
-  ];
-
-  for (const pattern of domainPatterns) {
-    const match = name.match(pattern);
-    if (match) {
-      // Format: "MealPlan" → "Meal Plan"
-      return match[1].replace(/([a-z])([A-Z])/g, '$1 $2');
-    }
-  }
-
-  // Default: take first word (usually the domain)
-  const firstWord = name.replace(/([A-Z])/g, ' $1').trim().split(/\s+/)[0];
-  return firstWord || 'General';
-};
-
-/**
  * Infer automatic behaviors from event chains and automations
  * E.g., BidAccepted -> EscrowFundsHeld suggests automatic escrow on bid acceptance
  */
@@ -368,7 +334,6 @@ export const aggregateByBusinessDomain = (task) => {
   const stories = context.user_stories || metadata.user_stories || [];
 
   // Secondary sources: Event model elements
-  const commands = metadata.commands || [];
   const readModels = metadata.read_models || [];
   const chapters = metadata.chapters || [];
 

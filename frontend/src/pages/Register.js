@@ -279,7 +279,7 @@ const Register = () => {
           <div className="text-center mt-8">
             <p style={{ color: 'var(--color-text-muted)' }}>
               Already have an account?{' '}
-              <Link to="/login" className="text-brand-vibrant-orange hover:text-brand-vibrant-orange hover:underline font-medium transition-colors duration-200">
+              <Link to="/" className="text-brand-vibrant-orange hover:text-brand-vibrant-orange hover:underline font-medium transition-colors duration-200">
                 Sign in
               </Link>
             </p>

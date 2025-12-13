@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { toaster } from '../components/ui/toaster';
 import Footer from '../components/Footer';
 import SEO from '../components/SEO';
 import { tokens } from '../design-system';
@@ -20,6 +21,11 @@ const Landing = () => {
     }
   }, [user, navigate]);
 
+  // Scroll to the login form at the top of the page
+  const scrollToLogin = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <SEO
@@ -28,13 +34,10 @@ const Landing = () => {
       />
 
       {/* Navigation Bar */}
-      <NavBar onGetStarted={() => navigate('/login')} />
+      <NavBar onGetStarted={scrollToLogin} />
 
-      {/* Hero Section with Product Screenshot */}
-      <HeroSection onGetStarted={() => navigate('/login')} />
-
-      {/* Product Demo Section */}
-      <ProductDemoSection />
+      {/* Hero Section with Login Form */}
+      <HeroSection />
 
       {/* Feature Showcase with Screenshots */}
       <FeatureShowcase />
@@ -45,8 +48,11 @@ const Landing = () => {
       {/* Use Cases */}
       <UseCasesSection />
 
+      {/* Pricing Section */}
+      <PricingSection onGetStarted={scrollToLogin} />
+
       {/* Final CTA */}
-      <FinalCTASection onGetStarted={() => navigate('/login')} />
+      <FinalCTASection onGetStarted={scrollToLogin} />
 
       <Footer />
     </div>
@@ -96,12 +102,10 @@ const NavBar = ({ onGetStarted }) => {
           }}>Cahoots</span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-          <a href="#features" style={navLinkStyle}>Features</a>
-          <a href="#how-it-works" style={navLinkStyle}>How It Works</a>
-          <a href="#use-cases" style={navLinkStyle}>Use Cases</a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <a href="#pricing" style={navLinkStyle}>Pricing</a>
           <button onClick={onGetStarted} style={primaryButtonStyle}>
-            Get Started Free
+            Try Cahoots
           </button>
         </div>
       </div>
@@ -118,17 +122,90 @@ const navLinkStyle = {
 };
 
 // ============================================================================
-// HERO SECTION
+// HERO SECTION WITH LOGIN
 // ============================================================================
 
-const HeroSection = ({ onGetStarted }) => {
+const HeroSection = () => {
+  const navigate = useNavigate();
+  const { login, getOAuthUrl } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      await login(email, password);
+      toaster.create({
+        title: 'Login successful',
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      navigate('/dashboard');
+    } catch (error) {
+      toaster.create({
+        title: 'Login failed',
+        description: error.response?.data?.detail || 'Invalid credentials',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOAuthLogin = async (provider) => {
+    if (isOAuthLoading) return;
+    sessionStorage.removeItem('oauth_state');
+    setIsOAuthLoading(true);
+    try {
+      const authUrl = await getOAuthUrl(provider);
+      localStorage.setItem('oauth_request_time', Date.now().toString());
+      localStorage.setItem('oauth_flow_started', 'true');
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('OAuth login error:', error);
+      setIsOAuthLoading(false);
+      toaster.create({
+        title: `${provider} login failed`,
+        description: error.response?.data?.detail || 'Failed to initiate OAuth flow',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+      localStorage.removeItem('oauth_flow_started');
+    }
+  };
+
+  const handleDevBypass = () => {
+    localStorage.setItem('token', 'dev-bypass-token');
+    localStorage.setItem('user', JSON.stringify({
+      id: 'dev-user-123',
+      email: 'test@example.com',
+      username: 'testuser',
+      full_name: 'Test User'
+    }));
+    toaster.create({
+      title: 'Development login successful',
+      status: 'success',
+      duration: 3000,
+      isClosable: true,
+    });
+    navigate('/dashboard');
+  };
+
   return (
     <section style={{
       minHeight: '100vh',
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'center',
-      padding: '120px 24px 80px',
+      padding: '100px 24px 80px',
       position: 'relative',
       overflow: 'hidden',
     }}>
@@ -154,212 +231,178 @@ const HeroSection = ({ onGetStarted }) => {
         pointerEvents: 'none',
       }} />
 
-      <div style={{ maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 1 }}>
-        {/* Badge */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            backgroundColor: `${tokens.colors.primary[500]}20`,
-            border: `1px solid ${tokens.colors.primary[500]}40`,
-            borderRadius: '9999px',
-            fontSize: '14px',
-            fontWeight: '500',
-            color: tokens.colors.primary[400],
-          }}>
-            <span style={{ fontSize: '12px' }}>NEW</span>
-            Multi-Persona Views & Advanced Export
-          </span>
-        </div>
-
-        {/* Main Headline */}
-        <h1 style={{
-          fontSize: 'clamp(40px, 6vw, 72px)',
-          fontWeight: '800',
-          textAlign: 'center',
-          lineHeight: '1.1',
-          marginBottom: '24px',
-          color: 'var(--color-text)',
-          letterSpacing: '-2px',
-        }}>
-          Turn Complex Ideas Into<br />
-          <span style={{
-            background: `linear-gradient(135deg, ${tokens.colors.primary[400]} 0%, ${tokens.colors.warning[500]} 100%)`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}>Actionable Plans</span>
-        </h1>
-
-        {/* Subheadline */}
-        <p style={{
-          fontSize: '20px',
-          textAlign: 'center',
-          color: 'var(--color-text-muted)',
-          maxWidth: '720px',
-          margin: '0 auto 40px',
-          lineHeight: '1.6',
-        }}>
-          Describe your project in plain English. Cahoots generates requirements, user stories with acceptance criteria,
-          and implementation-ready tasks—complete with story points, dependencies, and technical guidance.
-        </p>
-
-        {/* CTA Buttons */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '16px',
-          marginBottom: '64px',
-          flexWrap: 'wrap',
-        }}>
-          <button onClick={onGetStarted} style={{
-            ...primaryButtonStyle,
-            padding: '16px 32px',
-            fontSize: '18px',
-          }}>
-            Start Building Free
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '8px' }}>
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
-          </button>
-          <button onClick={() => document.getElementById('demo-video')?.scrollIntoView({ behavior: 'smooth' })} style={{
-            ...secondaryButtonStyle,
-            padding: '16px 32px',
-            fontSize: '18px',
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '8px' }}>
-              <path d="M8 5v14l11-7z" />
-            </svg>
-            Watch Demo
-          </button>
-        </div>
-
-        {/* Product Screenshot - Hero Image */}
-        <div style={{
-          position: 'relative',
-          maxWidth: '1100px',
-          margin: '0 auto',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          boxShadow: `0 50px 100px -20px rgba(0, 0, 0, 0.5), 0 30px 60px -30px rgba(0, 0, 0, 0.3), 0 0 0 1px ${tokens.colors.neutral[800]}`,
-        }}>
-          {/* Browser chrome */}
-          <div style={{
-            backgroundColor: tokens.colors.neutral[900],
-            padding: '12px 16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            borderBottom: `1px solid ${tokens.colors.neutral[800]}`,
-          }}>
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#ff5f57' }} />
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#febc2e' }} />
-              <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#28c840' }} />
-            </div>
-            <div style={{
-              flex: 1,
-              backgroundColor: tokens.colors.neutral[800],
-              borderRadius: '6px',
-              padding: '6px 12px',
-              fontSize: '12px',
-              color: 'var(--color-text-muted)',
-              textAlign: 'center',
+      <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative', zIndex: 1, width: '100%' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '80px', alignItems: 'center' }}>
+          {/* Left side - Copy */}
+          <div>
+            <h1 style={{
+              fontSize: 'clamp(36px, 5vw, 56px)',
+              fontWeight: '800',
+              lineHeight: '1.1',
+              marginBottom: '24px',
+              color: 'var(--color-text)',
+              letterSpacing: '-1px',
             }}>
-              cahoots.cc
+              Turn Complex Ideas Into{' '}
+              <span style={{
+                background: `linear-gradient(135deg, ${tokens.colors.primary[400]} 0%, ${tokens.colors.warning[500]} 100%)`,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>Actionable Plans</span>
+            </h1>
+
+            <p style={{
+              fontSize: '18px',
+              color: 'var(--color-text-muted)',
+              marginBottom: '32px',
+              lineHeight: '1.6',
+            }}>
+              Describe your project in plain English. Get back user stories, tasks with story points, and technical specs.
+            </p>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', color: 'var(--color-text-muted)', fontSize: '15px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Task decomposition
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Event modeling
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+                Code generation
+              </div>
             </div>
           </div>
-          <div className="flex items-center mb-4">
-              <img 
-                src="/images/hero-screenshot.png" 
-                alt="Create Task Screen" 
-                width="100%"
-                className="mr-3"
-              />
-            </div>
-        </div>
-      </div>
-    </section>
-  );
-};
 
-// ============================================================================
-// PRODUCT DEMO SECTION
-// ============================================================================
-
-const ProductDemoSection = () => {
-  return (
-    <section id="demo-video" style={{
-      padding: '100px 24px',
-      backgroundColor: 'var(--color-bg)',
-    }}>
-      <div style={{ maxWidth: '1000px', margin: '0 auto', textAlign: 'center' }}>
-        <h2 style={{
-          fontSize: '40px',
-          fontWeight: '700',
-          color: 'var(--color-text)',
-          marginBottom: '16px',
-        }}>
-          See Cahoots in Action
-        </h2>
-        <p style={{
-          fontSize: '18px',
-          color: 'var(--color-text-muted)',
-          marginBottom: '48px',
-          maxWidth: '600px',
-          margin: '0 auto 48px',
-        }}>
-          Watch how a simple project description transforms into a complete breakdown
-          with requirements, stories, and implementation-ready tasks.
-        </p>
-
-        {/* Video Player Container */}
-        <div style={{
-          position: 'relative',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          boxShadow: `0 25px 50px -12px rgba(0, 0, 0, 0.4)`,
-          border: `1px solid ${tokens.colors.neutral[800]}`,
-          aspectRatio: '16/9',
-          backgroundColor: tokens.colors.neutral[950],
-        }}>
-          {/* Video placeholder - Replace with actual video embed */}
+          {/* Right side - Login Form */}
           <div style={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
+            backgroundColor: 'var(--color-surface)',
+            borderRadius: '16px',
+            padding: '32px',
+            border: '1px solid var(--color-border)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
           }}>
-            <div style={{
-              textAlign: 'center',
-              padding: '40px',
-            }}>
-              {/* Play button */}
-              <div style={{
-                width: '80px',
-                height: '80px',
-                borderRadius: '50%',
-                backgroundColor: tokens.colors.primary[500],
+            <h2 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '24px', color: 'var(--color-text)' }}>
+              Try Cahoots
+            </h2>
+
+            <form onSubmit={handleSubmit} style={{ marginBottom: '24px' }}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: 'var(--color-text)' }}>
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  className="input-field"
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: 'var(--color-text)' }}>
+                  Password
+                </label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  required
+                  className="input-field"
+                  style={{ width: '100%' }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                style={{
+                  ...primaryButtonStyle,
+                  width: '100%',
+                  padding: '14px 24px',
+                  opacity: isSubmitting ? 0.7 : 1,
+                }}
+              >
+                {isSubmitting ? 'Signing in...' : 'Sign In'}
+              </button>
+            </form>
+
+            {/* Divider */}
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+              <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--color-border)' }} />
+              <span style={{ padding: '0 16px', fontSize: '13px', color: 'var(--color-text-muted)' }}>or</span>
+              <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--color-border)' }} />
+            </div>
+
+            {/* OAuth */}
+            <button
+              onClick={() => handleOAuthLogin('google')}
+              disabled={isOAuthLoading}
+              style={{
+                width: '100%',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto 24px',
-                boxShadow: `0 0 0 8px ${tokens.colors.primary[500]}30`,
+                padding: '12px 24px',
+                backgroundColor: 'white',
+                border: '1px solid var(--color-border)',
+                borderRadius: '8px',
+                fontSize: '15px',
+                fontWeight: '500',
+                color: '#374151',
                 cursor: 'pointer',
-                transition: 'transform 0.2s ease',
-              }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              </div>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '16px' }}>
-                Demo Video Coming Soon!
-              </p>
-            </div>
+                marginBottom: '12px',
+              }}
+            >
+              <svg style={{ width: '20px', height: '20px', marginRight: '12px' }} viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+              </svg>
+              {isOAuthLoading ? 'Connecting...' : 'Continue with Google'}
+            </button>
+
+            {/* Dev bypass */}
+            {(window.CAHOOTS_CONFIG?.ENVIRONMENT === 'development') && (
+              <button
+                onClick={handleDevBypass}
+                style={{
+                  width: '100%',
+                  padding: '12px 24px',
+                  backgroundColor: 'transparent',
+                  border: `1px solid ${tokens.colors.primary[500]}`,
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  color: tokens.colors.primary[500],
+                  cursor: 'pointer',
+                }}
+              >
+                Dev Bypass
+              </button>
+            )}
+
+            {/* Sign up link */}
+            <p style={{ marginTop: '24px', textAlign: 'center', fontSize: '14px', color: 'var(--color-text-muted)' }}>
+              Don't have an account?{' '}
+              <Link to="/register" style={{ color: tokens.colors.primary[500], textDecoration: 'none', fontWeight: '500' }}>
+                Sign up
+              </Link>
+            </p>
           </div>
         </div>
       </div>
@@ -789,6 +832,215 @@ const UseCasesSection = () => {
 };
 
 // ============================================================================
+// PRICING SECTION
+// ============================================================================
+
+const PricingSection = ({ onGetStarted }) => {
+  const tiers = [
+    {
+      name: 'Free',
+      price: '$0',
+      period: '/month',
+      description: 'Perfect for trying out Cahoots',
+      features: [
+        'Task decomposition',
+        'Event modeling',
+        'Unlimited projects',
+        'Community support',
+      ],
+      cta: 'Try Cahoots',
+      ctaAction: onGetStarted,
+      highlighted: false,
+    },
+    {
+      name: 'Pro',
+      price: '$29',
+      period: '/month',
+      description: 'For professional developers and small teams',
+      features: [
+        'Everything in Free, plus:',
+        'Code generation',
+        'GitHub integration',
+        'Export to JSON/Markdown',
+        'Email support',
+      ],
+      cta: 'Try Cahoots',
+      ctaAction: onGetStarted,
+      highlighted: true,
+      badge: 'Most Popular',
+    },
+    {
+      name: 'Enterprise',
+      price: 'Custom',
+      period: '',
+      description: 'For large teams with custom needs',
+      features: [
+        'Everything in Pro, plus:',
+        'SSO/SAML authentication',
+        'Custom integrations',
+        'Priority support',
+        'Dedicated account manager',
+        'SLA guarantees',
+      ],
+      cta: 'Contact Sales',
+      ctaAction: () => window.location.href = 'mailto:sales@cahoots.cc',
+      highlighted: false,
+    },
+  ];
+
+  return (
+    <section id="pricing" style={{
+      padding: '100px 24px',
+      backgroundColor: 'var(--color-bg)',
+    }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: '64px' }}>
+          <h2 style={{
+            fontSize: '40px',
+            fontWeight: '700',
+            color: 'var(--color-text)',
+            marginBottom: '16px',
+          }}>
+            Simple, Transparent Pricing
+          </h2>
+          <p style={{
+            fontSize: '18px',
+            color: 'var(--color-text-muted)',
+            maxWidth: '600px',
+            margin: '0 auto',
+          }}>
+            Start free and upgrade as you grow. No hidden fees.
+          </p>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: '24px',
+          alignItems: 'stretch',
+        }}>
+          {tiers.map((tier, i) => (
+            <div key={i} style={{
+              padding: '32px',
+              backgroundColor: tier.highlighted ? `${tokens.colors.primary[500]}10` : 'var(--color-surface)',
+              borderRadius: '16px',
+              border: tier.highlighted
+                ? `2px solid ${tokens.colors.primary[500]}`
+                : '1px solid var(--color-border)',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+            }}>
+              {/* Popular Badge */}
+              {tier.badge && (
+                <div style={{
+                  position: 'absolute',
+                  top: '-12px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  backgroundColor: tokens.colors.primary[500],
+                  color: 'white',
+                  padding: '4px 16px',
+                  borderRadius: '9999px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                }}>
+                  {tier.badge}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '24px' }}>
+                <h3 style={{
+                  fontSize: '24px',
+                  fontWeight: '600',
+                  color: 'var(--color-text)',
+                  marginBottom: '8px',
+                }}>
+                  {tier.name}
+                </h3>
+                <p style={{
+                  fontSize: '14px',
+                  color: 'var(--color-text-muted)',
+                  marginBottom: '16px',
+                }}>
+                  {tier.description}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                  <span style={{
+                    fontSize: '48px',
+                    fontWeight: '700',
+                    color: 'var(--color-text)',
+                  }}>
+                    {tier.price}
+                  </span>
+                  {tier.period && (
+                    <span style={{
+                      fontSize: '16px',
+                      color: 'var(--color-text-muted)',
+                      marginLeft: '4px',
+                    }}>
+                      {tier.period}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <ul style={{
+                listStyle: 'none',
+                padding: 0,
+                margin: 0,
+                marginBottom: '32px',
+                flex: 1,
+              }}>
+                {tier.features.map((feature, j) => (
+                  <li key={j} style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginBottom: '12px',
+                    fontSize: '15px',
+                    color: 'var(--color-text)',
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+                      <path d="M20 6L9 17l-5-5" />
+                    </svg>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={tier.ctaAction}
+                style={tier.highlighted ? {
+                  ...primaryButtonStyle,
+                  width: '100%',
+                  padding: '14px 24px',
+                } : {
+                  ...secondaryButtonStyle,
+                  width: '100%',
+                  padding: '14px 24px',
+                }}
+              >
+                {tier.cta}
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <p style={{
+          textAlign: 'center',
+          marginTop: '32px',
+          fontSize: '14px',
+          color: 'var(--color-text-muted)',
+        }}>
+          All plans include 14-day free trial. Cancel anytime.
+        </p>
+      </div>
+    </section>
+  );
+};
+
+// ============================================================================
 // FINAL CTA SECTION
 // ============================================================================
 
@@ -834,25 +1086,18 @@ const FinalCTASection = ({ onGetStarted }) => {
           marginBottom: '40px',
           lineHeight: '1.6',
         }}>
-          Stop guessing scope. Start with a clear plan. Your next project deserves it.
+          Stop guessing scope. Start with a clear plan.
         </p>
         <button onClick={onGetStarted} style={{
           ...primaryButtonStyle,
           padding: '20px 48px',
           fontSize: '20px',
         }}>
-          Get Started Free
+          Try Cahoots
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginLeft: '12px' }}>
             <path d="M5 12h14M12 5l7 7-7 7" />
           </svg>
         </button>
-        <p style={{
-          marginTop: '16px',
-          fontSize: '14px',
-          color: 'var(--color-text-muted)',
-        }}>
-          No credit card required. Free tier available.
-        </p>
       </div>
     </section>
   );

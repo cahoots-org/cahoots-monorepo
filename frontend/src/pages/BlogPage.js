@@ -168,6 +168,7 @@ const BlogPage = () => {
     if (user) {
       fetchMySubscription();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, user]);
 
   const fetchPosts = async () => {

@@ -12,9 +12,12 @@ import io
 import yaml
 import zipfile
 
-from app.api.dependencies import get_task_storage
+from app.api.dependencies import get_task_storage, require_feature
 from app.api.routes.auth import get_current_user
 from app.storage import TaskStorage
+
+# Feature gate for export functionality
+require_export = require_feature("export")
 
 router = APIRouter(prefix="/api/tasks/{task_id}/export", tags=["export"])
 
@@ -173,7 +176,7 @@ async def export_artifacts(
     task_id: str,
     request: ExportRequest,
     storage: TaskStorage = Depends(get_task_storage),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_export),
 ):
     """
     Export selected artifacts in the specified format.

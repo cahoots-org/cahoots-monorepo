@@ -202,6 +202,7 @@ const useWebSocket = (urlOrGetter, onMessage) => {
         console.error('Error processing WebSocket message:', err);
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateWsState]);
 
   // Initialize WebSocket connection with retry logic

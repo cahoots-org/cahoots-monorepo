@@ -392,6 +392,10 @@ async def google_exchange(
     user_dict = user.dict()
     user_dict["created_at"] = datetime.utcnow().isoformat()
     user_dict["role"] = get_user_role(user.email)
+    user_dict["subscription"] = {
+        "tier": "free",
+        "status": "active",
+    }
 
     try:
         await redis_client.set(
@@ -456,11 +460,11 @@ async def get_current_user(
             "full_name": "Admin User",
             "role": "admin",
             "is_admin": True,  # Bypass ownership checks in development
-            "subscription_tier": "enterprise",
-            "subscription_status": "active",
-            "monthly_task_limit": 1000,
-            "tasks_created_this_month": 0,
-            "provider": "dev"
+            "provider": "dev",
+            "subscription": {
+                "tier": "enterprise",
+                "status": "active",
+            }
         }
 
     try:
@@ -485,6 +489,12 @@ async def get_current_user(
             # Ensure role is set (for users created before role was added)
             if not user_data.get("role") and user_data.get("email"):
                 user_data["role"] = get_user_role(user_data["email"])
+            # Ensure subscription data exists with defaults
+            if "subscription" not in user_data:
+                user_data["subscription"] = {
+                    "tier": "free",
+                    "status": "active",
+                }
             return user_data
 
         # If not in Redis, return basic info from token
@@ -493,7 +503,11 @@ async def get_current_user(
             "id": user_id,
             "email": email,
             "provider": "google",
-            "role": get_user_role(email) if email else "user"
+            "role": get_user_role(email) if email else "user",
+            "subscription": {
+                "tier": "free",
+                "status": "active",
+            }
         }
 
     except jwt.ExpiredSignatureError:
@@ -549,7 +563,11 @@ async def register(
         "provider": "local",
         "password_hash": password_hash,
         "created_at": datetime.utcnow().isoformat(),
-        "role": get_user_role(request.email)
+        "role": get_user_role(request.email),
+        "subscription": {
+            "tier": "free",
+            "status": "active",
+        }
     }
 
     # Store user in Redis

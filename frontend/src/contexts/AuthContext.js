@@ -18,15 +18,13 @@ export const AuthProvider = ({ children }) => {
   const refreshingRef = useRef(false);
 
   // Initialize API client
-  const client = useMemo(() => {
-    const client = apiClient;
+  useMemo(() => {
     // Check for existing refresh token
     const refreshToken = localStorage.getItem('refresh_token');
     if (refreshToken) {
       // Token exists, we'll attempt to refresh it in useEffect
-      // Token exists, we'll attempt to refresh it in useEffect
     }
-    return client;
+    return apiClient;
   }, []);
 
   // Make navigate available globally for API client auth error handling
@@ -108,8 +106,8 @@ export const AuthProvider = ({ children }) => {
     
     try {
       setError(null);
-      const response = await apiClient.refreshToken();
-      
+      await apiClient.refreshToken();
+
       // Fetch updated user data
       const userData = await apiClient.get('/auth/me');
       setUser(userData);
@@ -135,7 +133,7 @@ export const AuthProvider = ({ children }) => {
         email,
         password
       });
-      const { access_token, token_type, user } = tokenResponse;
+      const { access_token, user } = tokenResponse;
 
       // Store token
       apiClient.setAuthToken(access_token);

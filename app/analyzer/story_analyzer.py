@@ -59,6 +59,13 @@ class StoryAnalyzer:
 
         return deduped_stories, removed_epics
 
+    def _has_github_context(self, context: Optional[Dict[str, Any]]) -> bool:
+        """Check if we have GitHub repository context."""
+        if not context:
+            return False
+        github = context.get("github", {})
+        return bool(github.get("repo_summary") or github.get("file_tree_summary"))
+
     async def generate_initial_stories(
         self,
         epic: Epic,
@@ -77,6 +84,12 @@ class StoryAnalyzer:
         Returns:
             StoryGeneration with initial stories
         """
+        # Use different approach for existing codebases
+        if self._has_github_context(context):
+            return await self._generate_stories_for_existing_codebase(
+                epic, root_description, context
+            )
+
         system_prompt = self._build_story_generation_prompt(context)
         user_prompt = f"""Generate core user stories for this epic.
 
@@ -97,7 +110,7 @@ For each story, provide:
 - actor: The user role (be specific to the domain)
 - action: What they want to do (clear and actionable)
 - benefit: Why they want it (business value)
-- acceptance_criteria: 2-4 specific criteria (testable conditions)
+- acceptance_criteria: specific testable conditions (as many as needed)
 - priority: must_have/should_have/could_have
 
 Return as JSON with a "stories" array."""
@@ -142,6 +155,169 @@ Return as JSON with a "stories" array."""
                 generation_context="initial",
                 reasoning=f"Failed to generate stories: {str(e)}"
             )
+
+    async def _generate_stories_for_existing_codebase(
+        self,
+        epic: Epic,
+        root_description: str,
+        context: Dict[str, Any]
+    ) -> StoryGeneration:
+        """Generate stories for adding features to an existing codebase.
+
+        Uses a pattern-aware approach that:
+        1. References similar existing implementations
+        2. Keeps stories minimal and focused on actual code changes
+        3. Maps stories to specific file changes
+
+        Args:
+            epic: The epic to generate stories for
+            root_description: The feature request description
+            context: Context including GitHub repo info
+
+        Returns:
+            StoryGeneration with focused stories
+        """
+        github = context.get("github", {})
+        repo_summary = github.get("repo_summary", "")
+        existing_features = context.get("existing_features", {})
+
+        # Check if epic has similar patterns metadata
+        similar_patterns = []
+        if hasattr(epic, 'metadata') and epic.metadata:
+            similar_patterns = epic.metadata.get("similar_patterns", [])
+
+        system_prompt = """You are a developer creating user stories for a feature addition to an EXISTING codebase.
+
+CRITICAL PRINCIPLES:
+1. MINIMAL STORIES - Only create stories that represent actual code changes needed
+2. PATTERN-BASED - Stories should reference existing patterns to follow
+3. NO BLOAT - Do NOT create stories for monitoring, admin dashboards, frameworks, unless explicitly requested
+
+For feature additions, typical stories are:
+- "Create the service/module following existing pattern"
+- "Add API endpoint following existing route patterns"
+- "Add tests following existing test patterns"
+
+ANTI-PATTERNS TO AVOID:
+- Creating stories for "token management", "scheduling", "batch processing" unless requested
+- Breaking simple features into many granular stories
+- Adding stories for error handling infrastructure (use existing patterns)
+- Creating admin/monitoring stories unless explicitly requested
+
+################################################################################
+# CRITICAL: FILE PATH RULES - READ CAREFULLY
+################################################################################
+
+The acceptance_criteria field must NEVER reference specific file paths or directory names.
+
+WRONG (do not do this):
+- "A new file notion_integration.py exists under cahoots/integrations/"
+- "The module is created at app/services/notion_service.py"
+- "Tests exist in tests/integrations/test_notion.py"
+
+CORRECT (do this instead):
+- "A new integration module exists following the pattern of existing integrations (e.g., Jira, Trello)"
+- "The service provides methods for authentication and data export"
+- "Unit tests cover the main export functionality"
+
+WHY: File paths are implementation details decided during task breakdown, not story definition.
+Stories describe WHAT functionality is needed, not WHERE files go.
+################################################################################"""
+
+        user_prompt = f"""Generate focused user stories for implementing this feature in an existing codebase:
+
+EPIC: "{epic.title}"
+EPIC DESCRIPTION: "{epic.description}"
+FEATURE REQUEST: "{root_description}"
+
+EXISTING CODEBASE SUMMARY:
+{repo_summary[:1500] if repo_summary else "No summary available"}
+
+SIMILAR PATTERNS TO FOLLOW:
+{chr(10).join(similar_patterns) if similar_patterns else "Look for similar implementations in the codebase"}
+
+EXISTING FEATURE ANALYSIS:
+{self._format_existing_features(existing_features)}
+
+Generate ONLY the user stories needed to implement this feature. A simple feature might need 2-3 stories.
+
+For each story provide:
+- actor: Developer or end-user role
+- action: Specific action to enable
+- benefit: Business value
+- acceptance_criteria: functional criteria describing BEHAVIOR, not file locations
+- priority: must_have/should_have/could_have
+
+REMEMBER: acceptance_criteria should describe what the code DOES, not where files are located.
+Good: "The integration authenticates with the Notion API using an API key"
+Bad: "A file notion_client.py exists in app/services/"
+
+Return as JSON with a "stories" array."""
+
+        try:
+            response = await self.llm.generate_json(
+                system_prompt,
+                user_prompt,
+                temperature=0.3,
+                max_tokens=8000
+            )
+
+            stories = []
+            story_data_list = response.get("stories", [])
+
+            print(f"[StoryAnalyzer] Existing codebase mode - {len(story_data_list)} stories for epic {epic.id}")
+
+            for story_data in story_data_list:
+                self.story_counter += 1
+                story = UserStory(
+                    id=f"US-{self.story_counter}",
+                    epic_id=epic.id,
+                    actor=story_data.get("actor", "Developer"),
+                    action=story_data.get("action", ""),
+                    benefit=story_data.get("benefit", ""),
+                    acceptance_criteria=story_data.get("acceptance_criteria", []),
+                    priority=StoryPriority(story_data.get("priority", "must_have")),
+                    status=StoryStatus.READY,
+                    discovered_at_depth=0,
+                    is_gap_filler=False,
+                    metadata={
+                        "existing_codebase": True,
+                        "implementation_hint": story_data.get("implementation_hint", "")
+                    }
+                )
+                stories.append(story)
+
+            return StoryGeneration(
+                stories=stories,
+                generation_context="existing_codebase",
+                reasoning=f"Pattern-aware story generation for epic: {epic.title}"
+            )
+
+        except Exception as e:
+            print(f"[StoryAnalyzer] Error in existing codebase story generation: {e}")
+            return StoryGeneration(
+                stories=[],
+                generation_context="existing_codebase",
+                reasoning=f"Failed to generate stories for existing codebase: {str(e)}"
+            )
+
+    def _format_existing_features(self, existing_features: Dict[str, Any]) -> str:
+        """Format existing features analysis for the prompt."""
+        if not existing_features:
+            return "No existing feature analysis available"
+
+        requested = existing_features.get("requested_features", [])
+        if not requested:
+            return "No specific features analyzed"
+
+        lines = []
+        for feat in requested:
+            status = "EXISTS" if feat.get("exists") else "NEEDS IMPLEMENTATION"
+            lines.append(f"- {feat.get('name', 'Unknown')}: {status}")
+            if feat.get("notes"):
+                lines.append(f"  Notes: {feat.get('notes')[:200]}")
+
+        return "\n".join(lines)
 
     async def detect_story_gap(
         self,
@@ -248,7 +424,7 @@ Provide:
 - actor: Specific user role
 - action: What they want to do (related to the task)
 - benefit: Why they want it
-- acceptance_criteria: 2-4 specific criteria
+- acceptance_criteria: specific testable criteria
 - priority: must_have/should_have/could_have
 
 Return as JSON."""

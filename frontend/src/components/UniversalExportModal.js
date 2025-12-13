@@ -5,6 +5,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { Modal, Text, Button, tokens } from '../design-system';
+import { useSubscription } from '../contexts/SubscriptionContext';
+import { UpgradePrompt } from './UpgradeModal';
 
 const STORAGE_KEY = 'cahoots_export_preferences';
 
@@ -74,6 +76,8 @@ const PRESETS = [
 ];
 
 const UniversalExportModal = ({ isOpen, onClose, taskId, onSuccess }) => {
+  const { canExport } = useSubscription();
+
   // Load saved preferences or use defaults
   const loadPreferences = () => {
     try {
@@ -239,6 +243,17 @@ const UniversalExportModal = ({ isOpen, onClose, taskId, onSuccess }) => {
       setLoading(false);
     }
   };
+
+  // Check subscription before rendering export options
+  if (!canExport()) {
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Export Project" size="sm">
+        <div style={{ padding: '20px' }}>
+          <UpgradePrompt feature="export" />
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Export Project" size="xl">

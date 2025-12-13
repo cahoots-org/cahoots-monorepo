@@ -230,3 +230,50 @@ async def cleanup_dependencies():
 
 # get_current_user has been moved to app.api.routes.auth
 # Import it from there to avoid duplication
+
+
+def require_feature(feature: str):
+    """Dependency factory that checks if the user has access to a feature.
+
+    Usage:
+        @router.post("/generate")
+        async def generate_code(
+            current_user: dict = Depends(require_feature("code_generation"))
+        ):
+            ...
+
+    Args:
+        feature: The feature name to check (e.g., "code_generation", "github_integration")
+
+    Returns:
+        A dependency function that validates feature access
+    """
+    from app.api.routes.auth import get_current_user
+    from app.models.subscription import SubscriptionTier, has_feature
+
+    async def check_feature(current_user: dict = Depends(get_current_user)):
+        # Get subscription tier from user data
+        subscription = current_user.get("subscription", {})
+        tier_str = subscription.get("tier", "free")
+
+        try:
+            tier = SubscriptionTier(tier_str)
+        except ValueError:
+            tier = SubscriptionTier.FREE
+
+        # Check if feature is enabled for this tier
+        if not has_feature(tier, feature):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "feature_required",
+                    "feature": feature,
+                    "message": f"This feature requires a Pro or Enterprise subscription",
+                    "current_tier": tier_str,
+                    "upgrade_url": "/pricing",
+                }
+            )
+
+        return current_user
+
+    return check_feature

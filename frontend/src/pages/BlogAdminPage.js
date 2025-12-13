@@ -13,7 +13,7 @@ import Select from '../design-system/components/Select';
 import Badge from '../design-system/components/Badge';
 import IconButton from '../design-system/components/IconButton';
 import LoadingSpinner from '../design-system/components/LoadingSpinner';
-import { Heading1, Text } from '../design-system/components/Typography';
+import { Heading1 } from '../design-system/components/Typography';
 import { tokens } from '../design-system/tokens';
 
 const BlogAdminPage = () => {
@@ -48,6 +48,7 @@ const BlogAdminPage = () => {
     }
     fetchPosts();
     fetchSubscriptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, navigate]);
 
   const fetchPosts = async () => {

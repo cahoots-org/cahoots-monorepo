@@ -35,7 +35,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(projects_created_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(projects_created_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "Projects",
       "type": "stat"
     },
@@ -59,7 +59,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(epics_generated_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(epics_generated_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "Epics",
       "type": "stat"
     },
@@ -83,7 +83,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(stories_generated_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(stories_generated_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "Stories",
       "type": "stat"
     },
@@ -107,7 +107,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(tasks_generated_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(tasks_generated_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "Tasks",
       "type": "stat"
     },
@@ -131,7 +131,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(llm_calls_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(llm_calls_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "LLM Calls",
       "type": "stat"
     },
@@ -155,7 +155,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "(sum(llm_tokens_input_total) or vector(0)) + (sum(llm_tokens_output_total) or vector(0))", "refId": "A"}],
+      "targets": [{"expr": "(sum(increase(llm_tokens_input_total[$__range])) or vector(0)) + (sum(increase(llm_tokens_output_total[$__range])) or vector(0))", "refId": "A"}],
       "title": "Total Tokens",
       "type": "stat"
     },
@@ -188,7 +188,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "value_and_name"
       },
-      "targets": [{"expr": "sum(stories_generated_total) / sum(epics_generated_total) or vector(0)", "legendFormat": "avg", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(stories_generated_total[$__range])) / sum(increase(epics_generated_total[$__range])) or vector(0)", "legendFormat": "avg", "refId": "A"}],
       "title": "Stories per Epic",
       "type": "stat"
     },
@@ -213,7 +213,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "value_and_name"
       },
-      "targets": [{"expr": "sum(tasks_generated_total) / sum(stories_generated_total) or vector(0)", "legendFormat": "avg", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(tasks_generated_total[$__range])) / sum(increase(stories_generated_total[$__range])) or vector(0)", "legendFormat": "avg", "refId": "A"}],
       "title": "Tasks per Story",
       "type": "stat"
     },
@@ -238,7 +238,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "value_and_name"
       },
-      "targets": [{"expr": "sum(tasks_generated_total) / sum(projects_created_total) or vector(0)", "legendFormat": "avg", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(tasks_generated_total[$__range])) / sum(increase(projects_created_total[$__range])) or vector(0)", "legendFormat": "avg", "refId": "A"}],
       "title": "Tasks per Project",
       "type": "stat"
     },
@@ -263,7 +263,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "value_and_name"
       },
-      "targets": [{"expr": "sum(llm_calls_total) / sum(projects_created_total) or vector(0)", "legendFormat": "avg", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(llm_calls_total[$__range])) / sum(increase(projects_created_total[$__range])) or vector(0)", "legendFormat": "avg", "refId": "A"}],
       "title": "LLM Calls per Project",
       "type": "stat"
     },
@@ -314,9 +314,9 @@
         "xTickLabelSpacing": 0
       },
       "targets": [
-        {"expr": "sum(epic_story_generation_duration_seconds_sum) / sum(epic_story_generation_duration_seconds_count) or vector(0)", "legendFormat": "Epic & Story Generation", "refId": "A", "instant": true},
-        {"expr": "sum(event_modeling_duration_seconds_sum) / sum(event_modeling_duration_seconds_count) or vector(0)", "legendFormat": "Event Modeling", "refId": "B", "instant": true},
-        {"expr": "sum(story_decomposition_duration_seconds_sum) / sum(story_decomposition_duration_seconds_count) or vector(0)", "legendFormat": "Story Decomposition", "refId": "C", "instant": true}
+        {"expr": "sum(increase(epic_story_generation_duration_seconds_sum[$__range])) / clamp_min(sum(increase(epic_story_generation_duration_seconds_count[$__range])), 1)", "legendFormat": "Epic & Story Generation", "refId": "A", "instant": true},
+        {"expr": "sum(increase(event_modeling_duration_seconds_sum[$__range])) / clamp_min(sum(increase(event_modeling_duration_seconds_count[$__range])), 1)", "legendFormat": "Event Modeling", "refId": "B", "instant": true},
+        {"expr": "sum(increase(story_decomposition_duration_seconds_sum[$__range])) / clamp_min(sum(increase(story_decomposition_duration_seconds_count[$__range])), 1)", "legendFormat": "Story Decomposition", "refId": "C", "instant": true}
       ],
       "title": "Average Phase Duration",
       "type": "barchart"
@@ -360,7 +360,7 @@
         "xTickLabelSpacing": 0
       },
       "targets": [
-        {"expr": "sum(llm_call_duration_seconds_sum) / sum(llm_call_duration_seconds_count) or vector(0)", "legendFormat": "Avg LLM Call Duration", "refId": "A", "instant": true}
+        {"expr": "sum(increase(llm_call_duration_seconds_sum[$__range])) / clamp_min(sum(increase(llm_call_duration_seconds_count[$__range])), 1)", "legendFormat": "Avg LLM Call Duration", "refId": "A", "instant": true}
       ],
       "title": "LLM Call Latency",
       "type": "barchart"
@@ -412,7 +412,7 @@
         "xTickLabelSpacing": 0
       },
       "targets": [
-        {"expr": "sum by (subphase) (event_modeling_subphase_duration_seconds_sum{subphase!=\"context_publish\"}) / sum by (subphase) (event_modeling_subphase_duration_seconds_count{subphase!=\"context_publish\"})", "legendFormat": "{{subphase}}", "refId": "A", "instant": true, "format": "table"}
+        {"expr": "sum by (subphase) (increase(event_modeling_subphase_duration_seconds_sum{subphase!=\"context_publish\"}[$__range])) / clamp_min(sum by (subphase) (increase(event_modeling_subphase_duration_seconds_count{subphase!=\"context_publish\"}[$__range])), 1)", "legendFormat": "{{subphase}}", "refId": "A", "instant": true, "format": "table"}
       ],
       "title": "Event Modeling Sub-Phase Duration (Avg)",
       "transformations": [
@@ -462,7 +462,7 @@
         "text": {"valueSize": 12}
       },
       "targets": [
-        {"expr": "sum by (subphase) (event_modeling_subphase_duration_seconds_sum{subphase!=\"context_publish\"}) / scalar(sum(event_modeling_duration_seconds_count))", "legendFormat": "{{subphase}}", "refId": "A", "instant": true, "format": "table"}
+        {"expr": "sum by (subphase) (increase(event_modeling_subphase_duration_seconds_sum{subphase!=\"context_publish\"}[$__range])) / on() group_left() (sum(increase(event_modeling_duration_seconds_count[$__range])) or vector(1))", "legendFormat": "{{subphase}}", "refId": "A", "instant": true, "format": "table"}
       ],
       "title": "Time per Run (by Sub-Phase)",
       "transformations": [
@@ -491,7 +491,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(event_modeling_validation_retries_sum) / sum(event_modeling_validation_retries_count) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(event_modeling_validation_retries_sum[$__range])) / clamp_min(sum(increase(event_modeling_validation_retries_count[$__range])), 1) or vector(0)", "refId": "A"}],
       "title": "Avg Fix Retries",
       "type": "stat"
     },
@@ -515,7 +515,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(event_modeling_llm_calls_per_subphase) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(event_modeling_llm_calls_per_subphase[$__range])) or vector(0)", "refId": "A"}],
       "title": "LLM Calls (Event Model)",
       "type": "stat"
     },
@@ -543,7 +543,7 @@
         "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": true},
         "showHeader": true
       },
-      "targets": [{"expr": "sum by (subphase) (event_modeling_llm_calls_per_subphase)", "format": "table", "instant": true, "refId": "A"}],
+      "targets": [{"expr": "sum by (subphase) (increase(event_modeling_llm_calls_per_subphase[$__range]))", "format": "table", "instant": true, "refId": "A"}],
       "title": "LLM Calls by Sub-Phase",
       "transformations": [
         {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true}, "indexByName": {}, "renameByName": {"subphase": "Sub-Phase", "Value": "Count"}}}
@@ -579,8 +579,8 @@
         "tooltip": {"mode": "single", "sort": "none"}
       },
       "targets": [
-        {"expr": "sum(llm_tokens_input_total) or vector(0)", "legendFormat": "Input Tokens", "refId": "A"},
-        {"expr": "sum(llm_tokens_output_total) or vector(0)", "legendFormat": "Output Tokens", "refId": "B"}
+        {"expr": "sum(increase(llm_tokens_input_total[$__range])) or vector(0)", "legendFormat": "Input Tokens", "refId": "A"},
+        {"expr": "sum(increase(llm_tokens_output_total[$__range])) or vector(0)", "legendFormat": "Output Tokens", "refId": "B"}
       ],
       "title": "Token Distribution",
       "type": "piechart"
@@ -605,7 +605,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(llm_tokens_input_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(llm_tokens_input_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "Input Tokens",
       "type": "stat"
     },
@@ -629,7 +629,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "auto"
       },
-      "targets": [{"expr": "sum(llm_tokens_output_total) or vector(0)", "refId": "A"}],
+      "targets": [{"expr": "sum(increase(llm_tokens_output_total[$__range])) or vector(0)", "refId": "A"}],
       "title": "Output Tokens",
       "type": "stat"
     },
@@ -654,7 +654,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "value_and_name"
       },
-      "targets": [{"expr": "(sum(llm_tokens_input_total) + sum(llm_tokens_output_total)) / sum(llm_calls_total) or vector(0)", "legendFormat": "avg", "refId": "A"}],
+      "targets": [{"expr": "(sum(increase(llm_tokens_input_total[$__range])) + sum(increase(llm_tokens_output_total[$__range]))) / sum(increase(llm_calls_total[$__range])) or vector(0)", "legendFormat": "avg", "refId": "A"}],
       "title": "Tokens per Call",
       "type": "stat"
     },
@@ -679,7 +679,7 @@
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false},
         "textMode": "value_and_name"
       },
-      "targets": [{"expr": "(sum(llm_tokens_input_total) + sum(llm_tokens_output_total)) / sum(tasks_generated_total) or vector(0)", "legendFormat": "avg", "refId": "A"}],
+      "targets": [{"expr": "(sum(increase(llm_tokens_input_total[$__range])) + sum(increase(llm_tokens_output_total[$__range]))) / sum(increase(tasks_generated_total[$__range])) or vector(0)", "legendFormat": "avg", "refId": "A"}],
       "title": "Tokens per Task",
       "type": "stat"
     },
@@ -707,7 +707,7 @@
         "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false},
         "showHeader": true
       },
-      "targets": [{"expr": "llm_calls_total", "format": "table", "instant": true, "refId": "A"}],
+      "targets": [{"expr": "increase(llm_calls_total[$__range])", "format": "table", "instant": true, "refId": "A"}],
       "title": "LLM Calls by Model/Operation",
       "transformations": [
         {"id": "organize", "options": {"excludeByName": {"Time": true, "__name__": true, "instance": true, "job": true}, "indexByName": {}, "renameByName": {"model": "Model", "operation": "Operation", "status": "Status", "Value": "Count"}}}

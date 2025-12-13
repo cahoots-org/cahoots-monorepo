@@ -4,7 +4,6 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   Card,
   CardHeader,
-  CardContent,
   Button,
   Text,
   Heading1,
@@ -37,14 +36,14 @@ const TaskBoard = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const { showError, showSuccess } = useApp();
-  const { connected, connect, disconnect, subscribe } = useWebSocket();
+  const { connected, connect, disconnect } = useWebSocket();
   const queryClient = useQueryClient();
 
   // State
   const [activeTab, setActiveTab] = useState('overview');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedSubtask, setSelectedSubtask] = useState(null);
-  const [editMode, setEditMode] = useState(false);
+  const [, setEditMode] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -70,34 +69,7 @@ const TaskBoard = () => {
       console.log('[TaskBoard] Disconnecting WebSocket...');
       disconnect();
     };
-  }, []); // Empty dependency array - only run on mount/unmount
-
-  // WebSocket subscription for real-time updates
-  useEffect(() => {
-    if (!connected || !taskId) return;
-
-    const unsubscribe = subscribe((data) => {
-      // Check if this event is related to the current task or its children
-      if (data.type?.includes('task') || data.type?.includes('decomposition')) {
-        // Invalidate if it's the current task
-        if (data.task_id === taskId || data.id === taskId) {
-          queryClient.invalidateQueries(['tasks', 'detail', taskId]);
-          queryClient.invalidateQueries(['tasks', 'tree', taskId]);
-        }
-        // Also invalidate if it's a child of the current task
-        if (data.parent_id === taskId || data.root_task_id === taskId) {
-          queryClient.invalidateQueries(['tasks', 'detail', taskId]);
-          queryClient.invalidateQueries(['tasks', 'tree', taskId]);
-        }
-      }
-    });
-
-    return () => {
-      if (typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-    };
-  }, [connected, subscribe, taskId, queryClient]);
+  }, [isAuthenticated, connect, disconnect]); // Include all dependencies
 
   // Fetch task data
   const { data: task, isLoading: taskLoading, error: taskError } = useQuery({
@@ -154,11 +126,6 @@ const TaskBoard = () => {
 
 
   // Build tabs with counts
-  const hasEventModel = task?.metadata?.event_model_markdown ||
-                        task?.metadata?.extracted_events?.length > 0 ||
-                        task?.metadata?.commands?.length > 0 ||
-                        task?.metadata?.read_models?.length > 0;
-
   const hasSchemas = (task?.metadata?.commands?.length > 0 && task?.metadata?.commands[0]?.parameters) ||
                      (task?.metadata?.extracted_events?.length > 0 && task?.metadata?.extracted_events[0]?.payload) ||
                      (task?.metadata?.read_models?.length > 0 && task?.metadata?.read_models[0]?.fields);
