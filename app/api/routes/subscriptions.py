@@ -56,6 +56,10 @@ async def get_plans():
     return PlansResponse(plans=plans)
 
 
+# Admin emails that always get enterprise access
+ADMIN_EMAILS = {"admin@cahoots.cc"}
+
+
 @router.get("/current")
 async def get_current_subscription(
     current_user: dict = Depends(get_current_user),
@@ -63,6 +67,18 @@ async def get_current_subscription(
 ):
     """Get the current user's subscription details."""
     user_id = current_user.get("id") or current_user.get("sub")
+    email = current_user.get("email", "").lower()
+
+    # Admin users always get enterprise access
+    if email in ADMIN_EMAILS:
+        return Subscription(
+            tier=SubscriptionTier.ENTERPRISE,
+            status=SubscriptionStatus.ACTIVE,
+            stripe_customer_id=None,
+            stripe_subscription_id=None,
+            current_period_end=None,
+            cancel_at_period_end=False,
+        )
 
     # Get subscription from user data
     user_data = await redis_client.get(f"user:{user_id}")
