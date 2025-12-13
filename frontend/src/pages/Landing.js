@@ -149,7 +149,8 @@ const HeroSection = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useMediaQuery('(max-width: 1024px)');
+  const isSmallMobile = useMediaQuery('(max-width: 640px)');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -249,22 +250,22 @@ const HeroSection = () => {
         pointerEvents: 'none',
       }} />
 
-      <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative', zIndex: 1, width: '100%', padding: '0 16px' }}>
+      <div style={{ maxWidth: '1600px', margin: '0 auto', position: 'relative', zIndex: 1, width: '100%', padding: isSmallMobile ? '0 20px' : '0 60px' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 400px',
-          gap: isMobile ? '32px' : '80px',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 520px',
+          gap: isMobile ? '48px' : '80px',
           alignItems: 'center',
         }}>
           {/* Left side - Copy */}
           <div>
             <h1 style={{
-              fontSize: 'clamp(36px, 5vw, 56px)',
+              fontSize: isSmallMobile ? '36px' : isMobile ? '52px' : '80px',
               fontWeight: '800',
-              lineHeight: '1.1',
-              marginBottom: '24px',
+              lineHeight: '1.0',
+              marginBottom: isSmallMobile ? '24px' : '40px',
               color: 'var(--color-text)',
-              letterSpacing: '-1px',
+              letterSpacing: isSmallMobile ? '-1px' : '-3px',
             }}>
               Turn Complex Ideas Into{' '}
               <span style={{
@@ -276,29 +277,30 @@ const HeroSection = () => {
             </h1>
 
             <p style={{
-              fontSize: '18px',
+              fontSize: isSmallMobile ? '17px' : isMobile ? '20px' : '26px',
               color: 'var(--color-text-muted)',
-              marginBottom: '32px',
-              lineHeight: '1.6',
+              marginBottom: isSmallMobile ? '32px' : '48px',
+              lineHeight: '1.5',
+              maxWidth: '700px',
             }}>
               Describe your project in plain English. Get back user stories, tasks with story points, and technical specs.
             </p>
 
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '24px', color: 'var(--color-text-muted)', fontSize: '15px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+            <div style={{ display: 'flex', flexDirection: isSmallMobile ? 'column' : 'row', flexWrap: 'wrap', gap: isSmallMobile ? '12px' : isMobile ? '20px' : '40px', color: 'var(--color-text-muted)', fontSize: isSmallMobile ? '16px' : isMobile ? '18px' : '22px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <svg width={isSmallMobile ? '22' : '28'} height={isSmallMobile ? '22' : '28'} viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2.5">
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
                 Task decomposition
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <svg width={isSmallMobile ? '22' : '28'} height={isSmallMobile ? '22' : '28'} viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2.5">
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
                 Event modeling
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <svg width={isSmallMobile ? '22' : '28'} height={isSmallMobile ? '22' : '28'} viewBox="0 0 24 24" fill="none" stroke={tokens.colors.success[500]} strokeWidth="2.5">
                   <path d="M20 6L9 17l-5-5" />
                 </svg>
                 Code generation
@@ -309,18 +311,18 @@ const HeroSection = () => {
           {/* Right side - Login Form */}
           <div style={{
             backgroundColor: 'var(--color-surface)',
-            borderRadius: '16px',
-            padding: '32px',
+            borderRadius: isSmallMobile ? '16px' : '24px',
+            padding: isSmallMobile ? '24px' : isMobile ? '32px' : '48px',
             border: '1px solid var(--color-border)',
-            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+            boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.5)',
           }}>
-            <h2 style={{ fontSize: '24px', fontWeight: '600', marginBottom: '24px', color: 'var(--color-text)' }}>
+            <h2 style={{ fontSize: isSmallMobile ? '22px' : isMobile ? '26px' : '32px', fontWeight: '600', marginBottom: isSmallMobile ? '24px' : '32px', color: 'var(--color-text)' }}>
               Try Cahoots
             </h2>
 
-            <form onSubmit={handleSubmit} style={{ marginBottom: '24px' }}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: 'var(--color-text)' }}>
+            <form onSubmit={handleSubmit} style={{ marginBottom: '32px' }}>
+              <div style={{ marginBottom: '24px' }}>
+                <label style={{ display: 'block', fontSize: '16px', fontWeight: '500', marginBottom: '10px', color: 'var(--color-text)' }}>
                   Email
                 </label>
                 <input
@@ -330,12 +332,12 @@ const HeroSection = () => {
                   placeholder="you@example.com"
                   required
                   className="input-field"
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', padding: '18px 20px', fontSize: '17px', borderRadius: '12px' }}
                 />
               </div>
 
-              <div style={{ marginBottom: '24px' }}>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', marginBottom: '6px', color: 'var(--color-text)' }}>
+              <div style={{ marginBottom: '32px' }}>
+                <label style={{ display: 'block', fontSize: '16px', fontWeight: '500', marginBottom: '10px', color: 'var(--color-text)' }}>
                   Password
                 </label>
                 <input
@@ -345,7 +347,7 @@ const HeroSection = () => {
                   placeholder="Enter your password"
                   required
                   className="input-field"
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', padding: '18px 20px', fontSize: '17px', borderRadius: '12px' }}
                 />
               </div>
 
@@ -355,7 +357,9 @@ const HeroSection = () => {
                 style={{
                   ...primaryButtonStyle,
                   width: '100%',
-                  padding: '14px 24px',
+                  padding: '20px 28px',
+                  fontSize: '18px',
+                  borderRadius: '12px',
                   opacity: isSubmitting ? 0.7 : 1,
                 }}
               >
@@ -364,9 +368,9 @@ const HeroSection = () => {
             </form>
 
             {/* Divider */}
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '32px' }}>
               <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--color-border)' }} />
-              <span style={{ padding: '0 16px', fontSize: '13px', color: 'var(--color-text-muted)' }}>or</span>
+              <span style={{ padding: '0 20px', fontSize: '15px', color: 'var(--color-text-muted)' }}>or</span>
               <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--color-border)' }} />
             </div>
 
@@ -379,18 +383,18 @@ const HeroSection = () => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                padding: '12px 24px',
+                padding: '18px 28px',
                 backgroundColor: 'white',
                 border: '1px solid var(--color-border)',
-                borderRadius: '8px',
-                fontSize: '15px',
+                borderRadius: '12px',
+                fontSize: '17px',
                 fontWeight: '500',
                 color: '#374151',
                 cursor: 'pointer',
-                marginBottom: '12px',
+                marginBottom: '16px',
               }}
             >
-              <svg style={{ width: '20px', height: '20px', marginRight: '12px' }} viewBox="0 0 24 24">
+              <svg style={{ width: '24px', height: '24px', marginRight: '14px' }} viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
                 <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
