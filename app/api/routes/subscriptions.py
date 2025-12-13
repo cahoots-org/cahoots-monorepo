@@ -30,6 +30,8 @@ from app.config.stripe import (
     get_or_create_customer,
     is_stripe_configured,
     verify_webhook_signature,
+    STRIPE_PRICE_HOBBYIST_MONTHLY,
+    STRIPE_PRICE_HOBBYIST_YEARLY,
     STRIPE_PRICE_PRO_MONTHLY,
     STRIPE_PRICE_PRO_YEARLY,
     STRIPE_PUBLISHABLE_KEY,
@@ -45,7 +47,9 @@ async def get_plans():
     plans = []
     for plan in PLANS:
         plan_copy = plan.model_copy()
-        if plan.id == "pro" and STRIPE_PRICE_PRO_MONTHLY:
+        if plan.id == "hobbyist" and STRIPE_PRICE_HOBBYIST_MONTHLY:
+            plan_copy.stripe_price_id = STRIPE_PRICE_HOBBYIST_MONTHLY
+        elif plan.id == "pro" and STRIPE_PRICE_PRO_MONTHLY:
             plan_copy.stripe_price_id = STRIPE_PRICE_PRO_MONTHLY
         plans.append(plan_copy)
 
@@ -327,6 +331,16 @@ async def handle_stripe_webhook(
     return {"status": "ok"}
 
 
+def determine_tier_from_price(price_id: str) -> SubscriptionTier:
+    """Determine subscription tier from Stripe price ID."""
+    if price_id in (STRIPE_PRICE_HOBBYIST_MONTHLY, STRIPE_PRICE_HOBBYIST_YEARLY):
+        return SubscriptionTier.HOBBYIST
+    elif price_id in (STRIPE_PRICE_PRO_MONTHLY, STRIPE_PRICE_PRO_YEARLY):
+        return SubscriptionTier.PRO
+    # Default to Pro for unknown price IDs (enterprise or custom)
+    return SubscriptionTier.PRO
+
+
 async def handle_checkout_completed(session: dict, redis_client: Redis):
     """Handle successful checkout completion."""
     customer_id = session.get("customer")
@@ -346,11 +360,17 @@ async def handle_checkout_completed(session: dict, redis_client: Redis):
     import stripe
     subscription = stripe.Subscription.retrieve(subscription_id)
 
+    # Determine tier from the subscription's price
+    price_id = ""
+    if subscription.items and subscription.items.data:
+        price_id = subscription.items.data[0].price.id
+    tier = determine_tier_from_price(price_id)
+
     # Update user subscription
     await update_user_subscription(
         user_id=user_id,
         redis_client=redis_client,
-        tier=SubscriptionTier.PRO,  # Checkout = Pro plan
+        tier=tier,
         status=SubscriptionStatus.ACTIVE,
         stripe_customer_id=customer_id,
         stripe_subscription_id=subscription_id,
@@ -359,7 +379,7 @@ async def handle_checkout_completed(session: dict, redis_client: Redis):
         ),
     )
 
-    print(f"[Subscriptions] User {user_id} upgraded to Pro")
+    print(f"[Subscriptions] User {user_id} upgraded to {tier.value}")
 
 
 async def handle_subscription_updated(subscription: dict, redis_client: Redis):
@@ -382,9 +402,15 @@ async def handle_subscription_updated(subscription: dict, redis_client: Redis):
     }
     status = status_map.get(status_str, SubscriptionStatus.ACTIVE)
 
+    # Determine tier from price (for plan changes)
+    items = subscription.get("items", {}).get("data", [])
+    price_id = items[0].get("price", {}).get("id", "") if items else ""
+    tier = determine_tier_from_price(price_id) if price_id else None
+
     await update_user_subscription(
         user_id=user_id,
         redis_client=redis_client,
+        tier=tier,
         status=status,
         stripe_subscription_id=subscription_id,
         current_period_end=datetime.fromtimestamp(
@@ -393,7 +419,7 @@ async def handle_subscription_updated(subscription: dict, redis_client: Redis):
         cancel_at_period_end=subscription.get("cancel_at_period_end", False),
     )
 
-    print(f"[Subscriptions] Updated subscription for user {user_id}: {status}")
+    print(f"[Subscriptions] Updated subscription for user {user_id}: {status}, tier: {tier.value if tier else 'unchanged'}")
 
 
 async def handle_subscription_deleted(subscription: dict, redis_client: Redis):

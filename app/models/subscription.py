@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class SubscriptionTier(str, Enum):
     """Subscription tier levels."""
     FREE = "free"
+    HOBBYIST = "hobbyist"
     PRO = "pro"
     ENTERPRISE = "enterprise"
 
@@ -103,6 +104,17 @@ TIER_FEATURES = {
         "custom_integrations": False,
         "sso": False,
     },
+    SubscriptionTier.HOBBYIST: {
+        "task_decomposition": True,
+        "event_modeling": True,
+        "code_generation": False,
+        "github_integration": False,
+        "export": True,
+        "api_access": False,
+        "priority_support": False,
+        "custom_integrations": False,
+        "sso": False,
+    },
     SubscriptionTier.PRO: {
         "task_decomposition": True,
         "event_modeling": True,
@@ -149,24 +161,36 @@ PLANS = [
         features=[
             "Task decomposition",
             "Event modeling",
-            "Up to 5 projects",
+            "Unlimited projects",
             "Community support",
         ],
         cta_text="Get Started",
     ),
     PlanInfo(
-        id="pro",
-        name="Pro",
-        description="For professional developers and small teams",
-        price_monthly=2900,  # $29.00
-        price_yearly=29000,  # $290.00 (2 months free)
+        id="hobbyist",
+        name="Hobbyist",
+        description="For side projects and personal use",
+        price_monthly=1000,  # $10.00
+        price_yearly=10000,  # $100.00 (2 months free)
         features=[
             "Everything in Free",
+            "Export to JSON/Markdown",
+            "Email support",
+        ],
+        cta_text="Upgrade to Hobbyist",
+    ),
+    PlanInfo(
+        id="pro",
+        name="Pro",
+        description="For professional developers and teams",
+        price_monthly=5000,  # $50.00
+        price_yearly=50000,  # $500.00 (2 months free)
+        features=[
+            "Everything in Hobbyist",
             "Code generation",
             "GitHub integration",
-            "Export to JSON/Markdown",
-            "Unlimited projects",
-            "Email support",
+            "API access",
+            "Priority email support",
         ],
         is_popular=True,
         cta_text="Upgrade to Pro",

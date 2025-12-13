@@ -6,6 +6,23 @@ import Footer from '../components/Footer';
 import SEO from '../components/SEO';
 import { tokens } from '../design-system';
 
+// Custom hook for responsive design
+const useMediaQuery = (query) => {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+
+  return matches;
+};
+
 // ============================================================================
 // LANDING PAGE - Product Showcase Design
 // ============================================================================
@@ -132,6 +149,7 @@ const HeroSection = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 768px)');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -231,8 +249,13 @@ const HeroSection = () => {
         pointerEvents: 'none',
       }} />
 
-      <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative', zIndex: 1, width: '100%' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '80px', alignItems: 'center' }}>
+      <div style={{ maxWidth: '1100px', margin: '0 auto', position: 'relative', zIndex: 1, width: '100%', padding: '0 16px' }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: isMobile ? '1fr' : '1fr 400px',
+          gap: isMobile ? '32px' : '80px',
+          alignItems: 'center',
+        }}>
           {/* Left side - Copy */}
           <div>
             <h1 style={{
@@ -509,15 +532,18 @@ const FeatureShowcase = () => {
   );
 };
 
-const FeatureBlock = ({ badge, title, description, image, imagePlaceholder, imageAlt, reversed, highlights }) => (
-  <div style={{
-    display: 'grid',
-    gridTemplateColumns: 'repeat(2, 1fr)',
-    gap: '80px',
-    alignItems: 'center',
-    marginBottom: '120px',
-  }}>
-    <div style={{ order: reversed ? 2 : 1 }}>
+const FeatureBlock = ({ badge, title, description, image, imagePlaceholder, imageAlt, reversed, highlights }) => {
+  const isMobile = useMediaQuery('(max-width: 768px)');
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+      gap: isMobile ? '40px' : '80px',
+      alignItems: 'center',
+      marginBottom: isMobile ? '60px' : '120px',
+    }}>
+      <div style={{ order: isMobile ? 1 : (reversed ? 2 : 1) }}>
       <span style={{
         display: 'inline-block',
         padding: '6px 12px',
@@ -566,7 +592,7 @@ const FeatureBlock = ({ badge, title, description, image, imagePlaceholder, imag
       </ul>
     </div>
 
-    <div style={{ order: reversed ? 1 : 2 }}>
+    <div style={{ order: isMobile ? 2 : (reversed ? 1 : 2) }}>
       <div style={{
         backgroundColor: tokens.colors.neutral[900],
         borderRadius: '12px',
@@ -614,13 +640,17 @@ const FeatureBlock = ({ badge, title, description, image, imagePlaceholder, imag
       </div>
     </div>
   </div>
-);
+  );
+};
 
 // ============================================================================
 // HOW IT WORKS SECTION
 // ============================================================================
 
 const HowItWorksSection = () => {
+  const isMobile = useMediaQuery('(max-width: 640px)');
+  const isTablet = useMediaQuery('(max-width: 1024px)');
+
   const steps = [
     {
       number: '01',
@@ -673,20 +703,22 @@ const HowItWorksSection = () => {
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '32px',
+          gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+          gap: isMobile ? '32px' : '32px',
           position: 'relative',
         }}>
-          {/* Connection line */}
-          <div style={{
-            position: 'absolute',
-            top: '40px',
-            left: '12.5%',
-            right: '12.5%',
-            height: '2px',
-            background: `linear-gradient(90deg, ${tokens.colors.primary[500]} 0%, ${tokens.colors.secondary[400]} 100%)`,
-            opacity: 0.3,
-          }} />
+          {/* Connection line - hide on mobile */}
+          {!isMobile && (
+            <div style={{
+              position: 'absolute',
+              top: '40px',
+              left: '12.5%',
+              right: '12.5%',
+              height: '2px',
+              background: `linear-gradient(90deg, ${tokens.colors.primary[500]} 0%, ${tokens.colors.secondary[400]} 100%)`,
+              opacity: 0.3,
+            }} />
+          )}
 
           {steps.map((step, i) => (
             <div key={i} style={{ textAlign: 'center', position: 'relative' }}>
@@ -743,6 +775,8 @@ const HowItWorksSection = () => {
 // ============================================================================
 
 const UseCasesSection = () => {
+  const isMobile = useMediaQuery('(max-width: 640px)');
+
   const useCases = [
     {
       icon: '🚀',
@@ -791,12 +825,12 @@ const UseCasesSection = () => {
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
-          gap: '24px',
+          gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+          gap: isMobile ? '16px' : '24px',
         }}>
           {useCases.map((useCase, i) => (
             <div key={i} style={{
-              padding: '32px',
+              padding: isMobile ? '24px' : '32px',
               backgroundColor: 'var(--color-bg)',
               borderRadius: '12px',
               border: '1px solid var(--color-border)',
@@ -836,6 +870,9 @@ const UseCasesSection = () => {
 // ============================================================================
 
 const PricingSection = ({ onGetStarted }) => {
+  const isMobile = useMediaQuery('(max-width: 640px)');
+  const isTablet = useMediaQuery('(max-width: 1024px)');
+
   const tiers = [
     {
       name: 'Free',
@@ -853,16 +890,30 @@ const PricingSection = ({ onGetStarted }) => {
       highlighted: false,
     },
     {
-      name: 'Pro',
-      price: '$29',
+      name: 'Hobbyist',
+      price: '$10',
       period: '/month',
-      description: 'For professional developers and small teams',
+      description: 'For side projects and personal use',
       features: [
         'Everything in Free, plus:',
-        'Code generation',
-        'GitHub integration',
         'Export to JSON/Markdown',
         'Email support',
+      ],
+      cta: 'Try Cahoots',
+      ctaAction: onGetStarted,
+      highlighted: false,
+    },
+    {
+      name: 'Pro',
+      price: '$50',
+      period: '/month',
+      description: 'For professional developers and teams',
+      features: [
+        'Everything in Hobbyist, plus:',
+        'Code generation',
+        'GitHub integration',
+        'API access',
+        'Priority email support',
       ],
       cta: 'Try Cahoots',
       ctaAction: onGetStarted,
@@ -880,7 +931,6 @@ const PricingSection = ({ onGetStarted }) => {
         'Custom integrations',
         'Priority support',
         'Dedicated account manager',
-        'SLA guarantees',
       ],
       cta: 'Contact Sales',
       ctaAction: () => window.location.href = 'mailto:sales@cahoots.cc',
@@ -893,7 +943,7 @@ const PricingSection = ({ onGetStarted }) => {
       padding: '100px 24px',
       backgroundColor: 'var(--color-bg)',
     }}>
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '64px' }}>
           <h2 style={{
             fontSize: '40px',
@@ -915,13 +965,13 @@ const PricingSection = ({ onGetStarted }) => {
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: '24px',
+          gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+          gap: isMobile ? '16px' : '20px',
           alignItems: 'stretch',
         }}>
           {tiers.map((tier, i) => (
             <div key={i} style={{
-              padding: '32px',
+              padding: isMobile ? '24px' : '32px',
               backgroundColor: tier.highlighted ? `${tokens.colors.primary[500]}10` : 'var(--color-surface)',
               borderRadius: '16px',
               border: tier.highlighted

@@ -12,6 +12,12 @@ const TIER_FEATURES = {
     export: false,
     api_access: false,
   },
+  hobbyist: {
+    code_generation: false,
+    github_integration: false,
+    export: true,
+    api_access: false,
+  },
   pro: {
     code_generation: true,
     github_integration: true,
@@ -80,6 +86,7 @@ export const SubscriptionProvider = ({ children }) => {
   // Tier checks
   const isPro = subscription?.tier === 'pro';
   const isEnterprise = subscription?.tier === 'enterprise';
+  const isHobbyist = subscription?.tier === 'hobbyist';
   const isFree = !subscription?.tier || subscription?.tier === 'free';
 
   // Create checkout session (redirect flow)
@@ -190,6 +197,7 @@ export const SubscriptionProvider = ({ children }) => {
     // Tier flags
     isPro,
     isEnterprise,
+    isHobbyist,
     isFree,
 
     // Feature checks

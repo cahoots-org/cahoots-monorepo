@@ -12,10 +12,29 @@ import SEO from '../components/SEO';
 import { tokens } from '../design-system';
 import { XMarkIcon } from '../design-system/icons';
 
+// Custom hook for responsive design
+const useMediaQuery = (query) => {
+  const [matches, setMatches] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) {
+      setMatches(media.matches);
+    }
+    const listener = () => setMatches(media.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+
+  return matches;
+};
+
 // Stripe promise will be loaded dynamically
 let stripePromise = null;
 
 const Pricing = () => {
+  const isMobile = useMediaQuery('(max-width: 640px)');
+  const isTablet = useMediaQuery('(max-width: 1024px)');
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
@@ -210,11 +229,11 @@ const Pricing = () => {
 
       {/* Pricing Cards */}
       <div className="py-20" style={{ backgroundColor: 'var(--color-surface)' }}>
-        <div className="max-w-6xl mx-auto px-4">
+        <div className="max-w-7xl mx-auto px-4">
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '24px',
+            gridTemplateColumns: isMobile ? '1fr' : isTablet ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+            gap: isMobile ? '16px' : '20px',
             alignItems: 'stretch',
           }}>
             {/* Free Tier */}
@@ -222,15 +241,13 @@ const Pricing = () => {
               name="Free"
               price="$0"
               period="/month"
-              description="Perfect for exploring and small projects"
+              description="Perfect for exploring Cahoots"
               icon="🚀"
               features={[
                 { name: 'Task Decomposition', included: true },
                 { name: 'Event Modeling', included: true },
                 { name: 'Unlimited Projects', included: true },
-                { name: 'Code Generation', included: false },
-                { name: 'GitHub Integration', included: false },
-                { name: 'Export to JSON/Markdown', included: false },
+                { name: 'Community Support', included: true },
               ]}
               buttonText={currentTier === 'free' ? 'Current Plan' : 'Try Cahoots'}
               buttonDisabled={currentTier === 'free'}
@@ -238,24 +255,42 @@ const Pricing = () => {
               loading={false}
             />
 
+            {/* Hobbyist Tier */}
+            <PricingCard
+              name="Hobbyist"
+              price="$10"
+              period="/month"
+              description="For side projects and personal use"
+              icon="🎨"
+              features={[
+                { name: 'Everything in Free, plus:', included: true, highlight: true },
+                { name: 'Export to JSON/Markdown', included: true },
+                { name: 'Email Support', included: true },
+              ]}
+              buttonText={currentTier === 'hobbyist' ? 'Current Plan' : 'Upgrade to Hobbyist'}
+              buttonDisabled={currentTier === 'hobbyist' || checkoutLoading}
+              onButtonClick={() => handleGetStarted('hobbyist')}
+              loading={checkoutLoading && selectedPlanId === 'hobbyist'}
+            />
+
             {/* Pro Tier */}
             <PricingCard
               name="Pro"
-              price="$29"
+              price="$50"
               period="/month"
-              description="For developers and teams who need more"
+              description="For professional developers and teams"
               icon="⚡"
               features={[
-                { name: 'Everything in Free, plus:', included: true, highlight: true },
+                { name: 'Everything in Hobbyist, plus:', included: true, highlight: true },
                 { name: 'Code Generation', included: true },
                 { name: 'GitHub Integration', included: true },
-                { name: 'Export to JSON/Markdown', included: true },
-                { name: 'Email Support', included: true },
+                { name: 'API Access', included: true },
+                { name: 'Priority Email Support', included: true },
               ]}
               buttonText={currentTier === 'pro' ? 'Current Plan' : 'Upgrade to Pro'}
               buttonDisabled={currentTier === 'pro' || checkoutLoading}
               onButtonClick={() => handleGetStarted('pro')}
-              loading={checkoutLoading}
+              loading={checkoutLoading && selectedPlanId === 'pro'}
               popular={true}
             />
 
@@ -264,7 +299,7 @@ const Pricing = () => {
               name="Enterprise"
               price="Custom"
               period=""
-              description="For organizations with advanced needs"
+              description="For large teams with custom needs"
               icon="🏢"
               features={[
                 { name: 'Everything in Pro, plus:', included: true, highlight: true },
@@ -272,7 +307,6 @@ const Pricing = () => {
                 { name: 'Custom Integrations', included: true },
                 { name: 'Priority Support', included: true },
                 { name: 'Dedicated Account Manager', included: true },
-                { name: 'SLA Guarantee', included: true },
               ]}
               buttonText={currentTier === 'enterprise' ? 'Current Plan' : 'Contact Sales'}
               buttonDisabled={currentTier === 'enterprise'}
@@ -319,10 +353,16 @@ const Pricing = () => {
             backgroundColor: 'var(--color-surface)',
             borderRadius: '16px',
             border: '1px solid var(--color-border)',
-            overflow: 'hidden',
+            overflow: 'auto',
+            WebkitOverflowScrolling: 'touch',
           }}>
             <ComparisonTable />
           </div>
+          {isMobile && (
+            <p style={{ textAlign: 'center', marginTop: '12px', fontSize: '13px', color: 'var(--color-text-muted)' }}>
+              Scroll horizontally to see all plans
+            </p>
+          )}
         </div>
       </div>
 
@@ -706,16 +746,17 @@ const PricingCard = ({
 // Comparison Table Component
 const ComparisonTable = () => {
   const features = [
-    { name: 'Task Decomposition', free: true, pro: true, enterprise: true },
-    { name: 'Event Modeling', free: true, pro: true, enterprise: true },
-    { name: 'Unlimited Projects', free: true, pro: true, enterprise: true },
-    { name: 'Code Generation', free: false, pro: true, enterprise: true },
-    { name: 'GitHub Integration', free: false, pro: true, enterprise: true },
-    { name: 'Export (JSON/Markdown/CSV)', free: false, pro: true, enterprise: true },
-    { name: 'SSO / SAML', free: false, pro: false, enterprise: true },
-    { name: 'Custom Integrations', free: false, pro: false, enterprise: true },
-    { name: 'Priority Support', free: false, pro: false, enterprise: true },
-    { name: 'SLA Guarantee', free: false, pro: false, enterprise: true },
+    { name: 'Task Decomposition', free: true, hobbyist: true, pro: true, enterprise: true },
+    { name: 'Event Modeling', free: true, hobbyist: true, pro: true, enterprise: true },
+    { name: 'Unlimited Projects', free: true, hobbyist: true, pro: true, enterprise: true },
+    { name: 'Export (JSON/Markdown/CSV)', free: false, hobbyist: true, pro: true, enterprise: true },
+    { name: 'Code Generation', free: false, hobbyist: false, pro: true, enterprise: true },
+    { name: 'GitHub Integration', free: false, hobbyist: false, pro: true, enterprise: true },
+    { name: 'API Access', free: false, hobbyist: false, pro: true, enterprise: true },
+    { name: 'SSO / SAML', free: false, hobbyist: false, pro: false, enterprise: true },
+    { name: 'Custom Integrations', free: false, hobbyist: false, pro: false, enterprise: true },
+    { name: 'Priority Support', free: false, hobbyist: false, pro: false, enterprise: true },
+    { name: 'SLA Guarantee', free: false, hobbyist: false, pro: false, enterprise: true },
   ];
 
   const CheckIcon = () => (
@@ -737,13 +778,16 @@ const ComparisonTable = () => {
           <th style={{ padding: '20px 24px', textAlign: 'left', color: 'var(--color-text)', fontWeight: '600' }}>
             Feature
           </th>
-          <th style={{ padding: '20px 24px', textAlign: 'center', color: 'var(--color-text)', fontWeight: '600' }}>
+          <th style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text)', fontWeight: '600' }}>
             Free
           </th>
-          <th style={{ padding: '20px 24px', textAlign: 'center', color: tokens.colors.primary[500], fontWeight: '600' }}>
+          <th style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text)', fontWeight: '600' }}>
+            Hobbyist
+          </th>
+          <th style={{ padding: '20px 16px', textAlign: 'center', color: tokens.colors.primary[500], fontWeight: '600' }}>
             Pro
           </th>
-          <th style={{ padding: '20px 24px', textAlign: 'center', color: 'var(--color-text)', fontWeight: '600' }}>
+          <th style={{ padding: '20px 16px', textAlign: 'center', color: 'var(--color-text)', fontWeight: '600' }}>
             Enterprise
           </th>
         </tr>
@@ -754,13 +798,16 @@ const ComparisonTable = () => {
             <td style={{ padding: '16px 24px', color: 'var(--color-text)', fontSize: '15px' }}>
               {feature.name}
             </td>
-            <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+            <td style={{ padding: '16px 16px', textAlign: 'center' }}>
               {feature.free ? <CheckIcon /> : <XIcon />}
             </td>
-            <td style={{ padding: '16px 24px', textAlign: 'center', backgroundColor: `${tokens.colors.primary[500]}05` }}>
+            <td style={{ padding: '16px 16px', textAlign: 'center' }}>
+              {feature.hobbyist ? <CheckIcon /> : <XIcon />}
+            </td>
+            <td style={{ padding: '16px 16px', textAlign: 'center', backgroundColor: `${tokens.colors.primary[500]}05` }}>
               {feature.pro ? <CheckIcon /> : <XIcon />}
             </td>
-            <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+            <td style={{ padding: '16px 16px', textAlign: 'center' }}>
               {feature.enterprise ? <CheckIcon /> : <XIcon />}
             </td>
           </tr>

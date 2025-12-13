@@ -98,3 +98,83 @@
   --brand-text: #FFFFFF;
   --brand-muted-text: #A3A3A3;
 }
+
+/* Landing page responsive styles */
+.hero-grid {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 80px;
+  align-items: center;
+}
+
+.feature-block-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 80px;
+  align-items: center;
+}
+
+.how-it-works-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 32px;
+}
+
+.use-cases-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+/* Tablet breakpoint */
+@media (max-width: 1024px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 48px;
+  }
+
+  .feature-block-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .how-it-works-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+  }
+
+  .pricing-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+}
+
+/* Mobile breakpoint */
+@media (max-width: 640px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .how-it-works-grid {
+    grid-template-columns: 1fr;
+    gap: 32px;
+  }
+
+  .use-cases-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .pricing-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
