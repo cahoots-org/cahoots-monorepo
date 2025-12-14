@@ -231,27 +231,37 @@ class CodeGenerator:
         return state
 
     async def _create_repository(self, state: GenerationState, project_id: str) -> None:
-        """Create the Gitea repository for this project."""
-        logger.info(f"Creating repository for project {project_id}")
+        """Create the Gitea repository for this generation.
+
+        Uses state.repo_name which includes a unique generation_id suffix
+        to allow multiple code generations on the same project.
+        """
+        repo_name = state.repo_name  # e.g., "project-abc12345"
+        logger.info(f"Creating repository {repo_name} for project {project_id} (generation {state.generation_id})")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
+                # Use repo_name for the actual repository
                 response = await client.post(
-                    f"{self.config.workspace_service_url}/workspace/{project_id}/repo/create",
+                    f"{self.config.workspace_service_url}/workspace/{repo_name}/repo/create",
                     json={
-                        "name": project_id,
-                        "description": f"Generated project for {project_id}"
+                        "name": repo_name,
+                        "description": f"Generated code for project {project_id} (gen {state.generation_id})"
                     }
                 )
 
                 if response.status_code == 200:
                     data = response.json()
-                    logger.info(f"Repository created: {data.get('repo_url', project_id)}")
+                    logger.info(f"Repository created: {data.get('repo_url', repo_name)}")
+                    state.repo_url = data.get("repo_url", "")
                     await self._save_and_emit(state, "repo_created", {
                         "repo_url": data.get("repo_url", ""),
+                        "repo_name": repo_name,
+                        "generation_id": state.generation_id,
                     })
                 elif response.status_code == 409:
-                    logger.info(f"Repository {project_id} already exists, continuing")
+                    # This shouldn't happen with unique generation IDs, but handle gracefully
+                    logger.warning(f"Repository {repo_name} already exists (unexpected)")
                 else:
                     error = response.json().get("detail", f"HTTP {response.status_code}")
                     raise Exception(f"Failed to create repository: {error}")
@@ -278,9 +288,9 @@ class CodeGenerator:
             task_summaries.append(summary)
 
         task = AgentTask(
-            task_id=f"{state.project_id}::scaffold",
+            task_id=f"{state.repo_name}::scaffold",
             task_type="scaffold",
-            project_id=state.project_id,
+            project_id=state.repo_name,  # Use versioned repo name for workspace
             repo_url=state.repo_url,
             branch="main",
             task_context={
@@ -548,9 +558,9 @@ class CodeGenerator:
 
             # Build the agent task with full task context
             agent_task = AgentTask(
-                task_id=f"{state.project_id}::{task_id}",
+                task_id=f"{state.repo_name}::{task_id}",
                 task_type="task",
-                project_id=state.project_id,
+                project_id=state.repo_name,  # Use versioned repo name for workspace
                 repo_url=state.repo_url,
                 branch=branch,
                 task_context={
@@ -627,9 +637,9 @@ class CodeGenerator:
                 })
 
         integration_task = AgentTask(
-            task_id=f"{state.project_id}::integration",
+            task_id=f"{state.repo_name}::integration",
             task_type="integrate",
-            project_id=state.project_id,
+            project_id=state.repo_name,  # Use versioned repo name for workspace
             repo_url=state.repo_url,
             branch="main",
             task_context={

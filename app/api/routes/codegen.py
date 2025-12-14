@@ -42,6 +42,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/codegen", tags=["codegen"])
 
+# Gitea URLs - internal for generation, external for user-facing links
+GITEA_INTERNAL_URL = os.environ.get("GITEA_INTERNAL_URL", "http://gitea:3000")
+GITEA_EXTERNAL_URL = os.environ.get("GITEA_EXTERNAL_URL", "http://localhost:3001")
+
 
 # Request/Response Models
 
@@ -69,6 +73,9 @@ class GenerationStatusResponse(BaseModel):
     completed_at: Optional[str]
     last_error: Optional[str]
     can_retry: bool
+    # Generation versioning
+    generation_id: Optional[str] = None  # Unique ID for this generation run
+    repo_name: Optional[str] = None  # Versioned repo name (project_id-generation_id)
     # Resume information
     can_resume: bool = False
     resume_from: Optional[str] = None  # "scaffold", "generating", "integration"
@@ -326,9 +333,18 @@ async def start_generation(
             detail="No implementation tasks found. Complete task decomposition before generating code.",
         )
 
-    # Determine repo URL (from Gitea)
-    repo_name = request.repo_name or project_id
-    repo_url = f"http://gitea:3000/cahoots-bot/{repo_name}.git"
+    # Determine repo URL based on state
+    # - If resuming (force=false) and existing state: use existing repo_name (preserves generation_id)
+    # - If starting fresh (force=true) or no existing state: will use new generation_id
+    if not request.force and existing_state:
+        # Resume with existing versioned repo
+        repo_name = existing_state.repo_name
+        repo_url = existing_state.repo_url or f"http://gitea:3000/cahoots-bot/{repo_name}.git"
+        logger.info(f"Resuming generation for {project_id} with repo {repo_name}")
+    else:
+        # Will create new state with new generation_id below
+        repo_name = None  # Will be set from new state
+        repo_url = ""  # Will be set when repo is created
 
     # Create generation config
     config = GenerationConfig(
@@ -352,23 +368,25 @@ async def start_generation(
     skip_task_ids = set()
     start_phase = "scaffold"
 
-    if not request.force:
-        # Reconcile with git reality via workspace-service
+    if not request.force and existing_state:
+        # Reconcile with git reality via workspace-service using existing repo
         from app.codegen.orchestrator.reconciler import GenerationReconciler
 
         try:
+            # Use the existing state's repo_name for reconciliation
+            repo_to_check = existing_state.repo_name
             reconciler = GenerationReconciler(
                 workspace_url=config.workspace_service_url,
                 state_store=state_store,
             )
-            result = await reconciler.reconcile(project_id, tasks)
+            result = await reconciler.reconcile(repo_to_check, tasks)
 
             skip_scaffold = result.scaffold_complete
             skip_task_ids = result.completed_task_ids
             start_phase = result.resume_from
 
             logger.info(
-                f"Reconciliation for {project_id}: "
+                f"Reconciliation for {project_id} (repo: {repo_to_check}): "
                 f"skip_scaffold={skip_scaffold}, "
                 f"skip_tasks={len(skip_task_ids)}, "
                 f"start_phase={start_phase}"
@@ -382,15 +400,30 @@ async def start_generation(
     user_codegen_runs_total.labels(user_id=user_id, status="started").inc()
     user_request_total.labels(user_id=user_id, endpoint_category="codegen").inc()
 
-    # Initialize state
-    state = GenerationState(
-        project_id=project_id,
-        status=GenerationStatus.PENDING,
-        tech_stack=request.tech_stack,
-        repo_url=repo_url,
-        total_tasks=len(tasks),
-        completed_tasks=list(skip_task_ids),
-    )
+    # Initialize or reuse state
+    if not request.force and existing_state:
+        # Resume with existing state (preserves generation_id and repo_name)
+        state = existing_state
+        state.status = GenerationStatus.PENDING
+        state.total_tasks = len(tasks)
+        state.completed_tasks = list(skip_task_ids)
+        state.failed_tasks = {}  # Clear previous failures for retry
+        state.blocked_tasks = []
+        state.current_tasks = []
+        state.retry_count = 0
+        logger.info(f"Resuming with existing state: generation_id={state.generation_id}, repo={state.repo_name}")
+    else:
+        # Create fresh state with new generation_id (creates new versioned repo)
+        state = GenerationState(
+            project_id=project_id,
+            status=GenerationStatus.PENDING,
+            tech_stack=request.tech_stack,
+            repo_url="",  # Will be set when repo is created
+            total_tasks=len(tasks),
+            completed_tasks=list(skip_task_ids),
+        )
+        logger.info(f"Starting fresh generation: generation_id={state.generation_id}, repo={state.repo_name}")
+
     await state_store.save(state)
 
     # Start background generation task
@@ -688,6 +721,9 @@ def _state_to_response(
         completed_at=state.completed_at,
         last_error=state.last_error,
         can_retry=state.can_retry,
+        # Generation versioning
+        generation_id=getattr(state, 'generation_id', None),
+        repo_name=getattr(state, 'repo_name', None),
         # Resume information
         can_resume=can_resume,
         resume_from=resume_from,

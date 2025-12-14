@@ -124,6 +124,11 @@ const ProjectView = () => {
     enabled: !!taskId && isAuthenticated(),
   });
 
+  // Determine processing state early so we can use it in the questions query
+  const taskStatus = task?.status;
+  const isProcessing = taskStatus === 'submitted' || taskStatus === 'processing';
+  const isProcessingComplete = taskStatus === 'completed' || taskStatus === 'failed';
+
   // Fetch clarifying questions
   const { data: questionsData } = useQuery({
     queryKey: ['tasks', 'questions', taskId],
@@ -132,10 +137,24 @@ const ProjectView = () => {
       return response?.data || response;
     },
     enabled: !!taskId && isAuthenticated() && !questionsCompleted,
+    // Refetch every 2 seconds while processing to catch questions when they're ready
+    refetchInterval: isProcessing && !questionsCompleted ? 2000 : false,
   });
 
   const questions = questionsData?.questions || [];
   const hasQuestions = questions.length > 0;
+
+  // Debug logging for questions
+  console.log('[ProjectView] Questions debug:', {
+    taskStatus,
+    isProcessing,
+    questionsData,
+    questionsCount: questions.length,
+    hasQuestions,
+    questionsCompleted,
+    showQuestions,
+    shouldShowQuestions: isProcessing && hasQuestions && !questionsCompleted && showQuestions
+  });
 
   useProjectContext(taskId);
 
@@ -197,9 +216,6 @@ const ProjectView = () => {
     setQuestionsCompleted(true);
     setShowQuestions(false);
   }, []);
-
-  const isProcessing = task?.status === 'submitted' || task?.status === 'processing';
-  const isProcessingComplete = task?.status === 'completed' || task?.status === 'failed';
 
   // Show questions if: processing, has questions, user hasn't completed/skipped, and questions not hidden
   const shouldShowQuestions = isProcessing && hasQuestions && !questionsCompleted && showQuestions;

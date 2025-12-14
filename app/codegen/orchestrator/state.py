@@ -7,6 +7,7 @@ PENDING → INITIALIZING → GENERATING → INTEGRATING → COMPLETE
 """
 
 import json
+import uuid
 from enum import Enum
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict
@@ -24,6 +25,11 @@ class GenerationStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+def _generate_short_id() -> str:
+    """Generate a short unique ID for generation versioning."""
+    return uuid.uuid4().hex[:8]
+
+
 @dataclass
 class GenerationState:
     """
@@ -34,7 +40,13 @@ class GenerationState:
     project_id: str
     status: GenerationStatus
     tech_stack: str
+    generation_id: str = field(default_factory=_generate_short_id)  # Unique ID per generation
     repo_url: str = ""
+
+    @property
+    def repo_name(self) -> str:
+        """Get the versioned repository name for this generation."""
+        return f"{self.project_id}-{self.generation_id}"
 
     # Progress tracking (task-based generation)
     total_tasks: int = 0

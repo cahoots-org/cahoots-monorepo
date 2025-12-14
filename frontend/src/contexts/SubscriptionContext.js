@@ -42,16 +42,22 @@ export const SubscriptionProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Extract subscription from user data
+  // Fetch subscription from API when user is available
   useEffect(() => {
-    if (user?.subscription) {
-      setSubscription(user.subscription);
-    } else if (user) {
-      // Default to free tier if no subscription data
-      setSubscription({
-        tier: 'free',
-        status: 'active',
-      });
+    if (user) {
+      // Always fetch fresh subscription data from API
+      const fetchSubscription = async () => {
+        try {
+          const response = await apiClient.get('/subscriptions/current');
+          console.log('[SubscriptionContext] Fetched subscription:', response);
+          setSubscription(response);
+        } catch (err) {
+          console.error('[SubscriptionContext] Failed to fetch subscription:', err);
+          // Fallback to user's embedded subscription or free tier
+          setSubscription(user.subscription || { tier: 'free', status: 'active' });
+        }
+      };
+      fetchSubscription();
     } else {
       setSubscription(null);
     }

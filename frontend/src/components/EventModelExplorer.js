@@ -6,7 +6,7 @@
  *
  * Cross-cutting concerns shown as connection hints.
  */
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Text, tokens } from '../design-system';
 
 const COLORS = {
@@ -22,10 +22,19 @@ const EventModelExplorer = ({ task }) => {
   const [selectedChapter, setSelectedChapter] = useState(null);
   const [expandedSlice, setExpandedSlice] = useState(null);
 
-  // Extract all data
-  const { chapters, commands, events, readModels } = useMemo(() => {
+  // Extract chapters early so we can auto-select
+  const chapters = useMemo(() => task?.metadata?.chapters || [], [task]);
+
+  // Auto-select first chapter when chapters are available
+  useEffect(() => {
+    if (chapters.length > 0 && !selectedChapter) {
+      setSelectedChapter(chapters[0].name);
+    }
+  }, [chapters, selectedChapter]);
+
+  // Extract other data (chapters already extracted above)
+  const { commands, events, readModels } = useMemo(() => {
     return {
-      chapters: task?.metadata?.chapters || [],
       commands: task?.metadata?.commands || [],
       events: task?.metadata?.extracted_events || [],
       readModels: task?.metadata?.read_models || [],
@@ -363,13 +372,10 @@ const EventModelExplorer = ({ task }) => {
         </div>
       )}
 
-      {/* Prompt to select */}
-      {!selectedChapter && !searchResults && (
+      {/* Loading state - should rarely show since we auto-select */}
+      {!selectedChapter && !searchResults && chapters.length > 0 && (
         <div style={styles.prompt}>
-          <Text style={styles.promptIcon}>👆</Text>
-          <Text style={styles.promptText}>
-            Select a chapter above to see its command → event → view slices
-          </Text>
+          <Text style={styles.promptText}>Loading...</Text>
         </div>
       )}
     </div>

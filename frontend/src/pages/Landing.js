@@ -46,8 +46,8 @@ const Landing = () => {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--color-bg)' }}>
       <SEO
-        title="AI-Powered Project Decomposition & Planning"
-        description="Transform complex project ideas into actionable plans. Cahoots uses AI to break down requirements into epics, stories, and implementation tasks with story points and dependencies."
+        title="From Idea to Real Software | AI-Powered Development"
+        description="From product vision to project plan to production code. Cahoots uses AI to decompose requirements into user stories, generate event models, and produce deployable code."
       />
 
       {/* Navigation Bar */}
@@ -267,13 +267,13 @@ const HeroSection = () => {
               color: 'var(--color-text)',
               letterSpacing: isSmallMobile ? '-1px' : '-3px',
             }}>
-              Turn Complex Ideas Into{' '}
+              From Idea to{' '}
               <span style={{
                 background: `linear-gradient(135deg, ${tokens.colors.primary[400]} 0%, ${tokens.colors.warning[500]} 100%)`,
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
                 backgroundClip: 'text',
-              }}>Actionable Plans</span>
+              }}>Real Software</span>
             </h1>
 
             <p style={{
@@ -283,7 +283,7 @@ const HeroSection = () => {
               lineHeight: '1.5',
               maxWidth: '700px',
             }}>
-              Describe your project in plain English. Get back user stories, tasks with story points, and technical specs.
+              From product vision to project plan to production code.
             </p>
 
             <div style={{ display: 'flex', flexDirection: isSmallMobile ? 'column' : 'row', flexWrap: 'wrap', gap: isSmallMobile ? '12px' : isMobile ? '20px' : '40px', color: 'var(--color-text-muted)', fontSize: isSmallMobile ? '16px' : isMobile ? '18px' : '22px' }}>

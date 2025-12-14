@@ -255,20 +255,25 @@ class MergeAgent:
         for attempt in range(max_retry_attempts):
             try:
                 had_conflicts = False
+                print(f"[MergeAgent] Starting attempt {attempt + 1}/{max_retry_attempts} for {branch}")
 
                 # Step 1: Update branch from main (skip for new-files-only tasks)
                 if is_new_files_only and attempt == 0:
                     # First attempt with new files only - skip update from main
+                    print(f"[MergeAgent] Step 1: Skipping update from main (new files only)")
                     logger.info(f"[MergeAgent] Step 1: Skipping update from main (new files only)")
                 else:
                     # Normal path or retry after merge conflict
+                    print(f"[MergeAgent] Step 1: Updating {branch} from main (attempt {attempt + 1})")
                     logger.info(f"[MergeAgent] Step 1: Updating {branch} from main (attempt {attempt + 1})")
                     update_result = await self._update_branch_from_main(project_id, branch)
+                    print(f"[MergeAgent] update_result: ok={update_result.get('ok')}, has_conflicts={update_result.get('has_conflicts')}, error={update_result.get('error', '')[:100]}")
 
                     if not update_result.get("ok", False):
                         # Check if there are conflicts to resolve
                         if update_result.get("has_conflicts"):
                             had_conflicts = True
+                            print(f"[MergeAgent] Conflicts detected! Files: {update_result.get('conflicted_files', [])}")
                             logger.info(f"[MergeAgent] Conflicts detected during update, attempting resolution...")
                             conflicted_files = update_result.get("conflicted_files", [])
 
@@ -337,8 +342,11 @@ class MergeAgent:
                 is_conflict_error = any(word in error_msg for word in
                     ["conflict", "not mergeable", "405", "diverged", "out of date"])
 
+                print(f"[MergeAgent] Merge failed. error_msg='{error_msg}', is_conflict_error={is_conflict_error}, attempt={attempt}")
+
                 if is_conflict_error and attempt < max_retry_attempts - 1:
                     # Conflicts detected at merge time - retry the full flow
+                    print(f"[MergeAgent] Retrying due to conflict... (attempt {attempt + 1}/{max_retry_attempts})")
                     logger.warning(
                         f"[MergeAgent] Merge to main failed due to conflicts, retrying... "
                         f"(attempt {attempt + 1}/{max_retry_attempts})"
@@ -346,6 +354,7 @@ class MergeAgent:
                     continue
                 else:
                     # Non-conflict error or max retries reached
+                    print(f"[MergeAgent] Giving up. is_conflict_error={is_conflict_error}, attempt={attempt}, max={max_retry_attempts}")
                     return MergeResult(
                         ok=False,
                         branch=branch,
@@ -412,7 +421,12 @@ class MergeAgent:
         conflicted_files: List[str],
         task_description: str
     ) -> bool:
-        """Resolve merge conflicts using LLM."""
+        """Resolve merge conflicts using LLM.
+
+        When using Gitea's API (not local Git), we don't have conflict markers.
+        Instead, we have two versions of files that need to be intelligently merged.
+        We use the LLM to merge both versions, preserving changes from both.
+        """
         if not self.llm:
             logger.error("[MergeAgent] No LLM client available for conflict resolution")
             return False
@@ -429,17 +443,17 @@ class MergeAgent:
                     # Get the file content from main for comparison
                     main_content = await self._get_file_content(project_id, "main", file_path)
 
-                    # Case 1: File only exists on main (new file being added)
-                    # This is not really a conflict - just accept the main version
+                    # Case 1: File only exists on main (new file being added by another task)
+                    # Copy the main version to our branch so we have both
                     if not branch_content and main_content:
-                        logger.info(f"[MergeAgent] File only exists on main, accepting: {file_path}")
+                        logger.info(f"[MergeAgent] File only exists on main, copying to branch: {file_path}")
                         success = await self._write_file(project_id, branch, file_path, main_content)
                         if success:
                             resolved_count += 1
                         continue
 
-                    # Case 2: File only exists on task branch (deleted in main or new in task)
-                    # Keep the task branch version
+                    # Case 2: File only exists on task branch (new file from this task)
+                    # Keep the task branch version - no conflict
                     if branch_content and not main_content:
                         logger.info(f"[MergeAgent] File only exists on task branch, keeping: {file_path}")
                         resolved_count += 1
@@ -453,30 +467,48 @@ class MergeAgent:
                         resolved_count += 1
                         continue
 
-                    # Case 4: File exists on both - check if it has conflict markers
-                    has_conflict_markers = "<<<<<<" in branch_content and "======" in branch_content and ">>>>>>" in branch_content
-
-                    if not has_conflict_markers:
-                        # Files are identical or one overwrote the other - no real conflict
-                        logger.info(f"[MergeAgent] No conflict markers in {file_path}, skipping resolution")
+                    # Case 4: File exists on both branches
+                    # Check if contents are identical (no real conflict)
+                    if branch_content.strip() == main_content.strip():
+                        logger.info(f"[MergeAgent] Files are identical on both branches: {file_path}")
                         resolved_count += 1
                         skipped_count += 1
                         continue
 
-                    # Get context from Contex for related files
+                    # Case 5: File has Git conflict markers (from local Git merge)
+                    has_conflict_markers = "<<<<<<" in branch_content and "======" in branch_content and ">>>>>>" in branch_content
+
+                    if has_conflict_markers:
+                        logger.info(f"[MergeAgent] Found conflict markers in {file_path}, resolving...")
+                    else:
+                        # Case 6: Files differ but no conflict markers (Gitea API case)
+                        # Both branches modified the same file - we need to merge them intelligently
+                        logger.info(f"[MergeAgent] Files differ on both branches, merging: {file_path}")
+
+                    # Get context from Contex for related files (helps LLM understand intent)
                     context_files = {}
                     if self.contex:
                         context_files = await self._get_related_context(project_id, file_path)
 
-                    # Build prompt for conflict resolution
-                    prompt = self._build_conflict_resolution_prompt(
-                        file_path=file_path,
-                        conflicted_content=branch_content,
-                        task_description=task_description,
-                        context_files=context_files
-                    )
+                    # Build prompt for conflict resolution / intelligent merge
+                    if has_conflict_markers:
+                        prompt = self._build_conflict_resolution_prompt(
+                            file_path=file_path,
+                            conflicted_content=branch_content,
+                            task_description=task_description,
+                            context_files=context_files
+                        )
+                    else:
+                        # Build a different prompt for merging two clean versions
+                        prompt = self._build_merge_prompt(
+                            file_path=file_path,
+                            branch_content=branch_content,
+                            main_content=main_content,
+                            task_description=task_description,
+                            context_files=context_files
+                        )
 
-                    # Ask LLM to resolve
+                    # Ask LLM to resolve/merge
                     llm_response = await self.llm.chat_completion(
                         messages=[
                             {"role": "system", "content": CONFLICT_RESOLUTION_PROMPT},
@@ -491,11 +523,16 @@ class MergeAgent:
                     # Clean up the response (remove any markdown code blocks)
                     resolved_content = self._clean_llm_response(resolved_content)
 
+                    # Validate the result isn't empty or too short
+                    if not resolved_content or len(resolved_content.strip()) < 10:
+                        logger.warning(f"[MergeAgent] LLM returned empty/invalid content for {file_path}")
+                        continue
+
                     # Write resolved content
                     success = await self._write_file(project_id, branch, file_path, resolved_content)
                     if success:
                         resolved_count += 1
-                        logger.info(f"[MergeAgent] Resolved conflict in {file_path}")
+                        logger.info(f"[MergeAgent] Merged/resolved conflict in {file_path}")
 
                 if resolved_count == len(conflicted_files):
                     # Only commit if we actually made changes (not just skipped)
@@ -651,7 +688,15 @@ Focus on:
 
                 if response.status_code == 200:
                     data = response.json()
-                    return {"ok": True, **data}
+                    # Workspace service returns ok=false with conflicts in the body
+                    if data.get("ok", True):
+                        return {"ok": True, "commit": data.get("commit", "")}
+                    else:
+                        # Extract error from conflicts array if present
+                        conflicts = data.get("conflicts", [])
+                        error_msg = conflicts[0] if conflicts else "Merge failed with conflicts"
+                        print(f"[MergeAgent] _merge_to_main failed: {error_msg}")
+                        return {"ok": False, "error": error_msg, "conflicts": conflicts}
                 else:
                     return {"ok": False, "error": response.text}
             except Exception as e:
@@ -754,6 +799,55 @@ Related files for context:
 {context_str}
 
 Output ONLY the resolved file content with NO conflict markers.
+"""
+
+    def _build_merge_prompt(
+        self,
+        file_path: str,
+        branch_content: str,
+        main_content: str,
+        task_description: str,
+        context_files: Dict[str, str]
+    ) -> str:
+        """Build prompt for merging two versions of a file (no conflict markers).
+
+        This is used when Gitea reports a conflict but we don't have conflict
+        markers - we just have two different versions of the file that need
+        to be intelligently merged.
+        """
+        context_str = ""
+        for path, content in list(context_files.items())[:3]:
+            context_str += f"\n--- {path} ---\n{content[:2000]}\n"
+
+        return f"""Merge these two versions of a file into one that includes changes from both.
+
+File: {file_path}
+
+Feature being merged: {task_description}
+
+## Version from current feature branch (includes changes from this task):
+```
+{branch_content}
+```
+
+## Version from main branch (includes changes from other merged tasks):
+```
+{main_content}
+```
+
+## Related files for context:
+{context_str if context_str else "(no additional context)"}
+
+## Instructions:
+1. Analyze both versions carefully
+2. Identify what each version adds or changes
+3. Combine BOTH sets of changes into a single file
+4. Preserve imports, type definitions, and exports from both
+5. If functions/methods were added in both, include all of them
+6. If the same code was modified differently, prefer the more complete version
+7. Ensure the result is valid, working code
+
+Output ONLY the merged file content, nothing else.
 """
 
     def _format_context_files(self, context: Dict[str, str]) -> str:

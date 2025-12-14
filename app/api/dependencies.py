@@ -232,6 +232,10 @@ async def cleanup_dependencies():
 # Import it from there to avoid duplication
 
 
+# Admin emails that always get enterprise access
+ADMIN_EMAILS = {"admin@cahoots.cc"}
+
+
 def require_feature(feature: str):
     """Dependency factory that checks if the user has access to a feature.
 
@@ -252,6 +256,11 @@ def require_feature(feature: str):
     from app.models.subscription import SubscriptionTier, has_feature
 
     async def check_feature(current_user: dict = Depends(get_current_user)):
+        # Admin emails always have enterprise access
+        email = current_user.get("email", "").lower()
+        if email in ADMIN_EMAILS:
+            return current_user
+
         # Get subscription tier from user data
         subscription = current_user.get("subscription", {})
         tier_str = subscription.get("tier", "free")
